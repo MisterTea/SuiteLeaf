@@ -1,8 +1,11 @@
 import JSZip from "jszip";
+import { officeGradientFill } from "./pptx-fill-preservation";
 import { createFile, type SlideFile, type Slide } from "./index";
-import { assignClickAnimations, readSlideMotion, shapeGroupAncestors } from "./slide-motion";
+import { readSlideMotion, shapeGroupAncestors } from "./slide-motion";
+import { assignPaintedShapeAnimations } from "./pptx-slide-motion";
 import { readingOrderIds } from "./pptx-reading-order";
 import { outerShadow } from "./pptx-run-paint";
+import { readObjectShadow } from "./pptx-object-shadow";
 import { retainSharedData } from "./shared-media";
 import { moveKerningToBoxes } from "./pptx-kerning";
 import { zipFromLocalHeaders } from "./zip-local";
@@ -195,13 +198,8 @@ async function parseZipPptx(
     else if (elements.length === 0) layout = "blank";
     else if (elements.length >= 3) layout = "two-column";
 
-    const mapped = assignClickAnimations(slideXml, elements, shapeIndex);
+    const mapped = assignPaintedShapeAnimations(slideXml, elements, shapeIndex, elementOrder);
     const ancestors = shapeGroupAncestors(slideXml);
-    const effectsOf = (xml: string) => {
-      const hidden = /<a14:hiddenEffects\b[\s\S]*?<\/a14:hiddenEffects>/.exec(xml)?.[0] ?? "";
-      if (/<a:outerShdw\b/.test(hidden)) return hidden;
-      return /<a:effectLst\b[\s\S]*?<\/a:effectLst>/.exec(xml)?.[0] ?? "";
-    };
     for (const match of slideXml.matchAll(/<p:(sp|pic)\b[\s\S]*?<\/p:\1>/g)) {
       const xml = match[0];
       const localId = /<p:cNvPr\b[^>]*\bid="(\d+)"/.exec(xml)?.[1];
@@ -211,7 +209,7 @@ async function parseZipPptx(
         ? /<p:cNvPr\b[^>]*\bid="(\d+)"/.exec(frameHead)?.[1]
         : undefined;
       const id = frameId && frameId !== "0" ? frameId : localId;
-      const shadow = outerShadow(effectsOf(xml), scheme);
+      const shadow = readObjectShadow(xml, slide.themePart?.xml ?? "", scheme);
       const index = id ? shapeIndex.get(id) : undefined;
       if (shadow && index != null && !elements[index].shadow) elements[index].shadow = shadow;
     }
@@ -254,7 +252,7 @@ async function parseZipPptx(
     slides[slideId] = {
       id: slideId,
       title: slideTitle || `Slide ${idx + 1}`,
-      background: bgColor ? { color: bgColor } : undefined,
+      background: bgColor ? { color: bgColor, officeFill: officeGradientFill(slide.themePart?.xml, slide.bgXml, bgColor, slide.colorMap) } : undefined,
       layout,
       elements,
       notes: notes.trim(),

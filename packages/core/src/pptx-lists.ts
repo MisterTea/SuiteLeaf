@@ -284,12 +284,12 @@ export function layoutListRuns<T extends ListRun>(
   const runs: T[] = [];
   paragraphs.forEach((paragraph, index) => {
     const line = { ...(paragraph.cssLine ? { paraLine: paragraph.cssLine } : {}), ...(paragraph.cssLinePt ? { paraLinePt: paragraph.cssLinePt } : {}) };
-    // A leading empty paragraph is a blank line. The break before the next
-    // paragraph would otherwise be filled by that paragraph's text.
+    // Keep the first paragraph's metrics even when it has no text. The break
+    // before the second paragraph already represents this first blank line.
     if ((index === 0 && !paragraph.text.trim()) || index) {
       runs.push({
-        text: "\n",
-        paragraphBreak: true,
+        text: index ? "\n" : "",
+        ...(index ? { paragraphBreak: true } : {}),
         ...extras(paragraph),
         ...line,
         ...(paragraph.size ? { fontSize: paragraph.size } : {}),

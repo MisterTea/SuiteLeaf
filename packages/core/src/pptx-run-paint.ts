@@ -24,6 +24,7 @@ function points(emu: number): number {
 export function outerShadow(
   effects: string,
   scheme: Record<string, string>,
+  phClr?: string,
 ): RunShadow | undefined {
   const tag = /<a:outerShdw\b([^>]*)(?:\/>|>([\s\S]*?)<\/a:outerShdw>)/.exec(effects);
   if (!tag) return;
@@ -33,7 +34,7 @@ export function outerShadow(
   const blur = Number(/\bblurRad="(\d+(?:\.\d+)?)"/.exec(attrs)?.[1] ?? 0);
   const dir = Number(/\bdir="(-?\d+(?:\.\d+)?)"/.exec(attrs)?.[1] ?? 0);
   if (!(dist > 0) && !(blur > 0)) return;
-  const color = paintColor(body, scheme) || "#000000";
+  const color = paintColor(body, scheme, phClr) || "#000000";
   const radians = ((dir / 60000) * Math.PI) / 180;
   const distPt = dist / EMU_PER_POINT;
   const round2 = (value: number) => Math.round(value * 100) / 100;

@@ -183,3 +183,16 @@ describe("PPTX export preservation", () => {
     );
   });
 });
+
+
+it("exports visible posters for media omitted by import size limits or unsupported codecs", async () => {
+ const file=createFile("slide","Posters") as SlideFile;
+ const poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+ file.content.slides[file.content.slideOrder[0]].elements=[{id:"large-video",type:"video",x:100,y:50,width:200,height:100,poster},{id:"other-codec",type:"audio",x:200,y:150,width:100,height:100,src:"data:audio/unknown;base64,AA==",poster}];
+ const zip=await JSZip.loadAsync(await exportPptx(file));
+ const xml=await zip.file("ppt/slides/slide1.xml")!.async("string");
+ expect(xml.match(/<p:pic>/g)).toHaveLength(2);
+ expect(xml).toContain('name="SuiteLeaf id large-video"');
+ expect(xml).toContain('<a:off x="952500" y="476250"/>');
+ expect(xml).not.toContain("<a:videoFile");
+});

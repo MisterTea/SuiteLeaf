@@ -127,6 +127,8 @@ export const textRunSchema = z.object({
 export type TextRun = z.infer<typeof textRunSchema>;
 export const slideElementSchema = z.object({
   id: z.string(),
+  /** Original DrawingML shape id, used to remap retained timing on export. */
+  sourceShapeId: z.string().regex(/^\d+$/).optional(),
   type: z.enum(["text", "shape", "image", "table", "audio", "video"]),
   x: z.number(),
   y: z.number(),
@@ -184,6 +186,20 @@ export const slideElementSchema = z.object({
     .enum(["rect", "roundRect", "ellipse", "line", "arrow"])
     .optional(),
   fill: z.string().optional(),
+  /** Retain editable Office gradient transforms while the visible fill is unchanged. */
+  officeFill: z
+    .object({
+      css: z.string().max(64000),
+      xml: z
+        .string()
+        .max(64000)
+        .refine(
+          (xml) =>
+            /^<a:gradFill\b[\s\S]*<\/a:gradFill>$/.test(xml) &&
+            !/<!DOCTYPE|<!ENTITY|\br:/.test(xml),
+        ),
+    })
+    .optional(),
   stroke: z.string().optional(),
   strokeWidth: z.number().optional(),
   /**
@@ -230,9 +246,13 @@ export const slideElementSchema = z.object({
    * DrawingML headEnd, at the line's start. An oval is a dot. A triangle,
    * arrow, or stealth is an arrowhead. Older arrows omit this.
    */
-  lineHead: z.enum(["triangle", "arrow", "stealth", "diamond", "oval"]).optional(),
+  lineHead: z
+    .enum(["triangle", "arrow", "stealth", "diamond", "oval"])
+    .optional(),
   /** DrawingML tailEnd, at the line's end. */
-  lineTail: z.enum(["triangle", "arrow", "stealth", "diamond", "oval"]).optional(),
+  lineTail: z
+    .enum(["triangle", "arrow", "stealth", "diamond", "oval"])
+    .optional(),
   /** Non-default head size. Medium is omitted. */
   lineHeadSize: z.enum(["sm", "lg"]).optional(),
   /** Non-default tail size. Medium is omitted. */
@@ -241,6 +261,8 @@ export const slideElementSchema = z.object({
   rtl: z.boolean().optional(),
   /** DrawingML wrap="none": keep each paragraph on one line. */
   nowrap: z.boolean().optional(),
+  /** Apply paragraph before/after spacing at the text body's outer edges. */
+  paragraphEdgeSpacing: z.boolean().optional(),
   /**
    * WordArt textPlain. The letters stretch to this box; the stored font size
    * is the size before that stretch.
@@ -375,6 +397,13 @@ export const slideElementSchema = z.object({
   colWidths: z.array(z.number().positive()).max(64).optional(),
   /** Row heights as fractions of the table. */
   rowHeights: z.array(z.number().nonnegative()).max(80).optional(),
+  /** Authored row minima and the derived layout they belong to; changing row sizes releases them. */
+  officeRowHeights: z
+    .object({
+      minimums: z.array(z.number().nonnegative()).max(80),
+      layout: z.array(z.number().nonnegative()).max(80),
+    })
+    .optional(),
   /** Formatting for each slide-table cell, aligned with `rows`. */
   cellMarks: z
     .array(
@@ -390,10 +419,30 @@ export const slideElementSchema = z.object({
           colSpan: z.number().int().positive().optional(),
           rowSpan: z.number().int().positive().optional(),
           border: z.string().optional(),
-          borderTop: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
-          borderRight: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
-          borderBottom: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
-          borderLeft: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
+          borderTop: z
+            .object({
+              color: z.string(),
+              width: z.number().positive().max(20).optional(),
+            })
+            .optional(),
+          borderRight: z
+            .object({
+              color: z.string(),
+              width: z.number().positive().max(20).optional(),
+            })
+            .optional(),
+          borderBottom: z
+            .object({
+              color: z.string(),
+              width: z.number().positive().max(20).optional(),
+            })
+            .optional(),
+          borderLeft: z
+            .object({
+              color: z.string(),
+              width: z.number().positive().max(20).optional(),
+            })
+            .optional(),
           padTop: z.number().nonnegative().max(200).optional(),
           padRight: z.number().nonnegative().max(200).optional(),
           padBottom: z.number().nonnegative().max(200).optional(),
@@ -432,14 +481,17 @@ export const slideElementSchema = z.object({
                 bulletSrc: z.string().max(700_000).optional(),
                 baseline: z.number().min(-1000).max(1000).optional(),
                 scriptScale: z.boolean().optional(),
-  /** Line size of a paragraph whose words are all raised or lowered. */
-  scriptStrut: z.number().optional(),
+                /** Line size of a paragraph whose words are all raised or lowered. */
+                scriptStrut: z.number().optional(),
                 bold: z.boolean().optional(),
                 paragraphBreak: z.boolean().optional(),
                 paraMargin: z.number().nonnegative().max(20000).optional(),
                 paraHang: z.number().nonnegative().max(20000).optional(),
                 paraFirst: z.number().nonnegative().max(20000).optional(),
                 paraTab: z.number().positive().max(2000).optional(),
+                paraLine: z.number().positive().max(4).optional(),
+                paraLinePt: z.number().positive().max(4000).optional(),
+                spaceBefore: z.number().nonnegative().max(20000).optional(),
                 paraTabs: z
                   .array(
                     z.object({
@@ -495,6 +547,8 @@ export const slideSchema = z.object({
     .object({
       color: z.string().optional(),
       image: z.string().optional(),
+      /** Native gradient stops while the editable CSS paint remains unchanged. */
+      officeFill: z.object({ css: z.string(), xml: z.string().max(100000) }).optional(),
       /** Set from markdown. A theme change leaves this color alone. */
       pinned: z.boolean().optional(),
     })

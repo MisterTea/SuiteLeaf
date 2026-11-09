@@ -33,6 +33,34 @@
   display: grid;
   gap: 7px;
 }
+.sidebar-icon-button,
+.admin-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-decoration: none;
+}
+.sidebar-icon-button:hover,
+.admin-icon-button:hover {
+  background: var(--bg-app);
+}
+.sidebar-icon-button:focus-visible,
+.admin-icon-button:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: 2px;
+}
+.mail-link {
+  margin: 24px 0 0;
+}
 .sidebar-links button {
   justify-content: start;
   border: 0;

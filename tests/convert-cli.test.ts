@@ -20,6 +20,8 @@ import {
   parseConvertArgs,
   runConvertCommand,
   slidePngFolder,
+  writeSlidePictures,
+  writeSlidePngFolder,
 } from "../apps/desktop/src/convert-cli";
 
 let root: string, source: string, output: string;
@@ -176,7 +178,9 @@ it("converts a directory beside each source, skips other files, and numbers exis
   expect(await readdir(source)).toEqual(["nested", "notes.docx"]);
   expect(imported).toEqual(["talk.pptx"]);
   expect(
-    (await readdir(join(source, "nested"))).filter((name) => name.startsWith("~$")),
+    (await readdir(join(source, "nested"))).filter((name) =>
+      name.startsWith("~$"),
+    ),
   ).toEqual(["~$talk.pptx"]);
   expect(log).toHaveBeenCalledWith("Converted 1; skipped 2; failed 0.");
 });
@@ -198,8 +202,12 @@ it("keeps going after a bad file and stops when the PDF page cannot start", asyn
       error,
     }),
   ).toBe(1);
-  expect(error).toHaveBeenCalledWith(expect.stringContaining("unreadable presentation"));
-  expect(await readFile(join(output, "good.pdf"))).toEqual(Buffer.from("%PDF-1.4\n"));
+  expect(error).toHaveBeenCalledWith(
+    expect.stringContaining("unreadable presentation"),
+  );
+  expect(await readFile(join(output, "good.pdf"))).toEqual(
+    Buffer.from("%PDF-1.4\n"),
+  );
   expect(log).toHaveBeenCalledWith("Converted 1; skipped 1; failed 1.");
 
   await writeFile(join(source, "ok.pptx"), await deck("Ok", ["Slide"]));
@@ -270,4 +278,135 @@ it("rejects a missing source without opening the PDF page", async () => {
 
 it("gives the office converter enough heap for a photo-heavy deck", () => {
   expect(OFFICE_CONVERTER_HEAP_MB).toBeGreaterThanOrEqual(4096);
+});
+
+it("round trips editable PPTX through the CLI without opening a renderer", async () => {
+  const original = join(source, "roundtrip.pptx");
+  await writeFile(original, await deck("Round trip", ["Alpha", "Beta"]));
+  const openRenderer = vi.fn();
+  const options = {
+    convertOffice: openOfficeFile,
+    openRenderer,
+    log: vi.fn(),
+    error: vi.fn(),
+  };
+  const target = join(output, "result.pptx");
+  expect(
+    await runConvertCommand(
+      [original, "--to", "pptx", "--output", target],
+      options,
+    ),
+  ).toBe(0);
+  expect(
+    await runConvertCommand(
+      [original, "--to", "pptx", "--output", target],
+      options,
+    ),
+  ).toBe(0);
+  expect(openRenderer).not.toHaveBeenCalled();
+  const imported = await openOfficeFile(
+    await readFile(target),
+    "pptx",
+    "Result",
+  );
+  expect(imported.kind).toBe("slide");
+  if (imported.kind !== "slide") throw new Error("not a slide");
+  expect(imported.content.slideOrder).toHaveLength(2);
+  expect(
+    imported.content.slides[imported.content.slideOrder[1]].elements[0].content,
+  ).toBe("Beta");
+  expect(await readdir(output)).toEqual(["result (1).pptx", "result.pptx"]);
+  expect(
+    await runConvertCommand(
+      [original, "--to", "pptx", "--output", original],
+      options,
+    ),
+  ).toBe(1);
+  expect(
+    await runConvertCommand(
+      [source, "--to", "pptx", "--output", target],
+      options,
+    ),
+  ).toBe(2);
+});
+
+it("writes JSON, Markdown, and terminal compatibility reports for PPTX round trips", async () => {
+  const original = join(source, "report.pptx");
+  await writeFile(original, await deck("Report", ["Hello"]));
+  const log = vi.fn();
+  const options = {
+    convertOffice: openOfficeFile,
+    openRenderer: vi.fn(),
+    log,
+    error: vi.fn(),
+  };
+  for (const extension of ["json", "md"]) {
+    const report = join(root, `compat.${extension}`);
+    expect(
+      await runConvertCommand(
+        [original, "--to", "pptx", "--output", output, "--report", report],
+        options,
+      ),
+    ).toBe(0);
+    expect((await readFile(report, "utf8")).length).toBeGreaterThan(20);
+  }
+  expect(
+    await runConvertCommand(
+      [original, "--to", "pptx", "--output", output, "--report"],
+      options,
+    ),
+  ).toBe(0);
+  expect(log.mock.calls.length).toBeGreaterThan(6);
+  expect(await runConvertCommand(["--help"], options)).toBe(0);
+});
+
+it("rejects invalid renderer output and imports that are not presentations", async () => {
+  const original = join(source, "broken.pptx");
+  await writeFile(original, "placeholder");
+  const error = vi.fn();
+  const options = {
+    convertOffice: async () => createFile("slide"),
+    openRenderer: async () => async () => new Uint8Array(),
+    log: vi.fn(),
+    error,
+  };
+  expect(await runConvertCommand([original, "--to", "pdf"], options)).toBe(1);
+  expect(error).toHaveBeenCalledWith(
+    expect.stringContaining("did not produce a PDF"),
+  );
+  expect(await runConvertCommand([original, "--to", "png"], options)).toBe(1);
+  expect(error).toHaveBeenCalledWith(
+    expect.stringContaining("PNG export is not available"),
+  );
+  expect(
+    await runConvertCommand([original, "--to", "pptx"], {
+      ...options,
+      convertOffice: async () => createFile("doc"),
+    }),
+  ).toBe(1);
+  expect(error).toHaveBeenCalledWith(
+    expect.stringContaining("did not import as a presentation"),
+  );
+});
+
+it("writes chosen PNG picture folders and rejects empty or invalid slides", async () => {
+  await writeSlidePictures(output, [png(), png()]);
+  expect(await readdir(output)).toEqual(["Slide1.png", "Slide2.png"]);
+  await expect(writeSlidePictures(output, [])).rejects.toThrow("no slides");
+  await expect(writeSlidePictures(output, [new Uint8Array()])).rejects.toThrow(
+    "did not produce a PNG",
+  );
+  expect(() => slidePngFolder("")).toThrow("Choose a folder");
+});
+
+it("rejects invalid PNG batches before allocating export folders", async () => {
+  await expect(
+    writeSlidePngFolder(output, "", [png()], undefined),
+  ).rejects.toThrow("folder name");
+  await expect(
+    writeSlidePngFolder(output, "empty", [], undefined),
+  ).rejects.toThrow("no slides");
+  await expect(
+    writeSlidePngFolder(output, "invalid", [new Uint8Array()], undefined),
+  ).rejects.toThrow("PNG");
 });

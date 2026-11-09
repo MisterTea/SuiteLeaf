@@ -7,7 +7,10 @@
   z-index: 6;
   top: -24px;
   left: 0;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: #1a73e8;
   color: #fff;
@@ -16,6 +19,9 @@
   white-space: nowrap;
   pointer-events: none;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.fade-on-click-icon {
+  flex-shrink: 0;
 }
 
 .show-object.fade-on-click-hidden {

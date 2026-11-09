@@ -5,7 +5,7 @@ import { hasTextRuns } from "./slide-runs";
 import { SlideTextBody } from "./slide-text";
 import { SlideSpellMirror } from "./grid-spelling-ui";
 import { proofingLanguage } from "./proofing-language";
-import { editorFadeAttrs, editorFadeClass } from "./slide-fade-in";
+import { animationSequenceMap, editorFadeAttrs, editorFadeClass } from "./slide-fade-in";
 import { FadeOnClickMark } from "./slide-fade-mark";
 import { deckToMarp } from "./slide-marp";
 import { MarpBackdrop, type MarpPages } from "./slide-marp-backdrop";
@@ -212,6 +212,11 @@ export function editorCanvasHooks(
           />
         </>
     );
+  const activeSlide =
+    deck.slides[state.activeSlideId] ??
+    deck.slides[activeRef.current] ??
+    deck.slides[deck.slideOrder[0]];
+  const sequenceMap = animationSequenceMap(activeSlide?.elements);
   const canvasHooks: SlideFaceHooks = {
     box: (el) => {
       const isSelected = el.id === selectedElementId;
@@ -291,7 +296,12 @@ export function editorCanvasHooks(
       editingId === el.id || !(el.preformatted || el.math || el.content?.includes("$"))
         ? editorText(el)
         : undefined,
-    before: (el) => <FadeOnClickMark element={el} />,
+    before: (el) => (
+      <FadeOnClickMark
+        element={el}
+        sequence={sequenceMap.get(el.id) ?? el.animationOrder ?? 1}
+      />
+    ),
     after: (el) =>
       el.type === "shape" && el.marpHtml ? (
         <span className="marp-html-label">HTML</span>

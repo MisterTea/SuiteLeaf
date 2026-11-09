@@ -266,14 +266,17 @@ describe("DriveBrowser", () => {
 
   it("moves a file to Trash, undoes it, and restores or deletes from Trash", async () => {
     render(<DriveBrowser mode="open" inline onOpen={vi.fn()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Move Plan.sldoc to trash" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Plan.sldoc" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move Plan.sldoc to trash" }));
     expect(await screen.findByText("Plan.sldoc is in Trash.")).toBeTruthy();
     expect(drive.update).toHaveBeenCalledWith("doc", { trashed: true });
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     await waitFor(() => expect(screen.queryByText("Plan.sldoc is in Trash.")).toBeNull());
     expect(drive.update).toHaveBeenLastCalledWith("doc", { trashed: false });
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Plan.sldoc" }));
     fireEvent.click(screen.getByRole("button", { name: "Move Plan.sldoc to trash" }));
     fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Budget.slsheet" }));
     fireEvent.click(screen.getByRole("button", { name: "Move Budget.slsheet to trash" }));
     await screen.findByText("Budget.slsheet is in Trash.");
     state.items.find((i) => i.id === "doc")!.parentId = "f-beds";
@@ -311,9 +314,11 @@ describe("DriveBrowser", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(rows()).toContain("Herbs"));
     expect(drive.create).toHaveBeenCalledWith({ name: "Herbs", parentId: null, kind: "folder" });
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Plan.sldoc" }));
     fireEvent.click(screen.getByRole("button", { name: "Rename Plan.sldoc" }));
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     expect(drive.update).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Plan.sldoc" }));
     fireEvent.click(screen.getByRole("button", { name: "Rename Plan.sldoc" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Plot.sldoc" } });
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
@@ -326,7 +331,12 @@ describe("DriveBrowser", () => {
 
   it("moves a file and undoes the move", async () => {
     render(<DriveBrowser mode="open" inline onOpen={vi.fn()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Move Plan.sldoc" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Plan.sldoc" }));
+    const moveBtn = await screen.findByRole("button", { name: "Move Plan.sldoc" });
+    expect(moveBtn.getAttribute("title")).toBe("Move");
+    expect(moveBtn.textContent).toContain("Move");
+    expect(moveBtn.querySelector("svg")).toBeTruthy();
+    fireEvent.click(moveBtn);
     const dialog = screen.getByRole("dialog", { name: "Move" });
     expect(dialog.textContent).toContain("Plan.sldoc is in My Drive.");
     fireEvent.click(await within(dialog).findByRole("button", { name: "Beds" }));
@@ -347,6 +357,7 @@ describe("DriveBrowser", () => {
     state.items.find((i) => i.id === "inner")!.role = "owner";
     render(<DriveBrowser mode="open" inline onOpen={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: "Beds" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Rows.sldoc" }));
     fireEvent.click(await screen.findByRole("button", { name: "Move Rows.sldoc" }));
     const dialog = screen.getByRole("dialog", { name: "Move" });
     expect(dialog.textContent).toContain("Rows.sldoc is in Beds.");
@@ -358,6 +369,22 @@ describe("DriveBrowser", () => {
     await waitFor(() => expect(document.querySelector(".drive-move-banner")).toBeTruthy());
     fireEvent.click(within(document.querySelector(".drive-move-banner") as HTMLElement).getByRole("button", { name: "Dismiss" }));
     expect(document.querySelector(".drive-move-banner")).toBeNull();
+  });
+
+  it("opens the three-dot menu and closes it on Escape or clicking outside", async () => {
+    render(<DriveBrowser mode="open" inline onOpen={vi.fn()} />);
+    const trigger = await screen.findByRole("button", { name: "More actions for Plan.sldoc" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("menu", { name: "Actions for Plan.sldoc" })).toBeNull();
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const menu = screen.getByRole("menu", { name: "Actions for Plan.sldoc" });
+    expect(menu).toBeTruthy();
+    expect(within(menu).getByRole("button", { name: "Move Plan.sldoc" })).toBeTruthy();
+    expect(within(menu).getByRole("button", { name: "Rename Plan.sldoc" })).toBeTruthy();
+    expect(within(menu).getByRole("button", { name: "Move Plan.sldoc to trash" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Actions for Plan.sldoc" })).toBeNull();
   });
 
   it("searches names and words after a short pause", async () => {
@@ -401,6 +428,7 @@ describe("DriveBrowser", () => {
     act(() => void window.dispatchEvent(new Event(DRIVE_SAVED)));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     drive.update.mockRejectedValueOnce("Trash is full.");
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Plan.sldoc" }));
     fireEvent.click(screen.getByRole("button", { name: "Move Plan.sldoc to trash" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Trash is full.");
   });

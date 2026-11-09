@@ -18,6 +18,7 @@ import {
   resolve,
   sep,
 } from "node:path";
+import { exportPptx } from "@suiteleaf/core/pptx-export";
 import type { SuiteFile } from "@suiteleaf/core";
 import { PPTX_INPUT_LIMIT } from "@suiteleaf/core/office";
 import { isPowerPointExtension } from "@suiteleaf/core/open-office";
@@ -32,20 +33,21 @@ import type { OfficeConverter } from "./directory-import";
 
 export const cliUsage = `Usage:
   SuiteLeaf import <directory> [--output <directory>]
-  SuiteLeaf convert <file-or-directory> --to pdf|png [--output <path>]
+  SuiteLeaf convert <file-or-directory> --to pdf|png|pptx [--output <path>]
 
 import copies files into SuiteLeaf documents. convert turns PowerPoint
-files into PDFs or PNG slide folders and does not add them to the document
+files into PPTX, PDFs or PNG slide folders and does not add them to the document
 library or SuiteDrive. Use <command> --help for details.
 `;
 
-export const convertUsage = `Usage: SuiteLeaf convert <file-or-directory> --to pdf|png [--output <path>] [--report [path]]
+export const convertUsage = `Usage: SuiteLeaf convert <file-or-directory> --to pdf|png|pptx [--output <path>] [--report [path]]
 
-Import each PowerPoint file and export a PDF or a folder of PNG slides.
+Import each PowerPoint file and export a fresh PPTX, PDF, or folder of PNG slides.
 The presentation is not saved to the document library or SuiteDrive. Sources
 are left unchanged. An existing PDF or PNG folder keeps its name; the new
 one gets a numbered name.
 
+--to pptx writes an editable PowerPoint round trip with the same output path rules as PDF.
 --to pdf writes one PDF. A file writes it beside the presentation, or at
 --output (a .pdf path or a directory). --to png writes Slide1.png, Slide2.png,
 and so on, in a folder named after the presentation. A file creates that
@@ -62,7 +64,7 @@ skipped.
 Exit codes: 0 success, 1 file failures, 2 invalid command or unreadable source.
 `;
 
-export type ConvertFormat = "pdf" | "png";
+export type ConvertFormat = "pdf" | "png" | "pptx";
 
 export type PdfRenderer = (file: SuiteFile) => Promise<Uint8Array>;
 
@@ -95,7 +97,9 @@ const inside = (path: string, root: string) =>
 
 export function parseConvertArgs(
   args: string[],
-): { source: string; output?: string; to: ConvertFormat; report?: string } | "help" {
+):
+  | { source: string; output?: string; to: ConvertFormat; report?: string }
+  | "help" {
   if (args.length === 1 && ["--help", "-h"].includes(args[0])) return "help";
   let source: string | undefined,
     output: string | undefined,
@@ -108,7 +112,7 @@ export function parseConvertArgs(
       output = resolve(args[++i]);
     } else if (args[i] === "--to") {
       if (to || !args[i + 1] || args[i + 1].startsWith("-"))
-        throw new Error("--to pdf or --to png is required.");
+        throw new Error("--to pdf, --to png, or --to pptx is required.");
       to = args[++i].toLowerCase();
     } else if (args[i] === "--report") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) {
@@ -121,8 +125,8 @@ export function parseConvertArgs(
     else source = resolve(args[i]);
   }
   if (!source) throw new Error("Provide a PowerPoint file or a directory.");
-  if (to !== "pdf" && to !== "png")
-    throw new Error("--to pdf or --to png is required.");
+  if (to !== "pdf" && to !== "png" && to !== "pptx")
+    throw new Error("--to pdf, --to png, or --to pptx is required.");
   return { source, output, to, report };
 }
 
@@ -192,10 +196,7 @@ export async function writeSlidePngFolder(
 }
 
 /** Replace picture files in a folder the person already chose. */
-export async function writeSlidePictures(
-  folder: string,
-  slides: Uint8Array[],
-) {
+export async function writeSlidePictures(folder: string, slides: Uint8Array[]) {
   if (!slides.length) throw new Error("This presentation has no slides.");
   await mkdir(folder, { recursive: true });
   for (let i = 0; i < slides.length; i++) {
@@ -204,19 +205,23 @@ export async function writeSlidePictures(
   }
 }
 
-async function writePdf(
+async function writeExport(
   folder: string,
   stem: string,
   bytes: Uint8Array,
   contain: string | undefined,
+  extension = "pdf",
 ): Promise<string> {
   await mkdir(folder, { recursive: true });
   const realFolder = await realpath(folder);
   if (contain && !inside(realFolder, contain))
     throw new Error("Destination folder points outside the output directory.");
-  if (!stem) throw new Error("Choose a PDF file name.");
+  if (!stem) throw new Error("Choose an export file name.");
   for (let suffix = 0; suffix <= 10000; suffix++) {
-    const target = join(folder, `${stem}${suffix ? ` (${suffix})` : ""}.pdf`);
+    const target = join(
+      folder,
+      `${stem}${suffix ? ` (${suffix})` : ""}.${extension}`,
+    );
     let handle;
     try {
       handle = await open(target, "wx");
@@ -235,7 +240,7 @@ async function writePdf(
     await handle.close();
     return target;
   }
-  throw new Error(`Too many existing PDFs named ${stem}.pdf.`);
+  throw new Error(`Too many existing exports named ${stem}.${extension}.`);
 }
 
 /** Import PowerPoint files and write PDFs or PNG folders. Nothing is added to a library. */
@@ -257,7 +262,7 @@ export async function convertPresentations(
   if (
     sourceIsDirectory &&
     output &&
-    [".pdf", ".png"].includes(extname(output).toLowerCase())
+    [".pdf", ".png", ".pptx"].includes(extname(output).toLowerCase())
   )
     throw new Error(
       "--output must be a directory when converting a directory.",
@@ -276,7 +281,7 @@ export async function convertPresentations(
   const result: ConvertResult = { converted: 0, skipped: 0, failed: 0 };
   let renderer: PdfRenderer | undefined;
   let pngRenderer: PngRenderer | undefined;
-  const picture = format === "png" ? "PNG" : "PDF";
+  const picture = format.toUpperCase();
   const convertOne = async (path: string, allowSkip: boolean) => {
     const extension = extname(path).slice(1).toLowerCase();
     if (!isPowerPointExtension(extension)) {
@@ -315,7 +320,7 @@ export async function convertPresentations(
       const explicitFile =
         !sourceIsDirectory &&
         output &&
-        extname(output).toLowerCase() === (format === "png" ? ".png" : ".pdf")
+        extname(output).toLowerCase() === `.${format}`
           ? output
           : undefined;
       const folder = explicitFile
@@ -328,7 +333,11 @@ export async function convertPresentations(
       const name = explicitFile
         ? basename(explicitFile, extname(explicitFile))
         : stem;
-      if (resolve(folder, `${name}.${format}`) === path)
+      if (
+        (await realpath(resolve(folder, `${name}.${format}`)).catch(() =>
+          resolve(folder, `${name}.${format}`),
+        )) === path
+      )
         throw new Error(
           `Refusing to replace the PowerPoint file with a ${picture}.`,
         );
@@ -345,6 +354,14 @@ export async function convertPresentations(
           await pngRenderer(file),
           outputRoot,
         );
+      } else if (format === "pptx") {
+        destination = await writeExport(
+          folder,
+          name,
+          await exportPptx(file),
+          outputRoot,
+          "pptx",
+        );
       } else {
         renderer ??= await options.openRenderer();
         const bytes = await renderer(file);
@@ -353,7 +370,7 @@ export async function convertPresentations(
           new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-"
         )
           throw new Error("Export did not produce a PDF.");
-        destination = await writePdf(folder, name, bytes, outputRoot);
+        destination = await writeExport(folder, name, bytes, outputRoot);
       }
       result.converted++;
       options.onFile?.({ source: path, status: "converted", destination });

@@ -943,6 +943,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await expect(crumbs).toContainText("Club");
     await expect(item("Rota.sldoc")).toBeVisible();
 
+    await page.getByRole("button", { name: "More actions for Rota.sldoc" }).click();
     await page.getByRole("button", { name: "Rename Rota.sldoc" }).click();
     const rename = page.getByRole("dialog", { name: "Rename" });
     await expect(rename.getByLabel("Name")).toBeFocused();
@@ -950,6 +951,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await rename.getByRole("button", { name: "OK" }).click();
     await expect(item("Watering rota.sldoc")).toBeVisible();
 
+    await page.getByRole("button", { name: "More actions for Watering rota.sldoc" }).click();
     const trash = page.getByRole("button", {
       name: "Move Watering rota.sldoc to trash",
     });

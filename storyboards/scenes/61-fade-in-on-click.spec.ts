@@ -191,7 +191,7 @@ test("61-fade-in-on-click", async ({ page }) => {
   const marked = canvas.locator(".has-fade-on-click");
   await expect(marked).toHaveCount(1);
   await expect(marked.locator("textarea")).toHaveValue("September");
-  await expect(marked.locator(".fade-on-click-mark")).toHaveText("On click");
+  await expect(marked.locator(".fade-on-click-mark")).toHaveText("1");
   await expect(marked.locator("textarea")).toBeVisible();
   await beat(page, 400);
 

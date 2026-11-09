@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Cloud, LogOut, Unplug } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Cloud, LogOut, Mail, Unplug } from "lucide-react";
 import { createFile } from "@suiteleaf/core";
 import { drive, signOut } from "../node-client";
 import { DriveBrowser, type DriveControl } from "../drive/DriveBrowser";
@@ -24,6 +24,22 @@ import {
 import { message } from "../error-message";
 import { ImportButton } from "./ImportButton";
 import { ErrorBanner, Logo, NewCards } from "./home-parts";
+
+export function MailLink() {
+  const navigate = useNavigate();
+  return (
+    <button
+      type="button"
+      className="admin-icon-button sidebar-icon-button mail-link"
+      aria-label="Mail"
+      title="Mail"
+      onClick={() => navigate("/mail")}
+    >
+      <Mail size={22} aria-hidden="true" />
+    </button>
+  );
+}
+export const MailButton = MailLink;
 
 function AccountChip({
   serverUrl,
@@ -159,7 +175,7 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
     <div className="home">
       <aside className="sidebar">
         <Logo />
-        <Link to="/mail">Mail</Link>
+        <MailLink />
         <AdminLink cluster role={session?.user.role} />
         <AccountChip serverUrl={serverUrl} onError={setError} />
       </aside>

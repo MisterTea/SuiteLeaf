@@ -435,3 +435,75 @@ async fn a_person_access_list_over_http_hides_another_persons_files() {
     assert!(text.contains("\"role\":\"editor\""), "{text}");
     assert!(!text.contains("secret-value"), "{text}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn shared_items_route_returns_shared_items_for_recipient() {
+    let cluster = Cluster::boot().await;
+    let item = cluster.shared_notes().await;
+    let maya = cluster.person("maya");
+    let sam = cluster.person("sam");
+
+    // Maya (owner) sees 0 items in their shared list
+    let maya_shared = cluster
+        .json(0, maya, reqwest::Method::GET, "/api/drive/items?shared=1", None)
+        .await;
+    assert_eq!(maya_shared["items"].as_array().unwrap().len(), 0);
+
+    // Sam has 1 item (Garden notes) shared by Maya
+    let sam_shared = cluster
+        .json(0, sam, reqwest::Method::GET, "/api/drive/items?shared=1", None)
+        .await;
+    let items = sam_shared["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"].as_str().unwrap(), item);
+    assert_eq!(items[0]["ownerName"].as_str().unwrap(), "Maya");
+
+    // Maya creates a new private file
+    let private_file = cluster
+        .json(
+            0,
+            maya,
+            reqwest::Method::POST,
+            "/api/drive/items",
+            Some(
+                serde_json::to_vec(&json!({
+                    "name": "Secret diary.sldoc",
+                    "kind": "file",
+                    "mime": "application/json"
+                }))
+                .unwrap(),
+            ),
+        )
+        .await;
+    let private_id = private_file["id"].as_str().unwrap();
+
+    // Sam still sees only 1 shared item
+    let sam_still_1 = cluster
+        .json(0, sam, reqwest::Method::GET, "/api/drive/items?shared=1", None)
+        .await;
+    assert_eq!(sam_still_1["items"].as_array().unwrap().len(), 1);
+
+    // Maya shares the second file with Sam
+    cluster
+        .json(
+            0,
+            maya,
+            reqwest::Method::PUT,
+            &format!("/api/drive/items/{private_id}/acl"),
+            Some(
+                serde_json::to_vec(&json!({
+                    "principalType": "user",
+                    "principalId": "sam",
+                    "role": "viewer"
+                }))
+                .unwrap(),
+            ),
+        )
+        .await;
+
+    // Sam now sees both shared items
+    let sam_now_2 = cluster
+        .json(0, sam, reqwest::Method::GET, "/api/drive/items?shared=1", None)
+        .await;
+    assert_eq!(sam_now_2["items"].as_array().unwrap().len(), 2);
+}

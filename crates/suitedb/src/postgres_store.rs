@@ -595,4 +595,42 @@ mod tests {
         );
         assert!(translate(&schema, "SELECT ?").is_err());
     }
+
+    #[test]
+    fn query_translation_translates_shared_items_query() {
+        let schema = Schema {
+            version: 1,
+            tables: vec![
+                crate::TableDef::new("drive_item", "id")
+                    .column("ownerId", ColumnType::Text)
+                    .column("name", ColumnType::Text)
+                    .column("trashed", ColumnType::Integer),
+                crate::TableDef::new("drive_acl", "id")
+                    .column("itemId", ColumnType::Text)
+                    .column("principalType", ColumnType::Text)
+                    .column("principalId", ColumnType::Text)
+                    .column("expiresAt", ColumnType::Text),
+            ],
+        };
+        let sql = "SELECT * FROM drive_item \
+                   WHERE trashed = 0 AND ownerId != ?1 \
+                     AND id IN ( \
+                         SELECT itemId FROM drive_acl \
+                         WHERE (principalType = 'user' AND principalId = ?1) \
+                           AND (expiresAt IS NULL OR expiresAt > ?2) \
+                     ) \
+                   ORDER BY name COLLATE NOCASE";
+        let translated = translate(&schema, sql).unwrap();
+        assert_eq!(
+            translated,
+            "SELECT * FROM \"drive_item\" \
+             WHERE \"trashed\" = 0 AND \"ownerId\" != $1 \
+               AND \"id\" IN ( \
+                   SELECT \"itemId\" FROM \"drive_acl\" \
+                   WHERE (\"principalType\" = 'user' AND \"principalId\" = $1) \
+                     AND (\"expiresAt\" IS NULL OR \"expiresAt\" > $2) \
+               ) \
+             ORDER BY LOWER(\"name\")"
+        );
+    }
 }

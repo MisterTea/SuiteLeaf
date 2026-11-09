@@ -406,7 +406,9 @@ it("paints a later latin face when a leading blank paragraph inherits the theme"
   expect(box?.fontFamily).toBe("SuiteLeaf Willow");
   expect(box?.fontSize).toBe(20);
   expect(box?.lineHeight).toBeCloseTo(presentationLineHeight(), 5);
-  expect(box?.runs?.find((run) => run.paragraphBreak)?.fontSize).toBe(14);
+  expect(box?.runs?.[0]).toMatchObject({text: "", fontSize: 14});
+  expect(box?.runs?.find((run) => run.paragraphBreak)?.fontSize).toBe(20);
+  expect(box?.runs?.filter((run) => run.paragraphBreak)).toHaveLength(2);
   expect(box?.runs?.find((run) => run.text === "looking after")?.font).toBe("SuiteLeaf Willow");
   expect(box?.runs?.find((run) => run.text.startsWith("http"))?.font).toBe("SuiteLeaf Pine");
 });

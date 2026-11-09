@@ -11,7 +11,9 @@ import {
   CloudOff,
   FileText,
   Folder,
+  FolderInput,
   FolderPlus,
+  MoreVertical,
   Pencil,
   Presentation,
   Sheet,
@@ -103,16 +105,16 @@ export function rememberDriveFolder(
 }
 
 function ItemIcon({ item }: { item: { name: string; kind: string } }) {
-  if (item.kind === "folder") return <Folder size={20} />;
+  if (item.kind === "folder") return <Folder size={18} className="drive-folder-icon" />;
   const kind = kindFromName(item.name);
   return (
     <span className={`file-icon ${kind ?? ""}`}>
       {kind === "sheet" ? (
-        <Sheet size={20} />
+        <Sheet size={15} />
       ) : kind === "slide" ? (
-        <Presentation size={20} />
+        <Presentation size={15} />
       ) : (
-        <FileText size={20} />
+        <FileText size={15} />
       )}
     </span>
   );
@@ -186,6 +188,7 @@ export function DriveBrowser({
     null,
   );
   const [moving, setMoving] = useState<DriveItem | null>(null);
+  const [menuId, setMenuId] = useState<string | null>(null);
   const [moveNotice, setMoveNotice] = useState<
     (MoveNotice & { id: string }) | null
   >(null);
@@ -237,6 +240,24 @@ export function DriveBrowser({
     if (routing.pending || routing.error) request.current++;
     else void refresh();
   }, [refresh, refreshKey, routing.pending, routing.error]);
+  useEffect(() => {
+    if (!menuId) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest(".drive-row-actions")) {
+        setMenuId(null);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuId(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuId]);
   // An empty box stays on the folder. A short pause lets a recording type
   // the whole word before the list switches to results.
   useEffect(() => {
@@ -649,34 +670,76 @@ export function DriveBrowser({
                   </span>
                 ) : item.role === "owner" || item.role === "editor" ? (
                   <span className="drive-row-actions">
-                    {item.kind === "file" ? (
-                      <button
-                        type="button"
-                        className="drive-row-move"
-                        aria-label={`Move ${item.name}`}
-                        disabled={busy}
-                        onClick={() => setMoving(item)}
-                      >
-                        Move
-                      </button>
-                    ) : null}
-                    <button
-                      title="Rename"
-                      aria-label={`Rename ${item.name}`}
-                      disabled={busy}
-                      onClick={() => setAsking({ action: "rename", item })}
-                    >
-                      <Pencil size={14} />
-                    </button>
                     <button
                       type="button"
-                      title="Move to trash"
-                      aria-label={`Move ${item.name} to trash`}
+                      className="drive-menu-trigger"
+                      aria-label={`More actions for ${item.name}`}
+                      title="More actions"
+                      aria-haspopup="true"
+                      aria-expanded={menuId === item.id}
                       disabled={busy}
-                      onClick={() => moveToTrash(item)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuId((prev) => (prev === item.id ? null : item.id));
+                      }}
                     >
-                      <Trash2 size={14} />
+                      <MoreVertical size={16} />
                     </button>
+                    {menuId === item.id ? (
+                      <div
+                        className="drive-menu-popup"
+                        role="menu"
+                        aria-label={`Actions for ${item.name}`}
+                      >
+                        {item.kind === "file" ? (
+                          <button
+                            type="button"
+                            className="drive-menu-item"
+                            title="Move"
+                            aria-label={`Move ${item.name}`}
+                            disabled={busy}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuId(null);
+                              setMoving(item);
+                            }}
+                          >
+                            <FolderInput size={15} />
+                            <span>Move</span>
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="drive-menu-item"
+                          title="Rename"
+                          aria-label={`Rename ${item.name}`}
+                          disabled={busy}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuId(null);
+                            setAsking({ action: "rename", item });
+                          }}
+                        >
+                          <Pencil size={15} />
+                          <span>Rename</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="drive-menu-item drive-menu-danger"
+                          title="Move to trash"
+                          aria-label={`Move ${item.name} to trash`}
+                          disabled={busy}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuId(null);
+                            moveToTrash(item);
+                          }}
+                        >
+                          <Trash2 size={15} />
+                          <span>Move to trash</span>
+                        </button>
+                      </div>
+                    ) : null}
                   </span>
                 ) : null}
               </div>

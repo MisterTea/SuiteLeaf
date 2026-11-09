@@ -1,4 +1,5 @@
 import { composeRotation } from "./pptx-group-xform";
+import { officeGradientFill } from "./pptx-fill-preservation";
 import {
   drawingPose,
   readableTextRotation,
@@ -194,8 +195,14 @@ export async function paintSlideShapes(
     );
     const at =
       phType === "sldNum" && !positioned
-        ? defaultSlideNumberBox(width, height)
+        ? /<a:fld\b[^>]*\btype="slidenum"/.test(spXml)
+          ? { x: 0, y: 0, width, height: 100 }
+          : defaultSlideNumberBox(width, height)
         : { x, y, width: w, height: h };
+    // An explicit field with no inherited transform is drawn at the origin by
+    // Office. Only an empty placeholder uses the synthesized footer fallback.
+    if (pad && phType === "sldNum" && !positioned && /<a:fld\b[^>]*\btype="slidenum"/.test(spXml))
+      pad.t = pad.r = pad.b = pad.l = 0;
     let painted = false;
     const styledPicture = await styleBlipElement(
       zip,
@@ -233,7 +240,8 @@ export async function paintSlideShapes(
     if (art) {
       rememberShape(spXml);
       const revealed = paintSlideBackgroundWindow(art, { width, height });
-      elements.push({ id: crypto.randomUUID(), ...revealed });
+      const officeFill = revealed.type === "shape" ? officeGradientFill(themePart?.xml, filled, revealed.fill, colorMap) : undefined;
+      elements.push({ id: crypto.randomUUID(), ...revealed, ...(officeFill ? {officeFill} : {}) });
       painted = true;
     }
 
@@ -351,6 +359,8 @@ export async function paintSlideShapes(
           lineHeight: presentationLineHeight(first?.lineHeight ?? fit.line, first?.exactLine),
           ...(first?.lineHeightPt ? { lineHeightPt: first.lineHeightPt } : {}),
           ...(bodyAttrs.wrap === "none" || stretchText ? { nowrap: true } : {}),
+          ...(bodyAttrs.spcFirstLastPara === "1" || bodyAttrs.spcFirstLastPara === "true"
+            ? { paragraphEdgeSpacing: true } : {}),
           ...(stretchText ? { stretchText: true } : {}),
           ...(textFlow ? { textFlow } : {}),
         });

@@ -40,7 +40,7 @@ pub(super) async fn list(
         serde_json::to_value(&items).map_err(|e| ApiError(DriveError::Other(e.into())))?;
     payload = with_editor_names(&s, payload).await?;
     if shared && let Some(rows) = payload.as_array_mut() {
-        let ids: Vec<String> = rows
+        let mut ids: Vec<String> = rows
             .iter()
             .filter_map(|row| {
                 row.get("ownerId")
@@ -48,6 +48,8 @@ pub(super) async fn list(
                     .map(str::to_owned)
             })
             .collect();
+        ids.sort();
+        ids.dedup();
         let auth = s.auth.clone();
         let profiles = tokio::task::spawn_blocking(move || auth.accounts(&ids))
             .await

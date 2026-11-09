@@ -176,14 +176,17 @@ impl Drive {
         let mut params = vec![Value::Text(who.id.clone()), Value::Text(now.clone())];
         let orgs = self.orgs(who)?;
         let groups = self.group_ids(&who.id)?;
-        let grant = principal_clause("a", 1, &orgs, &groups, &mut params);
+        let grant = principal_clause("", 1, &orgs, &groups, &mut params);
         self.items(
             &format!(
-                "SELECT DISTINCT i.* FROM drive_item i JOIN drive_acl a ON a.itemId = i.id
-                 WHERE i.trashed = 0 AND i.ownerId != ?1
-                   AND ({grant})
-                   AND (a.expiresAt IS NULL OR a.expiresAt > ?2)
-                 ORDER BY i.name COLLATE NOCASE"
+                "SELECT * FROM drive_item
+                 WHERE trashed = 0 AND ownerId != ?1
+                   AND id IN (
+                       SELECT itemId FROM drive_acl
+                       WHERE ({grant})
+                         AND (expiresAt IS NULL OR expiresAt > ?2)
+                   )
+                 ORDER BY name COLLATE NOCASE"
             ),
             &params,
             who,

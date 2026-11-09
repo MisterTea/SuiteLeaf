@@ -54,11 +54,13 @@ export async function paintSlideTable(
   } = slide;
   // Table text takes the master's otherStyle: its size, alignment, and colour.
   const otherStyle =
-    /<p:otherStyle\b[\s\S]*?<\/p:otherStyle>/.exec(masterPart?.xml || "")?.[0] || "";
+    /<p:otherStyle\b[\s\S]*?<\/p:otherStyle>/.exec(
+      masterPart?.xml || "",
+    )?.[0] || "";
   const tbl = tblMatch[0];
   const frame = parseTransform(gfXml, gfMatch.index, gfXml.length);
-  const cols = [...tbl.matchAll(/<a:gridCol\b[^>]*\bw="(\d+)"/g)].map(
-    (match) => Number(match[1]),
+  const cols = [...tbl.matchAll(/<a:gridCol\b[^>]*\bw="(\d+)"/g)].map((match) =>
+    Number(match[1]),
   );
   const rows: string[][] = [];
   const cellMarks: ReturnType<typeof explicitTableCell>[][] = [];
@@ -109,7 +111,10 @@ export async function paintSlideTable(
         if (!mediaFile) continue;
         const imgBytes = await mediaFile.async("uint8array");
         const src = recolor(
-          applyBlipLuminance(paintableImage(imgBytes, detectImageMime(imgBytes)), cell),
+          applyBlipLuminance(
+            paintableImage(imgBytes, detectImageMime(imgBytes)),
+            cell,
+          ),
           cell,
         );
         if (!src) continue;
@@ -122,7 +127,9 @@ export async function paintSlideTable(
           rowIndex: rowEmu.length,
         });
       }
-      const cellTx = await parseTextBody(cell, otherStyle ? [otherStyle] : [], { table: true });
+      const cellTx = await parseTextBody(cell, otherStyle ? [otherStyle] : [], {
+        table: true,
+      });
       columns.push(col);
       row.push(cellTx.map((p) => p.text).join("\n"));
       const laid = explicitTableCell(cell, cellTx, (xml) =>
@@ -186,11 +193,16 @@ export async function paintSlideTable(
   // A row that clips its text grows, and growth past the frame is scaled
   // back into the frame. A modest on-slide frame that is taller than
   // those rows is the resized table, so the rows scale up to fill it.
-  const xfrm =
-    /<(?:a|p):xfrm\b[\s\S]*?<\/(?:a|p):xfrm>/.exec(gfXml)?.[0] ?? "";
-  const frameCx = Number(/<(?:a|p):ext\b[^>]*\bcx="(\d+)"/.exec(xfrm)?.[1] ?? 0);
-  const frameCy = Number(/<(?:a|p):ext\b[^>]*\bcy="(\d+)"/.exec(xfrm)?.[1] ?? 0);
-  const frameTop = Number(/<(?:a|p):off\b[^>]*\by="(-?\d+)"/.exec(xfrm)?.[1] ?? 0);
+  const xfrm = /<(?:a|p):xfrm\b[\s\S]*?<\/(?:a|p):xfrm>/.exec(gfXml)?.[0] ?? "";
+  const frameCx = Number(
+    /<(?:a|p):ext\b[^>]*\bcx="(\d+)"/.exec(xfrm)?.[1] ?? 0,
+  );
+  const frameCy = Number(
+    /<(?:a|p):ext\b[^>]*\bcy="(\d+)"/.exec(xfrm)?.[1] ?? 0,
+  );
+  const frameTop = Number(
+    /<(?:a|p):off\b[^>]*\by="(-?\d+)"/.exec(xfrm)?.[1] ?? 0,
+  );
   const distributedRows = distributeUnsetTableRows(rowEmu, frameCy, frameCx);
   const neededRows = tableTextRowEmu(rows, styledMarks, cols, cellColumns);
   const grownRows = growClippedTableRows(
@@ -234,14 +246,8 @@ export async function paintSlideTable(
       type: "image",
       x: frame.x + Math.round((picture.xEmu / tableW) * box.width),
       y: frame.y + Math.round((picture.yEmu / tableH) * box.height),
-      width: Math.max(
-        20,
-        Math.round((picture.wEmu / tableW) * box.width),
-      ),
-      height: Math.max(
-        16,
-        Math.round((picture.hEmu / tableH) * box.height),
-      ),
+      width: Math.max(20, Math.round((picture.wEmu / tableW) * box.width)),
+      height: Math.max(16, Math.round((picture.hEmu / tableH) * box.height)),
       src: picture.src,
       alt: "Slide image",
     });
@@ -280,6 +286,14 @@ export async function paintSlideTable(
       ...(minorFont ? { fontFamily: minorFont } : {}),
       ...(colWidths ? { colWidths } : {}),
       ...(rowHeights ? { rowHeights } : {}),
+      ...(rowHeights && tableH > 0
+        ? {
+            officeRowHeights: {
+              minimums: rowEmu.map((minimum) => minimum / tableH),
+              layout: [...rowHeights],
+            },
+          }
+        : {}),
       ...(hasMarks ? { cellMarks: styledMarks } : {}),
       ...(/\brtl="(?:1|true)"/.test(/<a:tblPr\b[^>]*>/.exec(tbl)?.[0] ?? "")
         ? { rtl: true }

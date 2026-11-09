@@ -30,7 +30,8 @@ test("fade in on click hides one object until the next slideshow click", async (
   await expect(marked).toHaveCount(1);
   await expect(marked.locator("textarea")).toHaveValue("September");
   await expect(marked.locator("textarea")).toBeVisible();
-  await expect(marked.locator(".fade-on-click-mark")).toHaveText("On click");
+  await expect(marked.locator(".fade-on-click-mark")).toHaveText("1");
+  await expect(marked.locator(".fade-on-click-mark svg")).toBeVisible();
   await expect(page.locator(".slide-element textarea").first()).toHaveValue("Q3 update");
 
   await page.getByRole("button", { name: "Slideshow", exact: true }).click();

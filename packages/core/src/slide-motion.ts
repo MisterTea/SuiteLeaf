@@ -247,13 +247,14 @@ export function shapeGroupAncestors(xml: string): Map<string, string[]> {
 export function assignClickAnimations(
   xml: string,
   elements: {
+    type?: string;
     animation?: string;
     animationOrder?: number;
     animationTrigger?: string;
     paragraphBuilds?: ParagraphBuild[];
     animationExit?: ExitBuild;
   }[],
-  shapeIndex: ReadonlyMap<string, number>,
+  shapeIndex: ReadonlyMap<string, number | readonly number[]>,
 ): number {
   const clicks = readClickAnimations(xml);
   const byShape = new Map(
@@ -261,9 +262,15 @@ export function assignClickAnimations(
   );
   const ancestors = shapeGroupAncestors(xml);
   let mapped = 0;
+  const indexesOf = (spid: string): readonly number[] => {
+    const indexes = shapeIndex.get(spid);
+    return typeof indexes === "number" ? [indexes] : indexes ?? [];
+  };
   const apply = (spid: string, click: ClickAnimation) => {
-    const index = shapeIndex.get(spid);
-    const el = index == null ? undefined : elements[index];
+    for (const index of indexesOf(spid)) applyElement(index, click);
+  };
+  const applyElement = (index: number, click: ClickAnimation) => {
+    const el = elements[index];
     if (!el) return;
     // A with/after step before the first click plays as the slide arrives.
     if (click.order === 0) return;
@@ -277,6 +284,8 @@ export function assignClickAnimations(
       return;
     }
     if (click.paragraph) {
+      // The shape's artwork has no paragraphs. Only its text follows a text build.
+      if (el.type && el.type !== "text") return;
       el.paragraphBuilds = [
         ...(el.paragraphBuilds ?? []),
         {
@@ -299,8 +308,8 @@ export function assignClickAnimations(
   };
   for (const click of clicks) apply(click.spid, click);
   for (const spid of shapeIndex.keys()) {
-    const index = shapeIndex.get(spid);
-    if (index == null || elements[index]?.animation || elements[index]?.paragraphBuilds?.length)
+    const parts = indexesOf(spid).map((index) => elements[index]);
+    if (parts.some((el) => el?.animation || el?.paragraphBuilds?.length))
       continue;
     for (const groupId of ancestors.get(spid) ?? []) {
       const click = byShape.get(groupId);
@@ -313,9 +322,7 @@ export function assignClickAnimations(
     clicks.filter((click) => click.exit && !click.paragraph).map((click) => [click.spid, click]),
   );
   for (const spid of shapeIndex.keys()) {
-    const index = shapeIndex.get(spid);
-    const el = index == null ? undefined : elements[index];
-    if (!el || el.animationExit) continue;
+    if (indexesOf(spid).some((index) => elements[index]?.animationExit)) continue;
     for (const groupId of ancestors.get(spid) ?? []) {
       const click = groupExits.get(groupId);
       if (!click) continue;
@@ -430,18 +437,28 @@ function contentShapeIds(xml: string): string[] {
 }
 
 function timingMarkup(slide: Slide, xml: string): string {
+  const ids = contentShapeIds(xml);
+  const names = [...xml.replace(/<p:nvGrpSpPr\b[\s\S]*?<\/p:nvGrpSpPr>/g, "").matchAll(/<p:cNvPr\b[^>]*>/g)];
+  const elementIds = new Map<string, string[]>();
+  const sourceIds = new Map<string, string>();
+  for (const element of slide.elements) {
+    const found = names.filter((match) => match[0].includes(element.id)).map((match) => /\bid="(\d+)"/.exec(match[0])![1]);
+    if (found.length) elementIds.set(element.id, found);
+    if (element.sourceShapeId && found.length) sourceIds.set(element.sourceShapeId, found.at(-1)!);
+  }
   const sequence = animationSequence(slide.elements);
   if (sequence.length) {
-    const ids = contentShapeIds(xml);
-    const pairs = sequence.map((item, index) => ({
-      spid: ids.length === slide.elements.length ? ids[item.index] : String(1000 + index),
-      kind: item.kind,
-      order: item.order,
-      trigger: item.trigger,
-    }));
-    return buildTiming(pairs);
+    const pairs = sequence.flatMap((item) => {
+      const targets = elementIds.get(item.id) ?? (elementIds.size === 0 && ids[item.index] ? [ids[item.index]] : []);
+      return targets.map((spid) => ({ spid, kind: item.kind, order: item.order, trigger: item.trigger, paragraphs: item.paragraphs, exit: item.exit }));
+    });
+    return pairs.length ? buildTiming(pairs) : "";
   }
-  return storedTiming(slide.timing);
+  const retained = storedTiming(slide.timing);
+  if (!retained) return "";
+  // Source shape ids are scoped to the old slide. Never emit dangling targets.
+  const remapped = retained.replace(/\bspid="(\d+)"/g, (_, id) => `spid="${sourceIds.get(id) ?? id}"`);
+  return [...remapped.matchAll(/\bspid="(\d+)"/g)].every((match) => ids.includes(match[1])) ? remapped : "";
 }
 
 function motionMarkup(slide: Slide, xml: string): string {

@@ -2,8 +2,12 @@ import { presentationLineHeight } from "../packages/core/src/pptx-line-spacing";
 import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { parsePowerPoint } from "../packages/core/src/pptx";
-import { distributeUnsetTableRows, growClippedTableRows, scaleRowsIntoFrame, tableTextRowEmu } from "../packages/core/src/pptx-table";
-
+import {
+  distributeUnsetTableRows,
+  growClippedTableRows,
+  scaleRowsIntoFrame,
+  tableTextRowEmu,
+} from "../packages/core/src/pptx-table";
 
 it("keeps a vertical merge on the anchor cell", async () => {
   const zip = new JSZip();
@@ -23,14 +27,13 @@ it("keeps a vertical merge on the anchor cell", async () => {
       </a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
   );
-  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   const table = file.content.slides[file.content.slideOrder[0]].elements.find(
     (element) => element.type === "table",
   );
-  expect(table?.rows).toEqual([
-    ["Quantity", "Symbol", "Factor"],
-    ["Value"],
-  ]);
+  expect(table?.rows).toEqual([["Quantity", "Symbol", "Factor"], ["Value"]]);
   expect(table?.cellMarks?.[0]?.[0]?.rowSpan).toBe(2);
   expect(table?.cellMarks?.[0]?.[1]?.rowSpan).toBe(2);
   expect(table?.cellMarks?.[1]?.[0]?.rowSpan).toBeUndefined();
@@ -52,14 +55,13 @@ it("counts a vertical merge when the anchor omits rowSpan", async () => {
       </a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
   );
-  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   const table = file.content.slides[file.content.slideOrder[0]].elements.find(
     (element) => element.type === "table",
   );
-  expect(table?.rows).toEqual([
-    ["A", "B"],
-    ["C"],
-  ]);
+  expect(table?.rows).toEqual([["A", "B"], ["C"]]);
   expect(table?.cellMarks?.[0]?.[0]?.rowSpan).toBe(2);
   expect(table?.cellMarks?.[0]?.[1]?.rowSpan).toBeUndefined();
 });
@@ -76,7 +78,9 @@ it("keeps a collapsed table row at zero height", async () => {
         <a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr/><a:t>Too</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
   );
-  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   const table = file.content.slides[file.content.slideOrder[0]].elements.find(
     (element) => element.type === "table",
   );
@@ -86,7 +90,9 @@ it("keeps a collapsed table row at zero height", async () => {
 });
 
 it("shares leftover frame height across unset table rows", async () => {
-  expect(distributeUnsetTableRows([0, 0], 1_000_000)).toEqual([500_000, 500_000]);
+  expect(distributeUnsetTableRows([0, 0], 1_000_000)).toEqual([
+    500_000, 500_000,
+  ]);
   expect(distributeUnsetTableRows([0, 400_000, 0], 1_000_000)).toEqual([
     300_000, 400_000, 300_000,
   ]);
@@ -111,11 +117,17 @@ it("shares leftover frame height across unset table rows", async () => {
         <a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr/><a:t>780.7</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
   );
-  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   const table = file.content.slides[file.content.slideOrder[0]].elements.find(
     (element) => element.type === "table",
   );
-  expect(table?.rows?.map((row) => row[0])).toEqual(["Sample", "Header", "1326.6"]);
+  expect(table?.rows?.map((row) => row[0])).toEqual([
+    "Sample",
+    "Header",
+    "1326.6",
+  ]);
   expect(table?.rowHeights?.[0]).toBeCloseTo(0.3);
   expect(table?.rowHeights?.[1]).toBeCloseTo(0.4);
   expect(table?.rowHeights?.[2]).toBeCloseTo(0.3);
@@ -134,7 +146,9 @@ it("paints a table from its row grid when the frame is taller", async () => {
         <a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>0.41</a:t></a:r></a:p></a:txBody></a:tc></a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
   );
-  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   const table = file.content.slides[file.content.slideOrder[0]].elements.find(
     (element) => element.type === "table",
   );
@@ -142,7 +156,9 @@ it("paints a table from its row grid when the frame is taller", async () => {
   expect(table?.height).toBeCloseTo((grid / 5143500) * 540, 3);
   expect(table?.rowHeights?.[0]).toBeCloseTo(677087 / grid);
   expect(table?.rowHeights?.[1]).toBeCloseTo(640685 / grid);
-  expect((table?.rowHeights ?? []).reduce((sum, height) => sum + height, 0)).toBeCloseTo(1);
+  expect(
+    (table?.rowHeights ?? []).reduce((sum, height) => sum + height, 0),
+  ).toBeCloseTo(1);
 });
 
 it("sizes a Google table from its grid when the frame is the placeholder", async () => {
@@ -155,7 +171,9 @@ it("sizes a Google table from its grid when the frame is the placeholder", async
       <a:tr h="1776975"><a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Data</a:t></a:r></a:p></a:txBody></a:tc></a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
   );
-  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   const table = file.content.slides[file.content.slideOrder[0]].elements.find(
     (element) => element.type === "table",
   );
@@ -171,8 +189,25 @@ it("grows a table row when the stored height clips wrapped text", async () => {
   const needed = tableTextRowEmu(
     [["Research Community"], [sentence]],
     [
-      [{ fontSize: 18, bold: true, padTop: 3.6, padBottom: 3.6, padLeft: 7.2, padRight: 7.2 }],
-      [{ fontSize: 18, padTop: 3.6, padBottom: 3.6, padLeft: 7.2, padRight: 7.2 }],
+      [
+        {
+          fontSize: 18,
+          bold: true,
+          padTop: 3.6,
+          padBottom: 3.6,
+          padLeft: 7.2,
+          padRight: 7.2,
+        },
+      ],
+      [
+        {
+          fontSize: 18,
+          padTop: 3.6,
+          padBottom: 3.6,
+          padLeft: 7.2,
+          padRight: 7.2,
+        },
+      ],
     ],
     [col],
   );
@@ -181,16 +216,21 @@ it("grows a table row when the stored height clips wrapped text", async () => {
   const frame = 4_480_560;
   const fitted = growClippedTableRows([370_840, 370_840], needed, frame, col);
   expect(fitted[1]).toBeGreaterThan(fitted[0] * 2);
-  expect(fitted.reduce((sum, height) => sum + height, 0)).toBeLessThanOrEqual(frame + 1);
+  expect(fitted.reduce((sum, height) => sum + height, 0)).toBeLessThanOrEqual(
+    frame + 1,
+  );
   const tight = growClippedTableRows([370_840, 370_840], needed, 900_000, col);
-  expect(tight.reduce((sum, height) => sum + height, 0)).toBeCloseTo(900_000, 0);
+  expect(tight.reduce((sum, height) => sum + height, 0)).toBeCloseTo(
+    900_000,
+    0,
+  );
   expect(tight[1]).toBeGreaterThan(tight[0]);
-  expect(growClippedTableRows([370_840], [5_000_000], 3_000_000, 3_000_000)).toEqual([
-    5_000_000,
-  ]);
-  expect(growClippedTableRows([677_087, 640_685], [200_000, 200_000], 7_213_601)).toEqual([
-    677_087, 640_685,
-  ]);
+  expect(
+    growClippedTableRows([370_840], [5_000_000], 3_000_000, 3_000_000),
+  ).toEqual([5_000_000]);
+  expect(
+    growClippedTableRows([677_087, 640_685], [200_000, 200_000], 7_213_601),
+  ).toEqual([677_087, 640_685]);
   const broken = tableTextRowEmu(
     [["", "Supercalifragilisticexpialidocious\nNext"]],
     [[{}, { fontSize: 18, bold: true, colSpan: 1 }]],
@@ -217,7 +257,10 @@ it("grows a table row when the stored height clips wrapped text", async () => {
     9_813_396,
   );
   expect(fittedBlanks[5]).toBeGreaterThan(fittedBlanks[0] * 4);
-  expect(fittedBlanks.reduce((sum, height) => sum + height, 0)).toBeCloseTo(blankFrame, 0);
+  expect(fittedBlanks.reduce((sum, height) => sum + height, 0)).toBeCloseTo(
+    blankFrame,
+    0,
+  );
 
   const zip = new JSZip();
   zip.file(
@@ -228,19 +271,29 @@ it("grows a table row when the stored height clips wrapped text", async () => {
       <a:tr h="370840"><a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="1800"/><a:t>${sentence}</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
   );
-  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   const table = file.content.slides[file.content.slideOrder[0]].elements.find(
     (element) => element.type === "table",
   );
   expect(table?.rowHeights?.[1]).toBeGreaterThan(table?.rowHeights?.[0] ?? 1);
-  expect((table?.rowHeights ?? []).reduce((sum, height) => sum + height, 0)).toBeCloseTo(1, 5);
+  expect(
+    (table?.rowHeights ?? []).reduce((sum, height) => sum + height, 0),
+  ).toBeCloseTo(1, 5);
   expect(table?.height).toBeGreaterThan((741_680 / 5_143_500) * 540);
 });
 
 it("grows a one-line table row so a Willow wrap keeps its last line", () => {
   const text =
     "All research funding agencies (SFI, HRB, IRC, etc.); members of previous national OA committee; representatives of IUA, IUA Librarian’s Group; government departments; Teagasc, Marine Institute, HSE, etc.";
-  const pads = { fontSize: 18, padTop: 3.6, padBottom: 3.6, padLeft: 7.2, padRight: 7.2 };
+  const pads = {
+    fontSize: 18,
+    padTop: 3.6,
+    padBottom: 3.6,
+    padLeft: 7.2,
+    padRight: 7.2,
+  };
   const needed = tableTextRowEmu([[text]], [[pads]], [5_993_941]);
   const grid = presentationLineHeight();
   expect(needed[0]).toBeCloseTo((3.6 + 3.6 + 4 * 18 * grid) * 12700, 0);
@@ -250,7 +303,10 @@ it("grows a one-line table row so a Willow wrap keeps its last line", () => {
 });
 
 it("grows a table row when empty paragraphs are the only content", async () => {
-  const blanks = Array.from({ length: 9 }, () => "<a:p><a:endParaRPr/></a:p>").join("");
+  const blanks = Array.from(
+    { length: 9 },
+    () => "<a:p><a:endParaRPr/></a:p>",
+  ).join("");
   const zip = new JSZip();
   zip.file(
     "ppt/slides/slide1.xml",
@@ -262,13 +318,19 @@ it("grows a table row when empty paragraphs are the only content", async () => {
         <a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr/></a:p></a:txBody><a:tcPr/></a:tc></a:tr>
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
   );
-  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   const table = file.content.slides[file.content.slideOrder[0]].elements.find(
     (element) => element.type === "table",
   );
   expect(table?.rows?.[1]?.[0].split("\n")).toHaveLength(9);
-  expect(table?.rowHeights?.[1]).toBeGreaterThan((table?.rowHeights?.[0] ?? 1) * 4);
-  expect((table?.rowHeights ?? []).reduce((sum, height) => sum + height, 0)).toBeCloseTo(1, 5);
+  expect(table?.rowHeights?.[1]).toBeGreaterThan(
+    (table?.rowHeights?.[0] ?? 1) * 4,
+  );
+  expect(
+    (table?.rowHeights ?? []).reduce((sum, height) => sum + height, 0),
+  ).toBeCloseTo(1, 5);
 });
 
 it("fills a modest frame when stored rows clip 18pt table text", async () => {
@@ -285,7 +347,9 @@ it("fills a modest frame when stored rows clip 18pt table text", async () => {
       ${row}${row}${row}${row}${row}${row}
       </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
   );
-  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
   const table = file.content.slides[file.content.slideOrder[0]].elements.find(
     (element) => element.type === "table",
   );
@@ -301,13 +365,15 @@ it("scales on-slide table rows up into a modestly taller frame", () => {
   const scaled = scaleRowsIntoFrame(rows, frame, 929460, 8075240, 6858000);
   expect(scaled.reduce((sum, height) => sum + height, 0)).toBeCloseTo(frame, 0);
   expect(scaled[0]).toBeCloseTo(frame / rows.length, 0);
-  expect(scaleRowsIntoFrame(rows, frame, 929460, 8075240, 2_000_000)).toEqual(rows);
-  expect(scaleRowsIntoFrame([400000, 400000], 5_000_000, 0, 4_000_000, 6_858_000)).toEqual([
-    400000, 400000,
-  ]);
-  expect(scaleRowsIntoFrame([200000], 3_000_000, 0, 3_000_000, 6_858_000)).toEqual([
-    200000,
-  ]);
+  expect(scaleRowsIntoFrame(rows, frame, 929460, 8075240, 2_000_000)).toEqual(
+    rows,
+  );
+  expect(
+    scaleRowsIntoFrame([400000, 400000], 5_000_000, 0, 4_000_000, 6_858_000),
+  ).toEqual([400000, 400000]);
+  expect(
+    scaleRowsIntoFrame([200000], 3_000_000, 0, 3_000_000, 6_858_000),
+  ).toEqual([200000]);
 });
 
 it("measures an Arial Narrow table cell with Pine advances", () => {
@@ -320,8 +386,16 @@ it("measures an Arial Narrow table cell with Pine advances", () => {
     padRight: 7.2,
   };
   const column = Math.round(200.31 * 12700);
-  const pine = tableTextRowEmu([[text]], [[{ ...pads, font: "SuiteLeaf Pine" }]], [column]);
-  const willow = tableTextRowEmu([[text]], [[{ ...pads, font: "Calibri" }]], [column]);
+  const pine = tableTextRowEmu(
+    [[text]],
+    [[{ ...pads, font: "SuiteLeaf Pine" }]],
+    [column],
+  );
+  const willow = tableTextRowEmu(
+    [[text]],
+    [[{ ...pads, font: "Calibri" }]],
+    [column],
+  );
   const grid = presentationLineHeight();
   expect(pine[0]).toBeCloseTo((3.6 + 3.6 + 14 * grid) * 12700, 0);
   expect(willow[0]).toBeCloseTo((3.6 + 3.6 + 2 * 14 * grid) * 12700, 0);
@@ -342,8 +416,13 @@ it("measures an Arial Narrow table cell with Pine advances", () => {
   expect(pineHeader[0]).toBeLessThan(willowHeader[0]);
   // The original 125.02pt fixture fits both real faces in two lines.
   for (const font of ["Arial Narrow", "Calibri"]) {
-    expect(tableTextRowEmu([[header]], [[{ ...pads, font, bold: true }]], [125.02 * 12700])[0])
-      .toBeCloseTo((7.2 + 2 * 14 * grid) * 12700, 0);
+    expect(
+      tableTextRowEmu(
+        [[header]],
+        [[{ ...pads, font, bold: true }]],
+        [125.02 * 12700],
+      )[0],
+    ).toBeCloseTo((7.2 + 2 * 14 * grid) * 12700, 0);
   }
 });
 
@@ -351,29 +430,40 @@ it("keeps a subscript header on one line so the row stays its stored height", ()
   const text = "P(Xt|Xt-1)";
   // 74.69pt of content: below the actual 76.29pt unscripted advance.
   const column = 1_040_000;
-  const pads = { fontSize: 18, bold: true, padTop: 3.6, padBottom: 3.6, padLeft: 3.6, padRight: 3.6 };
+  const pads = {
+    fontSize: 18,
+    bold: true,
+    padTop: 3.6,
+    padBottom: 3.6,
+    padLeft: 3.6,
+    padRight: 3.6,
+  };
   const plain = tableTextRowEmu([[text]], [[pads]], [column]);
   const subscript = tableTextRowEmu(
     [[text]],
-    [[
-      {
-        ...pads,
-        runs: [
-          { text: "P(X", fontSize: 18 },
-          { text: "t", fontSize: 18, baseline: -25, scriptScale: true },
-          { text: "|X", fontSize: 18 },
-          { text: "t-1", fontSize: 18, baseline: -25, scriptScale: true },
-          { text: ")", fontSize: 18 },
-        ],
-      },
-    ]],
+    [
+      [
+        {
+          ...pads,
+          runs: [
+            { text: "P(X", fontSize: 18 },
+            { text: "t", fontSize: 18, baseline: -25, scriptScale: true },
+            { text: "|X", fontSize: 18 },
+            { text: "t-1", fontSize: 18, baseline: -25, scriptScale: true },
+            { text: ")", fontSize: 18 },
+          ],
+        },
+      ],
+    ],
     [column],
   );
   expect(subscript[0]).toBeLessThan(plain[0]);
   expect(subscript[0]).toBeLessThan(381_131);
   // The original wider cell also fits the unscripted glyphs with real hmtx.
-  expect(tableTextRowEmu([[text]], [[pads]], [1_093_157])[0])
-    .toBeCloseTo((7.2 + 18 * presentationLineHeight()) * 12700, 0);
+  expect(tableTextRowEmu([[text]], [[pads]], [1_093_157])[0]).toBeCloseTo(
+    (7.2 + 18 * presentationLineHeight()) * 12700,
+    0,
+  );
 });
 
 it("keeps a header that is barely wider than its column on one line", () => {
@@ -395,8 +485,33 @@ it("keeps a header that is barely wider than its column on one line", () => {
 it("ignores a trailing empty paragraph when measuring a table row", () => {
   const text = "Will try to add now with slower pace\n";
   const column = 4_000_000;
-  const pads = { fontSize: 16, padTop: 3.6, padBottom: 3.6, padLeft: 7.2, padRight: 7.2 };
+  const pads = {
+    fontSize: 16,
+    padTop: 3.6,
+    padBottom: 3.6,
+    padLeft: 7.2,
+    padRight: 7.2,
+  };
   const withBreak = tableTextRowEmu([[text]], [[pads]], [column]);
   const plain = tableTextRowEmu([[text.trim()]], [[pads]], [column]);
   expect(withBreak[0]).toBeCloseTo(plain[0], 0);
+});
+
+it("retains the authored zero row minimum independently from measured layout for editable round trips", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:spTree><p:graphicFrame><p:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="1000000"/></p:xfrm><a:graphic><a:graphicData><a:tbl><a:tblGrid><a:gridCol w="4000000"/></a:tblGrid><a:tr h="400000"><a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr/><a:t>A</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr><a:tr h="0"><a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr/><a:t>B</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
+  );
+  const file = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
+  const table = file.content.slides[file.content.slideOrder[0]].elements.find(
+    (el) => el.type === "table",
+  )!;
+  expect(table.officeRowHeights?.minimums).toEqual([0.4, 0]);
+  expect(table.officeRowHeights?.layout).toEqual(table.rowHeights);
+  const old = table.officeRowHeights!.layout[0];
+  table.rowHeights![0] = 0.2;
+  expect(table.officeRowHeights!.layout[0]).toBe(old);
 });

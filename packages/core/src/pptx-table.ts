@@ -6,6 +6,7 @@ import {
   type StylePart,
 } from "./pptx-table-style-resolve";
 import { verticalTextFlow } from "./pptx-layout-inherit";
+import { presentationSingleSpacing } from "./pptx-line-spacing";
 
 export {
   builtinTableStyle,
@@ -41,6 +42,9 @@ export type TableCellRun = {
   paraHang?: number;
   paraFirst?: number;
   paraTab?: number;
+  paraLine?: number;
+  paraLinePt?: number;
+  spaceBefore?: number;
   paraTabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
   /** Stacked Office math. `text` stays the linear reading. */
   fraction?: {
@@ -117,7 +121,10 @@ function tableRows(tblXml: string) {
       return {
         hMerge: /\bhMerge="1"/.test(xml),
         vMerge: /\bvMerge="1"/.test(xml),
-        gridSpan: Math.max(1, Number(/\bgridSpan="(\d+)"/.exec(open)?.[1] ?? 1)),
+        gridSpan: Math.max(
+          1,
+          Number(/\bgridSpan="(\d+)"/.exec(open)?.[1] ?? 1),
+        ),
         rowSpanAttr: Number(/\browSpan="(\d+)"/.exec(open)?.[1] ?? 0),
       };
     }),
@@ -164,7 +171,10 @@ export function anchorRowSpans(tblXml: string): number[] {
 }
 
 /** Colour written on a run, not the inherited paragraph default. */
-export function explicitRunColor(cellXml: string, paint: Paint): string | undefined {
+export function explicitRunColor(
+  cellXml: string,
+  paint: Paint,
+): string | undefined {
   const body = /<a:txBody\b[\s\S]*?<\/a:txBody>/.exec(cellXml)?.[0] ?? "";
   for (const run of body.matchAll(/<a:rPr\b[^>]*>([\s\S]*?)<\/a:rPr>/g)) {
     const color = paint(run[1]);
@@ -184,27 +194,41 @@ export function tableCellRuns(
     hang?: number;
     firstIndent?: number;
     tabInterval?: number;
+    lineHeight?: number;
+    lineHeightPt?: number;
+    spaceBefore?: number;
     tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
   }[],
 ): TableCellRun[] | undefined {
-  const geom = (paragraph: (typeof paragraphs)[number]): Partial<TableCellRun> => ({
+  const geom = (
+    paragraph: (typeof paragraphs)[number],
+  ): Partial<TableCellRun> => ({
     ...(paragraph.listMargin ? { paraMargin: paragraph.listMargin } : {}),
     ...(paragraph.hang ? { paraHang: paragraph.hang } : {}),
     ...(paragraph.firstIndent ? { paraFirst: paragraph.firstIndent } : {}),
     ...(paragraph.tabInterval ? { paraTab: paragraph.tabInterval } : {}),
     ...(paragraph.tabs?.length ? { paraTabs: paragraph.tabs } : {}),
+    ...(paragraph.lineHeight
+      ? { paraLine: paragraph.lineHeight * presentationSingleSpacing }
+      : {}),
+    ...(paragraph.lineHeightPt ? { paraLinePt: paragraph.lineHeightPt } : {}),
+    ...(paragraph.spaceBefore ? { spaceBefore: paragraph.spaceBefore } : {}),
   });
   const runs: TableCellRun[] = [];
   paragraphs.forEach((paragraph, index) => {
-    if (index) runs.push({ text: "\n", paragraphBreak: true, ...geom(paragraph) });
+    if (index)
+      runs.push({ text: "\n", paragraphBreak: true, ...geom(paragraph) });
     paragraph.runs?.forEach((run, runIndex) => {
       if (!run.text) return;
-      runs.push(index === 0 && runIndex === 0 ? { ...run, ...geom(paragraph) } : run);
+      runs.push(
+        index === 0 && runIndex === 0 ? { ...run, ...geom(paragraph) } : run,
+      );
     });
   });
   const colors = new Set(runs.map((run) => run.color).filter(Boolean));
   const mixed =
-    runs.some((run) => run.font || run.baseline || run.fraction) || colors.size > 1;
+    runs.some((run) => run.font || run.baseline || run.fraction) ||
+    colors.size > 1;
   // A hard break inside a paragraph is not the next paragraph. Keep the runs
   // so a tab or a first-line indent stays on its own paragraph.
   const geometric = paragraphs.some(
@@ -222,13 +246,16 @@ export function tableCellRuns(
     ...(run.fontSize ? { fontSize: run.fontSize } : {}),
     ...(run.baseline ? { baseline: run.baseline } : {}),
     ...(run.scriptScale ? { scriptScale: true } : {}),
-    ...(run.bold ? { bold: true } : {}),
+    ...(run.bold != null ? { bold: run.bold } : {}),
     ...(run.paragraphBreak ? { paragraphBreak: true } : {}),
     ...(run.paraMargin ? { paraMargin: run.paraMargin } : {}),
     ...(run.paraHang ? { paraHang: run.paraHang } : {}),
     ...(run.paraFirst ? { paraFirst: run.paraFirst } : {}),
     ...(run.paraTab ? { paraTab: run.paraTab } : {}),
     ...(run.paraTabs?.length ? { paraTabs: run.paraTabs } : {}),
+    ...(run.paraLine ? { paraLine: run.paraLine } : {}),
+    ...(run.paraLinePt ? { paraLinePt: run.paraLinePt } : {}),
+    ...(run.spaceBefore ? { spaceBefore: run.spaceBefore } : {}),
     ...(run.fraction ? { fraction: run.fraction } : {}),
   }));
 }
@@ -248,7 +275,9 @@ function cellFillBody(cellXml: string): string {
 }
 
 function cellFillXml(cellXml: string): string | undefined {
-  return /<a:solidFill\b[\s\S]*?<\/a:solidFill>/.exec(cellFillBody(cellXml))?.[0];
+  return /<a:solidFill\b[\s\S]*?<\/a:solidFill>/.exec(
+    cellFillBody(cellXml),
+  )?.[0];
 }
 
 function cellFillCleared(cellXml: string): boolean {
@@ -305,9 +334,10 @@ export function explicitTableCell(
   const written = paragraphs.filter((paragraph) => paragraph.text?.trim());
   const ranked = written.length ? written : paragraphs;
   const first =
-    ranked.find((paragraph) => paragraph.color || paragraph.size) ??
-    ranked[0];
-  const sized = ranked.find((paragraph) => paragraph.size && paragraph.size > 0);
+    ranked.find((paragraph) => paragraph.color || paragraph.size) ?? ranked[0];
+  const sized = ranked.find(
+    (paragraph) => paragraph.size && paragraph.size > 0,
+  );
   // The paragraph colour is the inherited default. An explicit run fill is the
   // only colour that should cover the table style (white header text, red cells).
   const explicit = explicitRunColor(cellXml, paint);
@@ -320,14 +350,21 @@ export function explicitTableCell(
   const faced = ranked.find((paragraph) => paragraph.font);
   if (faced?.font) mark.font = faced.font;
   const runs = tableCellRuns(paragraphs);
-  if (runs) mark.runs = explicit ? runs : runs.map(({ color: _inherited, ...run }) => run);
+  if (runs)
+    mark.runs = runs.map((source) => {
+      const run = { ...source };
+      if (!explicit) delete run.color;
+      // Table styles supply the default weight. Only cells with authored run
+      // weights need explicit false values to distinguish mixed bold text.
+      if (!bold.set) delete run.bold;
+      return run;
+    });
   const tabbed = paragraphs.find((paragraph) => paragraph.tabInterval);
   if (tabbed?.tabInterval) mark.tabSize = tabbed.tabInterval;
   if (first?.align && first.align !== "left") mark.align = first.align;
   const span = Number(/gridSpan="(\d+)"/.exec(cellXml)?.[1] ?? 1);
   if (span > 1) mark.colSpan = span;
-  const tcPr =
-    /<a:tcPr\b[^>]*>/.exec(cellXml)?.[0] ?? "";
+  const tcPr = /<a:tcPr\b[^>]*>/.exec(cellXml)?.[0] ?? "";
   const tcAttrs = attrsOf(tcPr);
   const flow = verticalTextFlow(tcAttrs.vert);
   if (flow) mark.textFlow = flow;
@@ -351,7 +388,8 @@ export function explicitTableCell(
   else mark.valign = "top";
   const rule = (tag: "lnT" | "lnR" | "lnB" | "lnL") =>
     edgeRule(
-      new RegExp(`<a:${tag}\\b[\\s\\S]*?<\\/a:${tag}>`).exec(cellXml)?.[0] ?? "",
+      new RegExp(`<a:${tag}\\b[\\s\\S]*?<\\/a:${tag}>`).exec(cellXml)?.[0] ??
+        "",
       paint,
     );
   const top = rule("lnT");
@@ -399,7 +437,12 @@ export function mergeTableCell(
     borderBottom: cell.clearBottom,
     borderLeft: cell.clearLeft,
   };
-  for (const key of ["borderTop", "borderRight", "borderBottom", "borderLeft"] as const) {
+  for (const key of [
+    "borderTop",
+    "borderRight",
+    "borderBottom",
+    "borderLeft",
+  ] as const) {
     if (cleared[key]) delete edges[key];
     else if (cell[key]) edges[key] = cell[key];
   }
@@ -407,7 +450,8 @@ export function mergeTableCell(
   if (edges.borderRight) mark.borderRight = edges.borderRight;
   if (edges.borderBottom) mark.borderBottom = edges.borderBottom;
   if (edges.borderLeft) mark.borderLeft = edges.borderLeft;
-  const edged = mark.borderTop || mark.borderRight || mark.borderBottom || mark.borderLeft;
+  const edged =
+    mark.borderTop || mark.borderRight || mark.borderBottom || mark.borderLeft;
   if (border && !edged) mark.border = border;
   if (cell.padTop != null) mark.padTop = cell.padTop;
   if (cell.padRight != null) mark.padRight = cell.padRight;
@@ -429,16 +473,21 @@ export function tableLineLayout(
     firstIndent?: number;
     tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
   }[],
-): {
-  margin?: number;
-  hang?: number;
-  first?: number;
-  tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
-}[] | undefined {
+):
+  | {
+      margin?: number;
+      hang?: number;
+      first?: number;
+      tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
+    }[]
+  | undefined {
   if (
     !paragraphs.some(
       (paragraph) =>
-        paragraph.listMargin || paragraph.hang || paragraph.firstIndent || paragraph.tabs?.length,
+        paragraph.listMargin ||
+        paragraph.hang ||
+        paragraph.firstIndent ||
+        paragraph.tabs?.length,
     )
   )
     return;

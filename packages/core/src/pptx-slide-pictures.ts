@@ -140,6 +140,9 @@ export async function paintSlidePictures(slide: SlideContext) {
           ...((!!frame.flipH !== !!pose.flipH) ? { flipH: true } : {}),
           ...((!!frame.flipV !== !!pose.flipV) ? { flipV: true } : {}),
           ...(src ? { src } : {}),
+          // The preview's inline limit must not discard an editable Office
+          // clip. Preserve its native picture and reachable package assets.
+          ...(!src ? { nativeDrawing: await gatherNativeDrawing(zip, slidePath, picXml) } : {}),
           alt: target.split("/").pop(),
           ...(poster ? { poster } : {}),
           // The poster is a picture: PowerPoint crops it with srcRect.

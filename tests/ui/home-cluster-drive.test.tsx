@@ -134,6 +134,9 @@ describe("ClusterHome", () => {
     expect(screen.getByText("Files are saved to SuiteDrive on drive.example.", { exact: false })).toBeTruthy();
     expect(screen.getByText(/kept for when you disconnect/)).toBeTruthy();
     expect(screen.getByText("Admin for admin")).toBeTruthy();
+    const mailButton = screen.getByRole("button", { name: "Mail" });
+    expect(mailButton).toBeTruthy();
+    expect(mailButton.getAttribute("title")).toBe("Mail");
     expect(document.querySelector(".account-avatar")?.textContent).toBe("A");
     expect(document.querySelector(".account-who")?.getAttribute("title")).toBe(
       "Ada Lovelace (ada@x.org) on drive.example",

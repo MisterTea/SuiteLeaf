@@ -266,7 +266,7 @@ function taggedBlocks(listXml: string, tags: string) {
  * fillRef 1–999 indexes fillStyleLst. 1001 and above indexes bgFillStyleLst
  * (the background fills PowerPoint uses for shape styles), starting at 1001.
  */
-function fillStyleItem(themeXml: string, idx: number): string | undefined {
+export function fillStyleItem(themeXml: string, idx: number): string | undefined {
   if (!(idx > 0)) return;
   const background = idx >= 1001;
   const name = background ? "bgFillStyleLst" : "fillStyleLst";
