@@ -186,7 +186,7 @@
   margin: 0 0 14px;
 }
 .account-chip {
-  margin-top: 0;
+  margin-top: 24px;
 }
 /* On phones the sidebar is an icon rail; keep the mode controls as icons. */
 @media (max-width: 700px) {
