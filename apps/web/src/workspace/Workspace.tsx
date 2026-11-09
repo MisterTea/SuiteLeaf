@@ -460,8 +460,8 @@ export function Workspace() {
             onClose={() => setDriveDialog(null)}
             onOpen={async (item) => {
               await save();
-              setDriveDialog(null);
               await openFromDrive(item, navigate);
+              setDriveDialog(null);
             }}
             onSave={(folderId, name) =>
               saveToDrive(folderId, name).catch((e) => {

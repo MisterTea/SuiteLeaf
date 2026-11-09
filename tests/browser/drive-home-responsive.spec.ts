@@ -16,7 +16,18 @@ for (const width of [320, 390, 700, 1024]) {
         ? { name: "SuiteLeaf node", mode: "cluster", auth: { enabled: true } }
         : path === "/api/auth/get-session"
           ? { session: {}, user: { id: "u1", name: "Ann", role: "admin" } }
-          : { items: [], folders: [], notices: [] };
+          : {
+              items: path === "/api/drive/items" ? [{
+                id: "presentation",
+                kind: "file",
+                name: "Presentation.slslides",
+                role: "owner",
+                available: true,
+                updatedAt: "2026-10-02T10:00:00.000Z",
+              }] : [],
+              folders: [],
+              notices: [],
+            };
       return route.fulfill({ json: body });
     });
     await page.goto("/");
@@ -52,6 +63,19 @@ for (const width of [320, 390, 700, 1024]) {
       }
     }
     if (width <= 390) expect(new Set(rectangles.map((rect) => Math.round(rect.y))).size).toBeGreaterThan(1);
-    if (width === 390) await page.screenshot({ path: "test-results/suitedrive-mobile-wrapped.png" });
+    if (width === 390) {
+      await page.screenshot({ path: "test-results/suitedrive-mobile-wrapped.png" });
+      const trigger = page.getByRole("button", { name: "More actions for Presentation.slslides" });
+      await trigger.evaluate((button) => {
+        document.body.style.paddingBottom = "100vh";
+        button.scrollIntoView({ block: "end" });
+      });
+      await trigger.click();
+      const menu = page.getByRole("menu", { name: "Actions for Presentation.slslides" });
+      await expect(menu).toBeInViewport({ ratio: 1 });
+      expect((await menu.boundingBox())!.y).toBeLessThan((await trigger.boundingBox())!.y);
+      await menu.getByRole("button", { name: "Rename Presentation.slslides" }).click();
+      await expect(page.getByRole("dialog", { name: "Rename" })).toBeVisible();
+    }
   });
 }

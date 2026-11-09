@@ -1,11 +1,13 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
   type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronRight,
   CloudOff,
@@ -176,6 +178,7 @@ export function DriveBrowser({
   const [items, setItems] = useState<DriveItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [name, setName] = useState(defaultName);
   const [kept, setKept] = useState("");
@@ -189,6 +192,8 @@ export function DriveBrowser({
   );
   const [moving, setMoving] = useState<DriveItem | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const menuPopup = useRef<HTMLDivElement>(null);
   const [moveNotice, setMoveNotice] = useState<
     (MoveNotice & { id: string }) | null
   >(null);
@@ -240,24 +245,46 @@ export function DriveBrowser({
     if (routing.pending || routing.error) request.current++;
     else void refresh();
   }, [refresh, refreshKey, routing.pending, routing.error]);
-  useEffect(() => {
-    if (!menuId) return;
+  useLayoutEffect(() => {
+    const trigger = menuTrigger.current;
+    const popup = menuPopup.current;
+    if (!menuId || !trigger || !popup) return;
+    const anchor = trigger.getBoundingClientRect();
+    const { width, height } = popup.getBoundingClientRect();
+    const gap = 6;
+    const below = anchor.bottom + gap;
+    const above = anchor.top - height - gap;
+    const top = below + height <= window.innerHeight - gap ? below : above;
+    popup.style.top = `${Math.max(gap, top)}px`;
+    popup.style.left = `${Math.max(gap, Math.min(anchor.right - width, window.innerWidth - width - gap))}px`;
+    if (document.activeElement === trigger) popup.querySelector("button")?.focus({ preventScroll: true });
+
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as HTMLElement | null;
-      if (!target?.closest(".drive-row-actions")) {
+      if (!trigger.contains(target) && !popup.contains(target)) {
         setMenuId(null);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuId(null);
+      if (e.key !== "Escape") return;
+      setMenuId(null);
+      trigger.focus({ preventScroll: true });
     };
+    const onScroll = (e: Event) => {
+      if (e.target !== popup) setMenuId(null);
+    };
+    const onResize = () => setMenuId(null);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
     };
-  }, [menuId]);
+  }, [menuId, items]);
   // An empty box stays on the folder. A short pause lets a recording type
   // the whole word before the list switches to results.
   useEffect(() => {
@@ -354,12 +381,32 @@ export function DriveBrowser({
     });
   };
 
-  const choose = (item: DriveItem) => {
+  const open = (name: string, work: () => Promise<void>) => {
+    if (busy) return;
+    setOpening(name);
+    setError("");
+    return act(async () => {
+      try {
+        await work();
+      } finally {
+        setOpening(null);
+      }
+    });
+  };
+
+  const select = async (item: DriveItem) => {
     if (item.kind === "folder")
       setPath((p) => [...p, { id: item.id, name: item.name }]);
     else if (mode === "open" && isNativeName(item.name))
-      void act(async () => onOpen?.(item));
+      await onOpen?.(item);
     else if (mode === "save") setName(item.name);
+  };
+  const choose = (item: DriveItem) => {
+    if (item.kind === "file" && mode === "open" && isNativeName(item.name)) {
+      void open(item.name, () => select(item));
+    } else {
+      void select(item);
+    }
   };
 
   // The shared root is a list, not a folder; the node enforces folder roles.
@@ -474,8 +521,16 @@ export function DriveBrowser({
           {routing.error || error}
         </p>
       ) : null}
+      {opening !== null ? (
+        <div className="drive-opening">
+          <label>
+            Opening {opening}…
+            <progress />
+          </label>
+        </div>
+      ) : null}
       {inline && mode === "open" && onOpen ? (
-        <ShareNotices onOpen={(item) => act(async () => onOpen(item))} />
+        <ShareNotices onOpen={(item) => open(item.name, async () => onOpen(item))} />
       ) : null}
       {kept ? (
         <p className="drive-kept" role="status">
@@ -527,13 +582,10 @@ export function DriveBrowser({
                   className="drive-item drive-search-hit"
                   disabled={busy}
                   onClick={() => {
-                    void (async () => {
-                      try {
-                        choose(await drive.get(hit.id));
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : String(e));
-                      }
-                    })();
+                    const resolveHit = async () => select(await drive.get(hit.id));
+                    void (mode === "open" && isNativeName(hit.name)
+                      ? open(hit.name, resolveHit)
+                      : act(resolveHit));
                   }}
                 >
                   <ItemIcon item={{ name: hit.name, kind: "file" }} />
@@ -605,8 +657,7 @@ export function DriveBrowser({
                   ) : null}
                   {edit ? (
                     <time dateTime={edit.at} title={edited} aria-live="polite">
-                      <span className="drive-editor">{edit.name}</span>
-                      {" · "}
+                      <span className="drive-editor">{edit.name}{" · "}</span>
                       {versionWhen(edit.at)}
                     </time>
                   ) : (
@@ -680,16 +731,24 @@ export function DriveBrowser({
                       disabled={busy}
                       onClick={(e) => {
                         e.stopPropagation();
+                        menuTrigger.current = e.currentTarget;
                         setMenuId((prev) => (prev === item.id ? null : item.id));
                       }}
                     >
                       <MoreVertical size={16} />
                     </button>
-                    {menuId === item.id ? (
+                    {menuId === item.id ? createPortal(
                       <div
+                        ref={menuPopup}
                         className="drive-menu-popup"
                         role="menu"
                         aria-label={`Actions for ${item.name}`}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Escape") return;
+                          e.stopPropagation();
+                          setMenuId(null);
+                          menuTrigger.current?.focus({ preventScroll: true });
+                        }}
                       >
                         {item.kind === "file" ? (
                           <button
@@ -738,7 +797,8 @@ export function DriveBrowser({
                           <Trash2 size={15} />
                           <span>Move to trash</span>
                         </button>
-                      </div>
+                      </div>,
+                      document.body,
                     ) : null}
                   </span>
                 ) : null}

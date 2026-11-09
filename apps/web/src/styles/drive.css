@@ -394,6 +394,15 @@
 .drive-browser.inline .drive-list {
   max-height: none;
 }
+.drive-opening {
+  padding-block: 8px;
+}
+
+.drive-opening progress {
+  display: block;
+  width: 100%;
+}
+
 .drive-empty {
   color: var(--text-secondary);
   padding: 24px 4px;
@@ -491,10 +500,10 @@
   color: var(--text-primary);
 }
 .drive-menu-popup {
-  position: absolute;
-  top: calc(100% + 2px);
-  right: 6px;
-  z-index: 30;
+  position: fixed;
+  z-index: 1001;
+  max-height: calc(100dvh - 12px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   min-width: 140px;
@@ -591,6 +600,9 @@
 @media (max-width: 700px) {
   .drive-row {
     flex-wrap: wrap;
+  }
+  .drive-item .drive-editor {
+    display: none;
   }
   .drive-keep {
     margin: 0 8px 8px auto;

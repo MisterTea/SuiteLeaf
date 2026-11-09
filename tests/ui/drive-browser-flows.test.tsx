@@ -203,6 +203,27 @@ describe("NameDialog", () => {
 });
 
 describe("DriveBrowser", () => {
+  it.each([false, true])("shows opening progress until the request settles (failure: %s)", async (fails) => {
+    let finish!: () => void;
+    const onOpen = vi.fn(() => new Promise<void>((resolve, reject) => {
+      finish = () => {
+        if (fails) reject(new Error("Download failed"));
+        else resolve();
+      };
+    }));
+    render(<DriveBrowser mode="open" inline onOpen={onOpen} />);
+    const file = await screen.findByRole("button", { name: "Plan.sldoc" });
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    fireEvent.click(file);
+    const progress = screen.getByRole("progressbar", { name: "Opening Plan.sldoc…" });
+    expect(progress.hasAttribute("value")).toBe(false);
+    expect((file as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => finish());
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect((file as HTMLButtonElement).disabled).toBe(false);
+    if (fails) expect(screen.getByRole("alert").textContent).toBe("Download failed");
+  });
+
   it("opens SuiteLeaf files, walks folders, and closes", async () => {
     const onOpen = vi.fn();
     const onClose = vi.fn();
@@ -444,7 +465,7 @@ describe("DriveBrowser", () => {
     act(() => void window.dispatchEvent(new Event(DRIVE_SAVED)));
     await waitFor(() => expect(document.querySelector(".just-edited")).toBeTruthy());
     const row = document.querySelector(".just-edited")!;
-    expect(row.querySelector(".drive-editor")?.textContent).toBe("Sam");
+    expect(row.querySelector(".drive-editor")?.textContent).toBe("Sam · ");
     expect(row.querySelector("button")?.getAttribute("aria-description")).toMatch(/^Last edited by Sam, /);
   });
 
