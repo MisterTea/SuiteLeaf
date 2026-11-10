@@ -23,7 +23,15 @@ export function precachePaths(entries: PrecacheEntry[]) {
   const files = entries
     .filter((entry) => !droppedStylesheetStub(entry) && !entry.fileName.endsWith(".woff2"))
     .map((entry) => `./${entry.fileName}`);
-  return ["./", "./icon.svg", "./THIRD_PARTY_NOTICES.txt", ...files];
+  return [
+    "./",
+    "./manifest.webmanifest",
+    "./icon-192.png",
+    "./icon-512.png",
+    "./apple-touch-icon.png",
+    "./THIRD_PARTY_NOTICES.txt",
+    ...files,
+  ];
 }
 
 function droppedStylesheetStub(entry: PrecacheEntry) {
