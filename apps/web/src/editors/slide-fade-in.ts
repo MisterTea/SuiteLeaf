@@ -334,15 +334,15 @@ export type AnimationRow = {
   ms: number;
 };
 
-/** 1-based animation sequence number for each animated object on a slide. */
+/** 1-based slideshow click number for each animated object on a slide. */
 export function animationSequenceMap(
   elements: readonly FadeElement[] | undefined,
 ): Map<string, number> {
   const map = new Map<string, number>();
   if (!elements) return map;
-  animationSequence(elements).forEach((item, index) => {
-    if (!map.has(item.id)) {
-      map.set(item.id, index + 1);
+  animationClicks(elements).forEach((click, index) => {
+    for (const id of click.ids) {
+      if (!map.has(id)) map.set(id, index + 1);
     }
   });
   return map;

@@ -333,7 +333,7 @@ export function SlideTextBody({
     if (!editing) return;
     const node = ref.current;
     if (!node || document.activeElement === node) return;
-    node.focus();
+    node.focus({ preventScroll: true });
   }, [editing]);
 
   useLayoutEffect(() => {

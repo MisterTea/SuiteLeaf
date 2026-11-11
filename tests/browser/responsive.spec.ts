@@ -415,6 +415,40 @@ test("Mobile sheet touch: select, pan, lasso, and double tap to edit", async ({ 
   await expect(page.locator('[data-u-comp="editor"][id*="DOCS_NORMAL"]')).toHaveAttribute("inputmode", "text");
 });
 
+test("Mobile slide editing keeps the toolbar above the keyboard without blank scroll space", async ({ page, isMobile }) => {
+  test.skip(!isMobile);
+  await page.addInitScript(() => {
+    const viewport = Object.assign(new EventTarget(), { height: 844, offsetTop: 0 });
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /^New presentation/ }).click();
+  const text = page.locator(".slide-canvas .element-textarea").first();
+  await page.locator(".slide-canvas .slide-text").first().dblclick();
+  await expect(text).toBeFocused();
+  await page.keyboard.type("Keyboard viewport");
+  await page.evaluate(() => {
+    Object.assign(window.visualViewport!, { height: 390, offsetTop: 140 });
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+    window.visualViewport!.dispatchEvent(new Event("scroll"));
+  });
+  const toolbar = page.getByRole("toolbar", { name: "Slides toolbar" });
+  await expect.poll(async () => (await page.locator(".workspace").boundingBox())!.y).toBe(140);
+  expect((await toolbar.boundingBox())!.y).toBeLessThanOrEqual(148);
+  await expect(toolbar.getByRole("button", { name: "Main menu", exact: true })).toBeInViewport();
+  const bold = toolbar.getByRole("button", { name: "Bold", exact: true });
+  await bold.scrollIntoViewIfNeeded();
+  await expect(bold).toBeInViewport();
+  const workspace = page.locator(".workspace");
+  expect((await workspace.boundingBox())!.height).toBe(390);
+  expect(await workspace.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeLessThanOrEqual(1);
+  await page.evaluate(() => {
+    Object.assign(window.visualViewport!, { height: 844, offsetTop: 0 });
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+  });
+  await expect.poll(async () => (await workspace.boundingBox())!.height).toBe(844);
+});
+
 test("Mobile slides touch: text selection, editing, slide holds and notes", async ({ page, isMobile }) => {
   test.skip(!isMobile);
   const file = createFile("slide", "Mobile gestures");
@@ -762,7 +796,7 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     await expect(presenterOverlay).toBeVisible();
 
     // Exit presentation mode
-    await page.getByRole("button", { name: "Exit" }).click();
+    await page.getByRole("button", { name: "Exit", exact: true }).click();
     await expect(presenterOverlay).toHaveCount(0);
   });
 });

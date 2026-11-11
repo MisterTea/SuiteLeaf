@@ -33,11 +33,31 @@ for (const width of [320, 390, 700, 1024]) {
     await page.goto("/");
     const note = page.locator(".cluster-note");
     await expect(note).toContainText("Files are saved to SuiteDrive");
+    const signOut = page.getByRole("button", { name: "Sign out", exact: true });
+    await expect(signOut).toBeInViewport({ ratio: 1 });
+    if (width <= 700) {
+      const target = (await signOut.boundingBox())!;
+      expect(target.width).toBeGreaterThanOrEqual(44);
+      expect(target.height).toBeGreaterThanOrEqual(44);
+      // Browser chrome and orientation changes resize the visible viewport.
+      for (const viewport of [
+        { width, height: 520 },
+        { width: 844, height: 390 },
+        { width, height: 700 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await expect(signOut).toBeInViewport({ ratio: 1 });
+      }
+      expect(await page.locator(".sidebar").evaluate((sidebar) =>
+        getComputedStyle(sidebar).height === `${window.innerHeight}px`,
+      )).toBe(true);
+    }
     await expect(note).toBeInViewport();
     const initialTop = (await note.boundingBox())!.y;
     await page.evaluate(() => window.scrollTo(0, 250));
     const scrolled = await page.evaluate(() => window.scrollY);
     expect(scrolled).toBeGreaterThan(100);
+    await expect(signOut).toBeInViewport({ ratio: 1 });
     expect((await note.boundingBox())!.y).toBeCloseTo(initialTop - scrolled, 0);
 
     const toolbar = page.locator(".drive-toolbar");
