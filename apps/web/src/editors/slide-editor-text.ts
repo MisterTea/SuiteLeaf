@@ -1,4 +1,5 @@
 import { handStyle } from "./slide-theme";
+import { indentSlideText } from "./slide-text-indent";
 import { runsOf } from "./slide-runs";
 import { rangeColor, rangeHas, styleSelection, styleWholeBox } from "./slide-run-format";
 import { toggleSlideCellMark } from "./slide-table-format";
@@ -145,6 +146,13 @@ export function slideTextFormat(
     const el = selectedText();
     if (el) updateElement(el.id, { align: alignment });
   };
+  const changeIndent = (direction: -1 | 1) => {
+    const el = selectedText();
+    if (!el) return;
+    const range = editingRef.current === el.id && textRange.current?.id === el.id
+      ? textRange.current : null;
+    updateElement(el.id, indentSlideText(el, direction, range));
+  };
 
   return {
     rememberCaret,
@@ -156,6 +164,7 @@ export function slideTextFormat(
     toggleUnderline,
     applyAccent,
     alignText,
+    changeIndent,
   };
 }
 

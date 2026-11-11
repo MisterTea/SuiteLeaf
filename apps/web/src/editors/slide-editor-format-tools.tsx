@@ -4,6 +4,8 @@ import {
   AlignRight,
   Bold,
   Italic,
+  IndentDecrease,
+  IndentIncrease,
   LayoutTemplate,
   List,
   Minus,
@@ -39,12 +41,13 @@ export function SlideFormatTools({
   toggleItalic,
   toggleUnderline,
   applyAccent,
+  changeIndent,
   setDeckBackground,
   applyLayoutToSlide,
 }: Pick<DeckHistoryApi, "commit"> &
   Pick<SlideUpdates, "updateElement"> &
   Pick<SlideElementActions, "deleteSelectedElement"> &
-  Pick<SlideTextFormat, "toggleBold" | "toggleItalic" | "toggleUnderline" | "applyAccent"> &
+  Pick<SlideTextFormat, "toggleBold" | "toggleItalic" | "toggleUnderline" | "applyAccent" | "changeIndent"> &
   Pick<SlideDesign, "setDeckBackground" | "applyLayoutToSlide"> & {
     state: SlidesEditorState;
     activeSlide: Slide;
@@ -313,6 +316,12 @@ export function SlideFormatTools({
             }
           >
             <AlignRight size={16} />
+          </Tool>
+          <Tool label="Decrease indent" onClick={() => changeIndent(-1)}>
+            <IndentDecrease size={16} />
+          </Tool>
+          <Tool label="Increase indent" onClick={() => changeIndent(1)}>
+            <IndentIncrease size={16} />
           </Tool>
           <Tool
             label="Bullet list"
