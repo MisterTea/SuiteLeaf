@@ -672,7 +672,7 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     await boldBtn.click();
 
     await expect(editor.locator("strong")).toContainText("Responsive editing");
-    await expect(page.getByRole("status")).toContainText("Saved");
+    await expect(page.locator(".save-status")).toContainText("Saved");
   });
 
   test("Docs: modals center and fit within viewport without clipping", async ({

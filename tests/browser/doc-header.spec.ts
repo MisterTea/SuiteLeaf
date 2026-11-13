@@ -109,7 +109,7 @@ test("double-click edits the header and footer on the page", async ({ page }) =>
   await expect(page.locator(".paginated-paper")).not.toHaveClass(/is-editing-furniture/);
   await expect(editor).toContainText(body);
 
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Minutes" }).click();
   await expect(page.locator(".page-header").nth(1)).toHaveText("October minutes");

@@ -151,7 +151,7 @@ test("a Word inline picture opens in the sentence and survives save", async ({ p
     return sharesLine(laid.picture, laid.the) && sharesLine(laid.picture, laid.stall);
   }).toBe(true);
 
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   const download = await downloading;

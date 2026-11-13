@@ -9,7 +9,7 @@ async function newDocument(page: Page, title: string, body?: string) {
     await editor.click();
     await editor.fill(body);
   }
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await expect(page.getByLabel("Search files")).toBeVisible();
 }

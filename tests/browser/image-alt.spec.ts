@@ -131,7 +131,7 @@ test("a new photo starts with an empty description and alt text stays with the i
   await card.getByRole("button", { name: "Alt text", exact: true }).click();
   await field.fill(sentence);
   await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   const native = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();

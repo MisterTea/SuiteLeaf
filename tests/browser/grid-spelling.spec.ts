@@ -105,7 +105,7 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
     PERSONAL_DICTIONARY_KEY,
   );
   expect(JSON.parse(dictionary ?? "{}").added).toContain("kenkey");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const saved = await download(page);
   const id = saved.content.workbook.sheetOrder[0];
   const cells = saved.content.workbook.sheets[id].cellData;

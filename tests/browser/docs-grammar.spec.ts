@@ -117,7 +117,7 @@ test("ignored grammar comes back, stays in the file, and still runs offline", as
   await expect(editor.locator("strong")).toHaveText("Note");
   await expect(editor.locator("em")).toHaveText(" please");
   await grammar.getByRole("button", { name: "Done" }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.reload();
   await expect(editor).toContainText("they was ready");
   await expect(page.locator(".grammar-issue")).toHaveCount(0);

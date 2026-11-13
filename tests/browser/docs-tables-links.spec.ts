@@ -47,7 +47,7 @@ const paginated = (page: Page) =>
   );
 
 async function savedContent(page: Page) {
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   const file = JSON.parse(await readFile((await (await download).path())!, "utf8"));

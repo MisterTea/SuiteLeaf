@@ -139,7 +139,7 @@ test("wrap text puts a picture beside the paragraph and keeps corner resize", as
   await editor.locator("p", { hasText: "Dear friend" }).click();
   await expectBeside(page, "left");
 
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   const file = await download;

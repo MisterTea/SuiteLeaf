@@ -838,7 +838,7 @@ test.describe("SuiteDrive across two nodes", () => {
     });
     await disconnect.click();
     await expect(local).toBeVisible();
-    expect(revoking).toBe(true);
+    await expect.poll(() => revoking).toBe(true);
     expect(await stored()).toBeNull();
     expect(await me(JSON.parse(session).token)).toBe(200);
 

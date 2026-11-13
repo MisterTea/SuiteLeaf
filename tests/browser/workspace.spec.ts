@@ -26,7 +26,7 @@ test("document edit → formatting → autosave → reopen → native export", a
   if (isMobile) await editor.selectText();
   else await editor.press("ControlOrMeta+A");
   await page.getByRole("button", { name: "Bold", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Field notes" }).click();
   await expect(editor).toContainText("A working idea");
@@ -156,7 +156,7 @@ test("a downloaded native file says what it is and reopens over its library copy
   await page.getByLabel("File title").fill("Packing list");
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.fill("Passport");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const button = page.getByRole("button", { name: "Download", exact: true });
   await expect(button).toHaveAttribute("title", /Packing list\.sldoc/);
   await page.getByRole("button", { name: "File", exact: true }).click();
@@ -196,7 +196,7 @@ test("a downloaded native file says what it is and reopens over its library copy
   await page.getByRole("link", { name: "Packing list" }).click();
   await editor.press("ControlOrMeta+End");
   await editor.pressSequentially(" and shoes");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await back();
   await chooseDownloaded();
   const dialog = page.getByRole("dialog", {
@@ -283,7 +283,7 @@ test("cached application and local files work offline", async ({ page }) => {
     await page
       .getByRole("textbox", { name: "Document content" })
       .fill("Offline notebook");
-    await expect(page.getByRole("status")).toContainText("Saved");
+    await expect(page.locator(".save-status")).toContainText("Saved");
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
       if (!navigator.serviceWorker.controller)
@@ -374,7 +374,7 @@ test("common formula categories and cross-sheet calculations survive native roun
     buffer: Buffer.from(serializeFile(file)),
   });
   await page.getByText("Sheet1", { exact: true }).first().waitFor();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const saved = await exported(page);
   const actual = formulas.map(
     (_, i) => saved.content.workbook.sheets[first].cellData[i][0].v,
@@ -657,7 +657,7 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
   await expect(page.locator(".presenter-overlay")).toHaveCount(0);
 
   // 6. Autosave check & Reopen from home
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly Product Pitch" }).click();
 
