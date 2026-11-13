@@ -1,4 +1,5 @@
 import type { ReactNode, RefObject } from "react";
+import { useSlideMobileTextZoom } from "./slide-mobile-text-zoom";
 import { slidePointScale, type Slide, type SlideElement, type SlideFile } from "@suiteleaf/core";
 import { slidePictureToEdit } from "./svg-picture-edit";
 import { hasTextRuns } from "./slide-runs";
@@ -376,6 +377,7 @@ export function SlideCanvasStage({
     deck, marpOpen, setMarpOpen, stageRef, textPress, setFocusedBox, marpStale, painted, setPainted,
     canvasMotion, snapGuide, marpWarnings, marpAreaRef, showNotes, setShowNotes,
   } = state;
+  useSlideMobileTextZoom(stageRef, shownSlide, state.focusedBox, deck.width || 960, readOnly);
   return (
     <div className="slides-canvas-stage">
       {slideComments.notice}
