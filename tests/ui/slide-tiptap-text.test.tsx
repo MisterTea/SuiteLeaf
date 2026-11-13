@@ -146,3 +146,13 @@ it("uses the native caret when an arrow or input arrives before selectionchange"
     expect(selectionOffsets(root)).toEqual({ start: 1, end: 1 });
   }
 });
+
+it("clears all text to an editable paragraph and accepts replacement text", () => {
+  const view = render(<SlideTextBody content="Intro" editing onText={noop} onCaret={noop} />);
+  const root = view.container.querySelector<HTMLElement>(".ProseMirror")!;
+  const editor = slideTextEditor(root)!;
+  act(() => { editor.commands.selectAll(); editor.commands.deleteSelection(); });
+  expect(editor.state.doc.firstChild?.type.name).toBe("paragraph");
+  act(() => editor.commands.insertContent("Intro revised"));
+  expect(root.textContent).toBe("Intro revised");
+});

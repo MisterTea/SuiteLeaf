@@ -68,6 +68,9 @@ export function slideTextKit(metrics: SlideTextMetrics) {
   const cached = cache.get(key);
   if (cached) return cached;
   const Paragraph = TiptapNode.create({
+    // Keep paragraphs as the schema's default block, as Tiptap's Paragraph
+    // extension does. Clearing a text box must not create a bullet list.
+    priority: 1000,
     name: "paragraph", group: "block", content: "inline*",
     addAttributes: () => ({
       office: { default: {}, rendered: false },
