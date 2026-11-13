@@ -1,3 +1,4 @@
+import { slideTextEditor, tiptapDomSelection } from "./slide-tiptap-selection";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { placeSlideObject, slideOp, type Slide, type SlideElement, type SlideFile } from "@suiteleaf/core";
 import type * as Y from "yjs";
@@ -18,7 +19,9 @@ import { DEFAULT_MASTER_ID, deckMasters, writeMasters } from "./slide-master";
 import { MASTER_PAGE_ID, attachMasterPages, isMasterPage, materializeMasterView } from "./slide-master-view";
 
 type TextSelection = { start: number; end: number };
-function readCaret(node: HTMLElement): TextSelection | null {
+function readCaret(node: HTMLElement, native = false): TextSelection | null {
+  const editor = native ? slideTextEditor(node) : undefined;
+  if (editor) return !editor.state.selection.empty ? selectionOffsets(node) : tiptapDomSelection(editor) ?? selectionOffsets(node);
   return node instanceof HTMLTextAreaElement
     ? { start: node.selectionStart, end: node.selectionEnd }
     : selectionOffsets(node);
@@ -108,9 +111,9 @@ export function useDeckHistory(
   const restoreCaret = useRef<{ node: HTMLElement; caret: TextSelection } | null>(null);
   useEffect(() => {
     const capture = (event: Event) => {
-      if (event instanceof KeyboardEvent && event.key !== "Enter" && event.key !== "Tab") return;
+      if (event instanceof KeyboardEvent && !["Enter", "Tab", "Backspace", "Delete"].includes(event.key)) return;
       const node = activeTextEditor();
-      beforeInput.current = node && event.target === node ? { node, caret: readCaret(node) } : null;
+      beforeInput.current = node && event.target === node ? { node, caret: readCaret(node, true) } : null;
     };
     window.addEventListener("keydown", capture, true);
     window.addEventListener("beforeinput", capture, true);

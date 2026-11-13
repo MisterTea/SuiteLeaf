@@ -70,10 +70,10 @@ function deck() {
 // An Office font is painted with its layout-identical SuiteLeaf face, such as Georgia with SuiteLeaf Durian.
 async function family(page: import("@playwright/test").Page, content: string) {
   return page.locator(".slide-canvas").evaluate((root, content) => {
-    const area = [...root.querySelectorAll("textarea")].find(
-      (node) => (node as HTMLTextAreaElement).value === content,
+    const area = [...root.querySelectorAll(".slide-text")].find(
+      (node) => node.textContent === content,
     );
-    return area?.parentElement ? getComputedStyle(area.parentElement).fontFamily : "";
+    return area?.parentElement ? getComputedStyle(area).fontFamily : "";
   }, content);
 }
 
@@ -114,7 +114,7 @@ test("a theme restyles free text, and reduced motion cuts transitions", async ({
   await page.getByLabel("Accent hex").fill("#2e7d32");
   await expect(page.locator(".slide-canvas .slide-shape")).toHaveCSS("background-color", "rgb(46, 125, 50)");
 
-  const box = page.locator(".slide-canvas textarea").nth(1);
+  const box = page.locator(".slide-canvas .slide-text").nth(1);
   await box.click();
   await page.getByLabel("Font family").selectOption("Georgia");
   await expect(page.locator(".theme-override-bar")).toContainText("Overrides theme");

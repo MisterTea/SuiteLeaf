@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { sourceValue, sourceSelection, selectSourceRange } from "../../apps/web/src/editors/slide-source-control";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import * as Y from "yjs";
 import { describe, expect, it, vi } from "vitest";
@@ -79,13 +80,13 @@ describe("a MARP deck in the editor", () => {
       await fitted(editor);
       expect(screen.queryByLabelText("Presentation markdown")).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Show markdown", exact: true }));
-      expect(markdown().value).toBe(SOURCE);
+      expect(sourceValue(markdown())).toBe(SOURCE);
       fireEvent.change(markdown(), { target: { value: SOURCE.replace("Ship the beta", "Ship the gamma") } });
       fireEvent.click(screen.getByRole("button", { name: "Show slide editor", exact: true }));
       expect(screen.queryByLabelText("Presentation markdown")).toBeNull();
       await waitFor(() => expect(editor.deck().marpSource).toContain("Ship the gamma"));
       fireEvent.click(screen.getByRole("button", { name: "Show markdown", exact: true }));
-      expect(markdown().value).toContain("Ship the gamma");
+      expect(sourceValue(markdown())).toContain("Ship the gamma");
       editor.unmount();
       openMarp(SOURCE, { readOnly: true });
       fireEvent.click(screen.getByRole("button", { name: "Show markdown", exact: true }));
@@ -108,7 +109,7 @@ describe("a MARP deck in the editor", () => {
 
   it("writes markdown for a MARP deck saved before its markdown was kept", async () => {
     const editor = openMarp(SOURCE, { change: (deck) => delete deck.marpSource });
-    expect(markdown().value).toContain("# Launch plan");
+    expect(sourceValue(markdown())).toContain("# Launch plan");
     expect(editor.onChange).toHaveBeenCalledWith(expect.objectContaining({ marpSource: expect.stringContaining("# Risks") }), expect.anything());
     const viewer = openMarp(SOURCE, { readOnly: true, change: (deck) => delete deck.marpSource });
     await fitted(viewer);
@@ -134,7 +135,7 @@ describe("a MARP deck in the editor", () => {
     await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
     const area = markdown();
     expect(document.activeElement).toBe(area);
-    expect(area.value.slice(area.selectionStart, area.selectionEnd)).toBe('<div class="note">Raw HTML</div>');
+    expect(sourceValue(area).slice(sourceSelection(area).start, sourceSelection(area).end)).toBe('<div class="note">Raw HTML</div>');
   });
 
   it("shows where a chosen slide is written in the markdown", async () => {
@@ -142,7 +143,7 @@ describe("a MARP deck in the editor", () => {
     await fitted(editor);
     fireEvent.click(document.querySelector(`.thumbnail-row[data-slide-id="${editor.order()[1]}"]`)!);
     const area = markdown();
-    expect(area.value.slice(area.selectionStart, area.selectionStart + 12)).toBe("---\n\n# Risks");
+    expect(sourceValue(area).slice(sourceSelection(area).start, sourceSelection(area).start + 12)).toBe("---\n\n# Risks");
   });
 
   it("moves a laid-out box to a new place in the reading order by dragging it, but not the title", async () => {
@@ -159,14 +160,14 @@ describe("a MARP deck in the editor", () => {
     fireEvent.mouseMove(window, { clientX: 100, clientY: 530 });
     expect(editor.onChange).toHaveBeenCalled();
     fireEvent.mouseUp(window);
-    expect(markdown().value.indexOf("Then tell everyone.")).toBeLessThan(markdown().value.indexOf("Ship the beta"));
+    expect(sourceValue(markdown()).indexOf("Then tell everyone.")).toBeLessThan(sourceValue(markdown()).indexOf("Ship the beta"));
 
     const title = editor.elements().find((el) => el.placeholder === "Click to add title")!;
-    const before = markdown().value;
+    const before = sourceValue(markdown());
     fireEvent.mouseDown(box(title.id), { clientX: 0, clientY: 0 });
     fireEvent.mouseMove(window, { clientX: 0, clientY: 300 });
     fireEvent.mouseUp(window);
-    expect(markdown().value).toBe(before);
+    expect(sourceValue(markdown())).toBe(before);
   });
 
   it("adds pictures and text to the markdown's flow, and refuses sound, which markdown cannot hold", async () => {
@@ -231,26 +232,26 @@ describe("a MARP deck in the editor", () => {
     const area = markdown();
     vi.spyOn(area, "clientHeight", "get").mockReturnValue(100);
     area.focus();
-    area.setSelectionRange(0, 0);
+    selectSourceRange(area, 0, 0);
     fireEvent.keyDown(area, { key: "PageDown" });
-    const down = area.selectionStart;
+    const down = sourceSelection(area).start;
     expect(down).toBeGreaterThan(0);
-    expect(area.selectionEnd).toBe(down);
+    expect(sourceSelection(area).end).toBe(down);
     fireEvent.keyDown(area, { key: "PageDown", shiftKey: true });
-    expect(area.selectionStart).toBe(down);
-    expect(area.selectionEnd).toBeGreaterThan(down);
+    expect(sourceSelection(area).start).toBe(down);
+    expect(sourceSelection(area).end).toBeGreaterThan(down);
     fireEvent.keyDown(area, { key: "PageUp" });
     fireEvent.keyDown(area, { key: "PageUp" });
     fireEvent.keyDown(area, { key: "PageUp" });
-    expect(area.selectionStart).toBe(0);
-    area.setSelectionRange(area.value.length - 2, area.value.length - 2);
+    expect(sourceSelection(area).start).toBe(0);
+    selectSourceRange(area, sourceValue(area).length - 2, sourceValue(area).length - 2);
     for (let i = 0; i < 30; i++) fireEvent.keyDown(area, { key: "PageDown" });
-    expect(area.selectionStart).toBe(area.value.length);
-    area.setSelectionRange(10, 20, "backward");
+    expect(sourceSelection(area).start).toBe(sourceValue(area).length);
+    selectSourceRange(area, 10, 20, "backward");
     fireEvent.keyDown(area, { key: "PageUp", shiftKey: true });
-    expect([area.selectionStart, area.selectionEnd]).toEqual([3, 20]);
+    expect([sourceSelection(area).start, sourceSelection(area).end]).toEqual([3, 20]);
     fireEvent.keyDown(area, { key: "PageDown", metaKey: true });
-    expect([area.selectionStart, area.selectionEnd]).toEqual([3, 20]);
+    expect([sourceSelection(area).start, sourceSelection(area).end]).toEqual([3, 20]);
   });
 });
 

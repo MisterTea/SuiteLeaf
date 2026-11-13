@@ -5,6 +5,7 @@ import { DOMParser } from "@tiptap/pm/model";
 import type { TextRun } from "@suiteleaf/core";
 import { authoredOffset, documentPosition, markerLength, safeOfficeRun, slideDocumentToRuns, slideParagraphs, slideRunsToDocument } from "../../apps/web/src/editors/slide-tiptap-model";
 import { renderSlideText, slideTextKit } from "../../apps/web/src/editors/slide-tiptap-schema";
+import { tiptapDomSelection } from "../../apps/web/src/editors/slide-tiptap-selection";
 import { slideTextTrialEnabled } from "../../apps/web/src/editors/slide-text-trial";
 
 const editors: Editor[] = [];
@@ -37,6 +38,14 @@ describe("slide text's structured model", () => {
     expect(host.querySelector("[data-office-inline]")).not.toBeNull();
     expect(host.querySelector("[data-office-run]")).not.toBeNull();
     expect(words(slideDocumentToRuns(DOMParser.fromSchema(model(runs).type.schema).parse(host)))).toBe(words(runs));
+  });
+
+  it("preserves hyperlinks when the editor reparses rendered text", () => {
+    const runs: TextRun[] = [{ text: "See " }, { text: "notes", href: "https://example.com" }, { text: "." }];
+    const doc = model(runs), root = document.createElement("div");
+    root.append(renderSlideText(doc));
+    const parsed = DOMParser.fromSchema(doc.type.schema).parse(root);
+    expect(slideDocumentToRuns(parsed).find(run => run.text === "notes")).toMatchObject({ href: "https://example.com" });
   });
 
   it("keeps bullets outside editable text, preserving marker fonts and nested paragraph metrics", () => {
@@ -289,4 +298,16 @@ it("sizes each paragraph's strut from its words instead of the larger box", () =
   expect(paragraphs[1].style.lineHeight).toBe("1.08");
   expect(paragraphs[2].style.lineHeight).toBe("calc(20 * var(--slide-pt, 1) * 1px)");
   expect(root.querySelector<HTMLElement>(".slide-bullet-slot span")?.style.fontFamily).toContain("SuiteLeaf Sprig");
+});
+
+
+it("reads native caret movement before the editor model receives selectionchange", () => {
+  const e = editor([{ text: "Hello" }]);
+  e.commands.setTextSelection(1);
+  const text = e.view.dom.querySelector("[data-slide-content]")?.firstChild ?? e.view.dom.querySelector("p")?.firstChild;
+  expect(text).toBeTruthy();
+  window.getSelection()!.collapse(text!, 3);
+  expect(tiptapDomSelection(e)).toEqual({ start: 3, end: 3 });
+  window.getSelection()!.removeAllRanges();
+  expect(tiptapDomSelection(e)).toBeNull();
 });

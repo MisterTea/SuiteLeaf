@@ -57,7 +57,9 @@ async function openMinutes(page: Page) {
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(minutes())),
   });
-  await expect(page.locator(".editor-status")).toContainText("2 pages");
+  if ((page.viewportSize()?.width ?? 1280) > 600)
+    await expect(page.locator(".editor-status")).toContainText("2 pages");
+  else await expect(page.getByRole("textbox", { name: "Document content" })).toContainText("Votes");
 }
 
 function face(page: Page, index: number) {

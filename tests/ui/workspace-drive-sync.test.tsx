@@ -517,6 +517,15 @@ describe("a SuiteDrive conflict", () => {
     expect(document.querySelector(".drive-conflict")).toBeNull();
   });
 
+  it("keeps the conflict and local edits when uploading a copy fails", async () => {
+    const plan = await conflicted();
+    nodeExtras.saveNewDriveFile.mockRejectedValueOnce(new Error("Copy upload failed"));
+    fireEvent.click(within(banner()).getByRole("button", { name: "Save as copy" }));
+    await screen.findByText("Copy upload failed");
+    expect(banner()).not.toBeNull();
+    expect(saved(plan.file.id).drive?.itemId).toBe("item-1");
+  });
+
   it("combines edits made in different parts", async () => {
     const plan = await conflicted();
     const fresh = { ...plan.file, title: "Theirs" };

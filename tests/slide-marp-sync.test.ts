@@ -504,6 +504,18 @@ describe("underline and color as inline HTML", () => {
     );
   });
 
+  it("keeps links across successive underline and color edits", () => {
+    const deck = marpDeck(DECK);
+    const intro = boxWith(deck, 0, "Intro");
+    const first = synced(deck, edit(deck, 0, intro.id, styleSelection(intro, 0, 5, { type: "underline" }))).deck;
+    const current = boxWith(first, 0, "Intro");
+    const second = synced(first, edit(first, 0, current.id, styleSelection(current, 11, 15, { type: "color", color: ACCENT }))).deck;
+    const combined = synced(deck, edit(deck, 0, intro.id, styleSelection(styleSelection(intro, 0, 5, { type: "underline" }), 11, 15, { type: "color", color: ACCENT }))).deck;
+    expect(combined.marpSource).toContain(`<u>Intro</u> with <span style="color: ${ACCENT}">**bold**</span> and a [link](https://example.com).`);
+    expect(second.marpSource).toContain(`[link](https://example.com)`);
+    expect(second.marpSource).toContain(`<u>Intro</u> with <span style="color: ${ACCENT}">**bold**</span>`);
+  });
+
   it("underlines a whole line that already has some bold, keeping its link", () => {
     const deck = marpDeck(DECK);
     const intro = boxWith(deck, 0, "Intro");

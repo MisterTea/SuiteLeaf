@@ -1,3 +1,4 @@
+import { editSlideText } from "./slide-text-helpers";
 import { expect, test } from "@playwright/test";
 
 test("animation ribbon and pane leave the slide visible and preview the painted object", async ({
@@ -338,11 +339,14 @@ test("highlighting a bullet before choosing an entrance preserves selection and 
     buffer: Buffer.from(JSON.stringify(file)),
   });
   await page.getByRole("button", { name: "Animations", exact: true }).click();
-  await page.locator('.slide-canvas [data-element-id="bullets"]').dblclick();
+  await editSlideText(
+    page.locator('.slide-canvas [data-element-id="bullets"]'),
+  );
   const editor = page.locator(
     '.slide-canvas .element-editor[contenteditable="true"]',
   );
   await expect(editor).toBeFocused();
+  await page.evaluate(() => document.fonts.ready);
   const target = await editor.evaluate((root) => {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();

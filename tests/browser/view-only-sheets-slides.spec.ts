@@ -86,7 +86,7 @@ async function startNode() {
     });
   });
   await expect
-    .poll(async () => (await (await fetch(`${url}/api/node/info`)).json()).auth.enabled, {
+    .poll(async () => (await fetch(`${url}/api/auth/suiteleaf/providers`)).ok, {
       timeout: 20000,
     })
     .toBe(true);
@@ -220,7 +220,7 @@ test("a viewer cannot edit a sheet or a deck, and a commenter can still reply", 
     const title = page.locator(".slide-canvas .element-textarea").first();
     await title.click();
     await page.keyboard.type(" extra");
-    await expect(title).toHaveValue("Spring fair");
+    await expect(title).toHaveText("Spring fair");
     expect(uploads).toBe(0);
 
     const rosaContext = await browser.newContext();

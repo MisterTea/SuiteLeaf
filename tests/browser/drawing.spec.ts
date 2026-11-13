@@ -1,3 +1,4 @@
+import { expectSourceValue, sourceValue, fillSource, sourceCaret } from "./source-editor-helpers";
 import { expect, test, type Page } from "@playwright/test";
 
 const PICTURE = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
@@ -28,7 +29,7 @@ test("shows the drawing on the left and its source on the right, and the border 
   const left = page.locator(".drawing-canvas-pane");
   const right = page.locator(".drawing-source-pane");
   const source = page.getByLabel("SVG source");
-  await expect(source).toHaveValue(PICTURE);
+  await expectSourceValue(source, PICTURE);
   await expect(shape(page, "rect")).toBeVisible();
   const before = { left: (await left.boundingBox())!, right: (await right.boundingBox())! };
   const drawn = (await shape(page, "rect").boundingBox())!;
@@ -59,20 +60,20 @@ test("dragging a shape moves it in the source, and editing the source moves it o
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 30, { steps: 6 });
   await page.mouse.up();
-  await expect(source).toHaveValue(/<rect x="(\d+(\.\d+)?)" y="(\d+(\.\d+)?)" width="120"/);
-  const moved = /<rect x="([\d.]+)" y="([\d.]+)"/.exec(await source.inputValue())!;
+  await expectSourceValue(source, /<rect x="(\d+(\.\d+)?)" y="(\d+(\.\d+)?)" width="120"/);
+  const moved = /<rect x="([\d.]+)" y="([\d.]+)"/.exec(await sourceValue(source))!;
   expect(Number(moved[1])).toBeGreaterThan(60);
   expect(Number(moved[2])).toBeGreaterThan(50);
   // Only the rectangle's start tag changed.
-  expect((await source.inputValue()).replace(/<rect[^>]*>/, "")).toBe(PICTURE.replace(/<rect[^>]*>/, ""));
+  expect((await sourceValue(source)).replace(/<rect[^>]*>/, "")).toBe(PICTURE.replace(/<rect[^>]*>/, ""));
   await expect(page.locator(".drawing-selection")).toBeVisible();
-  await expect.poll(() => source.evaluate((area: HTMLTextAreaElement) => area.selectionStart)).toBe(
+  await expect.poll(() => sourceCaret(source)).toBe(
     PICTURE.indexOf("<rect"),
   );
 
   const circle = shape(page, "circle");
   const was = (await circle.boundingBox())!;
-  await source.fill(PICTURE.replace('cx="300"', 'cx="200"'));
+  await fillSource(source, PICTURE.replace('cx="300"', 'cx="200"'));
   await source.blur();
   // The canvas redraws from the new source, so the circle can be briefly absent.
   await expect.poll(async () => (await circle.boundingBox())?.x ?? Infinity).toBeLessThan(was.x - 20);
@@ -88,7 +89,7 @@ test("a Mermaid flowchart's nodes can be renamed on the canvas, and clicking one
   const start = shape(page, "g.node").filter({ hasText: "Start" });
   await expect(start).toBeVisible();
   await shape(page, "g.node").filter({ hasText: "Finish" }).click();
-  await expect.poll(() => source.evaluate((area: HTMLTextAreaElement) => area.selectionStart)).toBe(
+  await expect.poll(() => sourceCaret(source)).toBe(
     chart.indexOf("A[Start]"),
   );
   await start.dblclick();
@@ -96,7 +97,7 @@ test("a Mermaid flowchart's nodes can be renamed on the canvas, and clicking one
   await expect(label).toHaveValue("Start");
   await label.fill("Begin here");
   await label.press("Enter");
-  await expect(source).toHaveValue("flowchart LR\n    A[Begin here] --> B[Finish]\n    B --> C\n");
+  await expectSourceValue(source, "flowchart LR\n    A[Begin here] --> B[Finish]\n    B --> C\n");
   await expect(shape(page, "g.node").filter({ hasText: "Begin here" })).toBeVisible();
 });
 
@@ -109,10 +110,10 @@ test("a Graphviz graph gains a connected node from the toolbar", async ({ page }
   const label = page.getByRole("textbox", { name: "Label" });
   await label.fill("Deploy");
   await label.press("Enter");
-  await expect(source).toHaveValue('digraph {\n    a -> b;\n    node1 [label="Deploy"];\n}\n');
+  await expectSourceValue(source, 'digraph {\n    a -> b;\n    node1 [label="Deploy"];\n}\n');
   await page.getByRole("button", { name: "Connect two nodes" }).click();
   await shape(page, "g.node").filter({ hasText: "b" }).first().click();
   await shape(page, "g.node").filter({ hasText: "Deploy" }).click();
-  await expect(source).toHaveValue('digraph {\n    a -> b;\n    node1 [label="Deploy"];\n    b -> node1;\n}\n');
+  await expectSourceValue(source, 'digraph {\n    a -> b;\n    node1 [label="Deploy"];\n    b -> node1;\n}\n');
   await expect(shape(page, "g.edge")).toHaveCount(2);
 });

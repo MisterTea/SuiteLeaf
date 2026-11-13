@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { sourceValue, selectSourceRange } from "../../apps/web/src/editors/slide-source-control";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrawingFile } from "../../packages/core/src";
@@ -205,7 +206,7 @@ describe("drawing SVG shapes", () => {
     const source = screen.getByLabelText("SVG source") as HTMLTextAreaElement;
     await waitFor(() => expect(container.querySelector(".drawing-host")!.shadowRoot?.querySelector("rect")).not.toBeNull());
     const at = PICTURE.indexOf("<text");
-    source.setSelectionRange(at, at);
+    selectSourceRange(source, at, at);
     fireEvent.select(source);
     await waitFor(() => expect(container.querySelector(".drawing-selection")).not.toBeNull());
     expect(tool("Edit label (Enter)")).toHaveProperty("disabled", false);
@@ -235,7 +236,7 @@ describe("drawing SVG shapes", () => {
     const { rerender, drawn } = open(file);
     const next = PICTURE.replace("Hello", "Bye");
     rerender(<Drawing file={{ ...file, content: { format: "svg", source: next } }} onChange={() => {}} onActions={() => {}} onError={() => {}} />);
-    expect(screen.getByLabelText("SVG source")).toHaveProperty("value", next);
+    expect(sourceValue(screen.getByLabelText<HTMLTextAreaElement>("SVG source"))).toBe(next);
     await waitFor(() => expect(drawn("text")?.textContent).toBe("Bye"));
   });
 

@@ -61,9 +61,14 @@ async function newDocument(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
-  await title.click();
-  await title.press("ControlOrMeta+A");
-  await title.fill("Seed swap sign-up");
+  if (await title.isVisible()) await title.fill("Seed swap sign-up");
+  else {
+    await page.getByRole("button", { name: "File", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Rename file" });
+    await dialog.getByRole("textbox").fill("Seed swap sign-up");
+    await dialog.getByRole("button", { name: "Rename", exact: true }).click();
+  }
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();
   return editor;

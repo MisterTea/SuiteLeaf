@@ -4,7 +4,7 @@ import type { SlideTextBody } from "./slide-text";
 import { runsOf } from "./slide-runs";
 import { slideDocumentToRuns, slideRunsToDocument } from "./slide-tiptap-model";
 import { renderSlideText, slideTextKit } from "./slide-tiptap-schema";
-import { registerSlideTextEditor, restoreTiptapSelection, tiptapTextSelection } from "./slide-tiptap-selection";
+import { registerSlideTextEditor, restoreTiptapSelection, tiptapDomSelection, tiptapTextSelection } from "./slide-tiptap-selection";
 import "./slide-tiptap.css";
 
 type Props = Parameters<typeof SlideTextBody>[0];
@@ -34,7 +34,33 @@ export function TiptapSlideTextBody(props: Props) {
       extensions: kit.extensions,
       content: slideRunsToDocument(runsOf(p)),
       injectCSS: false,
-      editorProps: { attributes: {
+      editorProps: {
+        handleDOMEvents: {
+          beforeinput: () => {
+            if (editor.state.selection.empty) {
+              const caret = tiptapDomSelection(editor);
+              if (caret) restoreTiptapSelection(editor, caret.start, caret.end);
+            }
+            return false;
+          },
+        },
+        handleKeyDown: (_view, event) => {
+          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+            editor.commands.selectAll();
+            return true;
+          }
+          if (!event.shiftKey && !event.metaKey && !event.ctrlKey &&
+            (event.key === "ArrowLeft" || event.key === "ArrowRight") && !editor.state.selection.empty) {
+            editor.commands.setTextSelection(event.key === "ArrowLeft" ? editor.state.selection.from : editor.state.selection.to);
+            return true;
+          }
+          if (event.key === "Tab" || event.key === "Enter") {
+            const caret = tiptapDomSelection(editor);
+            if (caret) restoreTiptapSelection(editor, caret.start, caret.end);
+          }
+          return false;
+        },
+        attributes: {
         class: "element-textarea element-editor slide-tiptap-text",
         role: "textbox", "aria-multiline": "true", "aria-label": p.placeholder || "Slide text",
         "data-placeholder": p.placeholder || "Click to add text", spellcheck: "false",

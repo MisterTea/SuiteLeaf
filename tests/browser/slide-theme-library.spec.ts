@@ -194,10 +194,10 @@ async function importDeck(page: Page, title: string, json: string) {
 
 async function family(page: Page, content: string) {
   return page.locator(".slide-canvas").evaluate((root, content) => {
-    const area = [...root.querySelectorAll("textarea")].find(
-      (node) => (node as HTMLTextAreaElement).value === content,
+    const area = [...root.querySelectorAll(".element-textarea")].find(
+      (node) => node.textContent === content,
     );
-    return area?.parentElement ? getComputedStyle(area.parentElement).fontFamily : "";
+    return area?.parentElement ? getComputedStyle(area.closest(".slide-text")!).fontFamily : "";
   }, content);
 }
 
@@ -238,8 +238,8 @@ test("a saved theme applies to another deck as a copy", async ({ page }) => {
   await page.getByRole("option", { name: "Slide 3: A line to keep" }).click();
   await expect.poll(() => family(page, quote)).toMatch(/SuiteLeaf Durian/);
   const point = await page.locator(".slide-canvas").evaluate((root, content) => {
-    const area = [...root.querySelectorAll("textarea")].find(
-      (node) => (node as HTMLTextAreaElement).value === content,
+    const area = [...root.querySelectorAll(".element-textarea")].find(
+      (node) => node.textContent === content,
     );
     const rect = area?.getBoundingClientRect();
     return rect ? { x: rect.x + 40, y: rect.y + rect.height / 2 } : null;

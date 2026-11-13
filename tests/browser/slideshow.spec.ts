@@ -1,16 +1,23 @@
+import { fillSlideText } from "./slide-text-helpers";
 import { test, expect, type Page } from "@playwright/test";
 
 async function twoSlideDeck(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "New presentation" }).click();
-  await page.locator(".slide-element textarea").first().fill("Opening slide");
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    "Opening slide",
+  );
   await page
     .getByPlaceholder("Click to add speaker notes")
     .fill("Thank everyone for coming.");
   await page.getByRole("button", { name: "+ New slide" }).click();
   await page.getByRole("menuitem", { name: "Title & body" }).click();
   await expect(page.locator(".thumbnail-row")).toHaveCount(2);
-  await page.locator(".slide-element textarea").first().fill("Second slide");
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    "Second slide",
+  );
 }
 
 const fullscreen = (page: Page) =>

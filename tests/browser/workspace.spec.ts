@@ -1,3 +1,4 @@
+import { fillSlideText, editSlideText } from "./slide-text-helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -109,8 +110,12 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
   await expect.poll(() => pivotCell(1)).toBe(6000);
   expect(await pivotCell(5)).toBe(23000);
   await page.getByRole("button", { name: "Data", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Charts & pivots", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Delete Studio costs", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Charts & pivots", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Delete Studio costs", exact: true })
+    .click();
   await expect(page.getByLabel("Chart: Studio costs")).toHaveCount(0);
   expect((await exported(page)).content.charts).toHaveLength(0);
   expect(errors).toEqual([]);
@@ -609,8 +614,10 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
   await page.getByLabel("File title").fill("Quarterly Product Pitch");
 
   // 2. Edit slide 1 title
-  const slide1Text = page.locator(".slide-element textarea").first();
-  await slide1Text.fill("Welcome to SuiteLeaf Slides");
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    "Welcome to SuiteLeaf Slides",
+  );
 
   // 3. Add a new slide with Title & Body layout
   await page.getByRole("button", { name: "+ New slide" }).click();
@@ -619,14 +626,13 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
 
   // Select slide 2 and edit text
   await page.locator(".thumbnail-row").nth(1).click();
-  const slide2Texts = page.locator(".slide-element textarea");
-  await slide2Texts.first().fill("Key Features");
+  const slide2Texts = page.locator(".slide-canvas .slide-text");
+  await fillSlideText(slide2Texts.first(), "Key Features");
   if ((await slide2Texts.count()) > 1) {
-    await slide2Texts
-      .nth(1)
-      .fill(
-        "1. Native PPTX/PPT import\n2. Interactive editor\n3. Slide show mode",
-      );
+    await fillSlideText(
+      slide2Texts.nth(1),
+      "1. Native PPTX/PPT import\n2. Interactive editor\n3. Slide show mode",
+    );
   }
 
   // 4. Edit speaker notes
@@ -688,20 +694,20 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
   await page.goto("/");
   await page.getByRole("button", { name: "New presentation" }).click();
 
-  const boxes = page.locator(".slide-canvas .slide-element textarea");
+  const boxes = page.locator(".slide-canvas .slide-text .element-textarea");
   await expect(boxes).toHaveCount(2);
-  await expect(boxes.nth(0)).toHaveValue("");
+  await expect(boxes.nth(0)).toHaveText("");
   await expect(boxes.nth(0)).toHaveAttribute(
-    "placeholder",
+    "data-placeholder",
     "Click to add title",
   );
   await expect(boxes.nth(1)).toHaveAttribute(
-    "placeholder",
+    "data-placeholder",
     "Click to add subtitle",
   );
-  await boxes.nth(0).click();
+  await editSlideText(page.locator(".slide-canvas .slide-text").first());
   await page.keyboard.type("Kickoff");
-  await expect(boxes.nth(0)).toHaveValue("Kickoff");
+  await expect(boxes.nth(0)).toHaveText("Kickoff");
 
   for (const label of ["Line", "Grid view", "Zoom"])
     await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
@@ -714,9 +720,9 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
   await page.getByRole("button", { name: "Layout" }).click();
   await page.getByRole("menuitem", { name: "Two columns" }).click();
   await expect(boxes).toHaveCount(3);
-  await expect(boxes.nth(0)).toHaveValue("Kickoff");
+  await expect(boxes.nth(0)).toHaveText("Kickoff");
   await expect(boxes.nth(2)).toHaveAttribute(
-    "placeholder",
+    "data-placeholder",
     "Click to add text",
   );
   const title = (await boxes.nth(0).boundingBox())!;
@@ -727,7 +733,10 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
     await page.getByRole("button", { name: "+ New slide" }).click();
     await page.getByRole("menuitem", { name }).click();
   }
-  await boxes.nth(0).fill("Questions?");
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    "Questions?",
+  );
   const rows = page.locator(".thumbnail-row");
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(2)).toContainText("Questions?");
@@ -774,12 +783,14 @@ test("PowerPoint presentation import via drag/upload into workspace", async ({
 
   const sampleBuf = await readFile(samplePath);
 
-  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
-    name: "sample.pptx",
-    mimeType:
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    buffer: sampleBuf,
-  });
+  await page
+    .locator('input[type="file"]:not([webkitdirectory])')
+    .setInputFiles({
+      name: "sample.pptx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      buffer: sampleBuf,
+    });
 
   // Verify it opened the presentation
   await expect(page.locator(".slides-editor")).toBeVisible();

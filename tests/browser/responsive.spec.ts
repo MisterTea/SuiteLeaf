@@ -1,3 +1,5 @@
+import type { Ace } from "ace-builds";
+import { fillSource, expectSourceValue } from "./source-editor-helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { createFile, serializeFile } from "../../packages/core/src/native-file";
 import { defaultPageSettings } from "../../packages/core/src/document-layout";
@@ -148,8 +150,9 @@ test("Mobile MARP typing pauses preserve the markdown caret and scroll position"
   await markdown.evaluate((element, caret) => {
     const area = element as HTMLTextAreaElement;
     area.focus();
-    area.setSelectionRange(caret, caret);
-    area.scrollTop = area.scrollHeight * 0.36;
+    const editor = (area as HTMLTextAreaElement & { __aceEditor: Ace.Editor }).__aceEditor;
+    editor.moveCursorToPosition(editor.session.doc.indexToPosition(caret, 0));
+    editor.scrollToLine(editor.getCursorPosition().row, true, false, () => {});
   }, position);
   await page.waitForTimeout(250);
   await page.keyboard.insertText(" scroll-regression");
@@ -158,7 +161,8 @@ test("Mobile MARP typing pauses preserve the markdown caret and scroll position"
     const parents = [];
     for (let parent = area.parentElement; parent; parent = parent.parentElement)
       parents.push({ className: parent.className, top: parent.scrollTop });
-    return { top: area.scrollTop, caret: area.selectionStart, focused: document.activeElement === area, parents,
+    const editor = (area as HTMLTextAreaElement & { __aceEditor: Ace.Editor }).__aceEditor;
+    return { top: editor.session.getScrollTop(), caret: editor.session.doc.positionToIndex(editor.getCursorPosition(), 0), focused: document.activeElement === area, parents,
       viewport: { top: window.visualViewport?.pageTop, offsetTop: window.visualViewport?.offsetTop },
     };
   });
@@ -192,14 +196,14 @@ test("Mobile MARP switches between a full slide editor and full markdown pane", 
   const pane = (await page.locator(".marp-pane").boundingBox())!;
   expect(pane.width).toBeGreaterThan(stage.width - 2);
   expect(pane.height).toBeGreaterThan(stage.height * 0.9);
-  await markdown.fill(source.replace("Edit either view.", "Changed on the phone."));
+  await fillSource(markdown, source.replace("Edit either view.", "Changed on the phone."));
   await page.getByRole("button", { name: "Show slide editor", exact: true }).tap();
   await expect(canvas).toBeVisible();
   await expect(canvas).not.toHaveAttribute("aria-busy", "true");
   await expect(markdown).toHaveCount(0);
   expect((await canvas.boundingBox())!.width).toBeGreaterThan(page.viewportSize()!.width * 0.8);
   await switchToCode.tap();
-  await expect(markdown).toHaveValue(/Changed on the phone/);
+  await expectSourceValue(markdown, /Changed on the phone/);
   await assertNoHorizontalScroll(page, "Mobile MARP editor");
 });
 

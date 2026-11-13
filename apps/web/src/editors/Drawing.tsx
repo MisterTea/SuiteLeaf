@@ -1,3 +1,4 @@
+import { selectSourceRange } from "./slide-source-control";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   Circle,
@@ -249,7 +250,7 @@ export default function DrawingEditor({
     const offset = sourceOffsetFor({ format, source: sourceRef.current }, next);
     if (offset === null) return;
     syncedLine.current = lineOf(sourceRef.current, offset);
-    area.setSelectionRange(offset, offset);
+    selectSourceRange(area, offset, offset);
     scrollMarkdownTo(area, offset);
   };
 

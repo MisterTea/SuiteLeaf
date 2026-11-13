@@ -8,7 +8,11 @@ import { slideDocumentToRuns, slideParagraphs } from "./slide-tiptap-model";
 function officeIndent(editor: Editor, direction: -1 | 1): boolean {
   const { state } = editor;
   const selected = slideParagraphs(state.doc).filter(p => p.list && state.selection.from <= p.pos + p.node.nodeSize - 1 && state.selection.to >= p.pos + 1);
-  if (!selected.length) return direction === 1 && editor.commands.insertContent("\t");
+  if (!selected.length) {
+    if (direction !== 1) return false;
+    editor.view.dispatch(editor.state.tr.insertText("\t"));
+    return true;
+  }
   if (direction === 1 && selected.some(p => p.depth >= 8)) return true;
   const items = new Map<number, { offset: number; base: number }>();
   for (const p of selected) {

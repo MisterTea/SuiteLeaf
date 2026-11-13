@@ -107,6 +107,12 @@ export function editorCanvasHooks(
    */
   const editorText = (el: SlideElement) =>
     editingId === el.id || hasTextRuns(el) || el.hang || slideTextTrialEnabled() ? (
+        <>
+        {!hasTextRuns(el) && !el.hang && slideTextTrialEnabled() ? <SlideSpellMirror
+          text={el.content || ""} fileId={file.id}
+          language={proofingLanguage(deck.proofingLanguage)}
+          caret={spellCaret?.id === el.id ? spellCaret.at : null}
+        /> : null}
         <SlideTextBody
           content={el.content}
           runs={el.runs}
@@ -137,8 +143,9 @@ export function editorCanvasHooks(
               { typing: true },
             )
           }
-          onCaret={(sel) => rememberCaret(el.id, sel)}
+          onCaret={(sel) => { rememberCaret(el.id, sel); setSpellCaret(sel ? { id: el.id, at: sel.start } : null); }}
         />
+        </>
       ) : (
         <>
           <SlideSpellMirror

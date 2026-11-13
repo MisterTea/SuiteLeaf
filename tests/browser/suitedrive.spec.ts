@@ -92,7 +92,7 @@ async function startNode(
   await expect
     .poll(
       async () =>
-        (await (await fetch(`${url}/api/node/info`)).json()).auth.enabled,
+        (await fetch(`${url}/api/auth/suiteleaf/providers`)).ok,
       {
         timeout: 15000,
       },
