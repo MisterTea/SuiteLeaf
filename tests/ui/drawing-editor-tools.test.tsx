@@ -357,10 +357,12 @@ describe("drawing a Mermaid flowchart", () => {
 
 describe("drawing a Graphviz graph", () => {
   it("draws the graph and adds a node to it", async () => {
-    const { latest, drawn } = open(createDrawingFile("graphviz", "Graph", "digraph {\n  a -> b;\n}\n"));
+    const { latest, drawn, canvas } = open(createDrawingFile("graphviz", "Graph", "digraph {\n  a -> b;\n}\n"));
     await waitFor(() => expect(drawn("g.node")).not.toBeNull(), { timeout: 5000 });
     fireEvent.click(tool("Add node"));
+    fireEvent.keyDown(canvas, { key: "Escape" });
     expect(latest()).toMatch(/digraph \{\n  a -> b;\n  \w+/);
+    await waitFor(() => expect(drawn("svg")?.querySelectorAll("g.node")).toHaveLength(3));
     press(drawn("g.node")!);
     expect(tool("Edit label (Enter)")).toHaveProperty("disabled", false);
   });

@@ -57,6 +57,10 @@ function positions(root: Node) {
   return { offsets, carets, textRanges, length };
 }
 
+export function semanticTextLength(root: Node): number {
+  return positions(root).length;
+}
+
 export function semanticOffset(root: Node, node: Node, offset: number): number | undefined {
   const { offsets } = positions(root);
   const position = offsets.get(node);

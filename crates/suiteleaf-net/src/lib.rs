@@ -165,6 +165,8 @@ impl NetHandle {
     }
 }
 
+// libp2p derives a handler branch for uninhabited protocol events on Linux.
+#[allow(unreachable_code)]
 #[derive(NetworkBehaviour)]
 struct Behaviour {
     identify: identify::Behaviour,

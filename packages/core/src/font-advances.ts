@@ -1,4 +1,4 @@
-import data from "./font-advances-data.json";
+import data from "./font-advances-data.json" with { type: "json" };
 import { suiteLeafFont } from "./office-fonts";
 
 /** Exact horizontal advances from the renderer's shipped font files. */

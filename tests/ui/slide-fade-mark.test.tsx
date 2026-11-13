@@ -65,10 +65,10 @@ describe("animationSequenceMap", () => {
       { id: `caption-${order}`, animation: "appear-on-click", animationOrder: order },
     ]);
     const map = animationSequenceMap(elements);
-    expect([...map.values()]).toEqual([1, 1, 2, 2, 3, 3]);
+    expect([...map.values()]).toEqual([[1], [1], [2], [2], [3], [3]]);
   });
 
-  it("keeps with/after effects on the same click and uses the first click for repeated objects", () => {
+  it("keeps with/after effects on the same click and retains every click for repeated objects", () => {
     const elements = [
       { id: "image", animation: "appear-on-click", animationOrder: 1, animationExit: { order: 4 } },
       { id: "caption", animation: "appear-on-click", animationOrder: 2, animationTrigger: "with" },
@@ -76,7 +76,7 @@ describe("animationSequenceMap", () => {
       { id: "next", animation: "appear-on-click", animationOrder: 5 },
     ];
     expect([...animationSequenceMap(elements)]).toEqual([
-      ["image", 1], ["caption", 1], ["credit", 1], ["next", 3],
+      ["image", [1, 2]], ["caption", [1]], ["credit", [1]], ["next", [3]],
     ]);
   });
 

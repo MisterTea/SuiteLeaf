@@ -7,6 +7,7 @@ import Slides from "../../apps/web/src/editors/Slides";
 import { CommandPalette } from "../../apps/web/src/command-palette";
 import { buildMarpFile } from "../../apps/web/src/editors/slide-marp-import";
 import { MARP_UNSUPPORTED } from "../../apps/web/src/editors/slide-marp-sync";
+import { slideTextEditor } from "../../apps/web/src/editors/slide-tiptap-selection";
 import { clampMarpSplit } from "../../apps/web/src/editors/slide-marp-split";
 
 vi.mock("../../apps/web/src/editors/themes/beam_ut.css?raw", () => ({
@@ -308,22 +309,32 @@ describe("MARP side-by-side editing", () => {
   it("writes text typed on the slide into the markdown", async () => {
     open();
     await laidOut();
-    const title = box("Launch plan")!.querySelector("textarea")!;
-    act(() => title.focus());
-    fireEvent.change(title, { target: { value: "Launch plan v2" } });
-    expect(markdown().value).toBe(SOURCE.replace("# Launch plan", "# Launch plan v2"));
-    act(() => title.blur());
+    fireEvent.doubleClick(box("Launch plan")!);
+    await waitFor(() => expect(box("Launch plan")?.querySelector(".ProseMirror")).toBeTruthy());
+    const title = box("Launch plan")!.querySelector<HTMLElement>(".ProseMirror")!;
+    act(() => {
+      const editor = slideTextEditor(title)!;
+      editor.commands.selectAll();
+      editor.commands.insertContent("Launch plan v2");
+    });
+    act(() => markdown().focus());
     await laidOut();
+    expect(markdown().value).toBe(SOURCE.replace("# Launch plan", "# Launch plan v2"));
     expect(box("Launch plan v2")).toBeDefined();
   });
 
   it("undoes a slide edit back to the markdown it came from", async () => {
     const { actions } = open();
     await laidOut();
-    const title = box("Launch plan")!.querySelector("textarea")!;
-    act(() => title.focus());
-    fireEvent.change(title, { target: { value: "Launch later" } });
-    act(() => title.blur());
+    fireEvent.doubleClick(box("Launch plan")!);
+    await waitFor(() => expect(box("Launch plan")?.querySelector(".ProseMirror")).toBeTruthy());
+    const title = box("Launch plan")!.querySelector<HTMLElement>(".ProseMirror")!;
+    act(() => {
+      const editor = slideTextEditor(title)!;
+      editor.commands.selectAll();
+      editor.commands.insertContent("Launch later");
+    });
+    act(() => markdown().focus());
     await laidOut();
     expect(markdown().value).toContain("# Launch later");
     act(() => actions().slideActions!.undo());
