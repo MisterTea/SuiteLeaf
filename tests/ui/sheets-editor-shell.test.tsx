@@ -197,6 +197,22 @@ function openSheets(file = sheetFile(), props: Partial<Parameters<typeof Sheets>
 }
 
 describe("starting the spreadsheet engine", () => {
+  it("does not copy the workbook again when the title or selection changes", async () => {
+    const file = sheetFile();
+    const clone = vi.spyOn(globalThis, "structuredClone");
+    try {
+      const view = openSheets(file);
+      await view.ready();
+      const content = seen.session!.content.current;
+      view.rerender(<Sheets file={{ ...file, title: "Renamed" }} onChange={view.onChange} onActions={view.onActions} onError={view.onError} />);
+      act(() => seen.selection!(RANGE_TYPE.ROW));
+      expect(seen.session!.content.current).toBe(content);
+      expect(clone.mock.calls.filter(([value]) => value === file.content)).toHaveLength(1);
+    } finally {
+      clone.mockRestore();
+    }
+  });
+
   it("inserts after the selected rows or columns and closes audit from its panel", async () => {
     const { ready } = openSheets();
     await ready();

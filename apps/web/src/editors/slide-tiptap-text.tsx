@@ -44,14 +44,16 @@ export function TiptapSlideTextBody(props: Props) {
       editorProps: {
         handleDOMEvents: {
           beforeinput: () => {
-            if (editor.state.selection.empty) {
-              const caret = tiptapDomSelection(editor);
-              if (caret) restoreTiptapSelection(editor, caret.start, caret.end);
-            }
+            const caret = tiptapDomSelection(editor);
+            if (caret) restoreTiptapSelection(editor, caret.start, caret.end);
             return false;
           },
         },
         handleKeyDown: (_view, event) => {
+          if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Tab", "Enter"].includes(event.key)) {
+            const caret = tiptapDomSelection(editor);
+            if (caret) restoreTiptapSelection(editor, caret.start, caret.end);
+          }
           if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
             editor.commands.selectAll();
             return true;
@@ -60,10 +62,6 @@ export function TiptapSlideTextBody(props: Props) {
             (event.key === "ArrowLeft" || event.key === "ArrowRight") && !editor.state.selection.empty) {
             editor.commands.setTextSelection(event.key === "ArrowLeft" ? editor.state.selection.from : editor.state.selection.to);
             return true;
-          }
-          if (event.key === "Tab" || event.key === "Enter") {
-            const caret = tiptapDomSelection(editor);
-            if (caret) restoreTiptapSelection(editor, caret.start, caret.end);
           }
           return false;
         },

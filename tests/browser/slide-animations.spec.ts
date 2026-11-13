@@ -358,15 +358,11 @@ test("highlighting a bullet before choosing an entrance preserves selection and 
     range.setEnd(node!, start + "Second bullet".length);
     const rect = range.getBoundingClientRect();
     return {
-      x: rect.left + 1,
-      end: rect.right - 1,
+      x: rect.left + 12,
       y: rect.top + rect.height / 2,
     };
   });
-  await page.mouse.move(target.x, target.y);
-  await page.mouse.down();
-  await page.mouse.move(target.end, target.y, { steps: 5 });
-  await page.mouse.up();
+  await page.mouse.dblclick(target.x, target.y);
   await expect
     .poll(() => page.evaluate(() => window.getSelection()?.toString()))
     .toContain("Second");

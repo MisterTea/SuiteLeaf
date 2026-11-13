@@ -130,3 +130,19 @@ it("keeps the live editor when inherited bold is normalized into text runs", () 
   expect(editor.isDestroyed).toBe(false);
   expect(editor.state.doc.textContent).toBe("W");
 });
+
+it("uses the native caret when an arrow or input arrives before selectionchange", () => {
+  const view = render(<SlideTextBody content="First" editing onText={noop} onCaret={noop} />);
+  const root = view.container.querySelector<HTMLElement>(".ProseMirror")!;
+  const editor = slideTextEditor(root)!;
+  for (const type of ["keydown", "beforeinput"]) {
+    act(() => editor.commands.selectAll());
+    const text = root.querySelector("[data-slide-content]")!.firstChild!;
+    window.getSelection()!.collapse(text, 1);
+    act(() => {
+      if (type === "keydown") fireEvent.keyDown(root, { key: "ArrowLeft" });
+      else fireEvent(root, new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: "X" }));
+    });
+    expect(selectionOffsets(root)).toEqual({ start: 1, end: 1 });
+  }
+});

@@ -39,6 +39,12 @@ test("the Cast audience canvas fits the TV and reveals objects without overflowi
       const bounds = await canvas.boundingBox();
       return bounds ? Math.abs(bounds.width / bounds.height - 16 / 9) : 1;
     }).toBeLessThan(0.01);
+    // ResizeObserver updates the painted slide after the outer CSS box resizes.
+    await expect.poll(async () => {
+      const outer = (await canvas.boundingBox())!;
+      const shape = (await page.locator('[data-element-id="point"]').boundingBox())!;
+      return shape.x + shape.width < outer.x + outer.width;
+    }).toBe(true);
     const canvasBox = (await canvas.boundingBox())!;
     const shapeBox = (await page.locator('[data-element-id="point"]').boundingBox())!;
     expect(canvasBox.x).toBeGreaterThanOrEqual(0);
