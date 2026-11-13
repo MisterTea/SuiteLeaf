@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useWorkspaceViewport } from "./workspace-viewport";
 import { Link } from "react-router-dom";
 import {
   Leaf,
@@ -51,6 +52,7 @@ import { WorkspaceStatusToast } from "./workspace-status-toast";
 import { EditorToolbarTarget, EditorToolbarNavigationTarget, ToolbarActions } from "../editor-toolbar-actions";
 
 export function Workspace() {
+  const viewportRef = useWorkspaceViewport();
   const ws = useWorkspaceState();
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [navigationTarget, setNavigationTarget] = useState<HTMLDivElement | null>(null);
@@ -137,7 +139,7 @@ export function Workspace() {
     <EditorToolbarTarget.Provider value={setToolbarTarget}>
     <EditorToolbarNavigationTarget.Provider value={setNavigationTarget}>
     <CommandPalette kind={f.kind}>
-      <div className="workspace">
+      <div ref={viewportRef} className="workspace" data-editor-kind={f.kind}>
         {cluster ? (
           <ShareNotices
             floating

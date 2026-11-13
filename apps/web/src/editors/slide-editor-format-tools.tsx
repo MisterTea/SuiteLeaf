@@ -4,6 +4,8 @@ import {
   AlignRight,
   Bold,
   Italic,
+  IndentDecrease,
+  IndentIncrease,
   LayoutTemplate,
   List,
   Minus,
@@ -254,8 +256,9 @@ export function SlideTextToolbar({
   toggleItalic,
   toggleUnderline,
   applyAccent,
+  changeIndent,
 }: Pick<SlideUpdates, "updateElement"> &
-  Pick<SlideTextFormat, "toggleBold" | "toggleItalic" | "toggleUnderline" | "applyAccent"> & {
+  Pick<SlideTextFormat, "toggleBold" | "toggleItalic" | "toggleUnderline" | "applyAccent" | "changeIndent"> & {
     state: SlidesEditorState;
     selectedElement: SlideElement;
     readOnly: boolean;
@@ -439,6 +442,12 @@ export function SlideTextToolbar({
           }
         >
           <AlignRight size={16} />
+        </Tool>
+        <Tool label="Decrease indent" onClick={() => changeIndent(-1)}>
+          <IndentDecrease size={16} />
+        </Tool>
+        <Tool label="Increase indent" onClick={() => changeIndent(1)}>
+          <IndentIncrease size={16} />
         </Tool>
         <Tool
           label="Bullet list"

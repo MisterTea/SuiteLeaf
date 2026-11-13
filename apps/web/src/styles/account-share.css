@@ -204,6 +204,10 @@
   .account-actions {
     flex-direction: column;
   }
+  .account-actions button {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 .share-dialog {
   width: min(520px, 92vw);

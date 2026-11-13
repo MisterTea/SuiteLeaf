@@ -87,4 +87,3 @@ it("resolves embedded video and poster paths from media/ in MARP bundles", async
   expect(result["media/clip.mp4"]).toMatch(/^data:video\/mp4;base64,/);
   expect(result["media/clip_poster.png"]).toMatch(/^data:image\/png;base64,/);
 });
-

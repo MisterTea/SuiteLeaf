@@ -19,6 +19,19 @@
 }
 .mobile-marp-view-toggle { display: none; }
 @media screen and (max-width: 700px) {
+  /* Keep menus and the canvas together above the software keyboard. The
+     browser can pan the visual viewport when bringing a text caret into view. */
+  .workspace[data-editor-kind="slide"] {
+    position: fixed;
+    top: var(--workspace-visible-top, 0px);
+    left: 0;
+    width: 100%;
+    height: var(--workspace-visible-height, 100dvh);
+    overflow: hidden;
+  }
+  .slide-stage-row > .slide-stage-viewport {
+    min-height: 0;
+  }
   .mobile-marp-view-toggle {
     display: block;
     align-self: flex-start;

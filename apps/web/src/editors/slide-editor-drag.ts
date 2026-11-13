@@ -120,7 +120,7 @@ export function useElementDrag(
       editingRef.current = el.id;
       textRange.current = null;
       flushSync(() => setEditingId(el.id));
-      e.currentTarget.querySelector<HTMLElement>('[contenteditable="true"], textarea')?.focus();
+      e.currentTarget.querySelector<HTMLElement>('[contenteditable="true"], textarea')?.focus({ preventScroll: true });
       lastTouchTap.current = null;
     } else lastTouchTap.current = { id: el.id, time: now };
   };

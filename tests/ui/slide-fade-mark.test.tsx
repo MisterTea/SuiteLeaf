@@ -59,6 +59,27 @@ describe("FadeOnClickMark", () => {
 });
 
 describe("animationSequenceMap", () => {
+  it("numbers image and caption pairs by click rather than by object", () => {
+    const elements = [1, 2, 3].flatMap((order) => [
+      { id: `image-${order}`, animation: "appear-on-click", animationOrder: order },
+      { id: `caption-${order}`, animation: "appear-on-click", animationOrder: order },
+    ]);
+    const map = animationSequenceMap(elements);
+    expect([...map.values()]).toEqual([1, 1, 2, 2, 3, 3]);
+  });
+
+  it("keeps with/after effects on the same click and uses the first click for repeated objects", () => {
+    const elements = [
+      { id: "image", animation: "appear-on-click", animationOrder: 1, animationExit: { order: 4 } },
+      { id: "caption", animation: "appear-on-click", animationOrder: 2, animationTrigger: "with" },
+      { id: "credit", animation: "appear-on-click", animationOrder: 3, animationTrigger: "after" },
+      { id: "next", animation: "appear-on-click", animationOrder: 5 },
+    ];
+    expect([...animationSequenceMap(elements)]).toEqual([
+      ["image", 1], ["caption", 1], ["credit", 1], ["next", 3],
+    ]);
+  });
+
   it("returns an empty map for undefined or empty elements", () => {
     expect(animationSequenceMap(undefined).size).toBe(0);
     expect(animationSequenceMap([]).size).toBe(0);
