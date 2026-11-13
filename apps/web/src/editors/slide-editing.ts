@@ -620,9 +620,12 @@ export function logoImage(
   alt: string,
   newId: () => string,
   deckWidth: number,
+  naturalWidth: number,
+  naturalHeight: number,
 ): SlideElement {
-  const width = 168;
-  const height = 96;
+  const scale = Math.min(168 / naturalWidth, 96 / naturalHeight);
+  const width = naturalWidth * scale;
+  const height = naturalHeight * scale;
   return {
     id: newId(),
     type: "image",

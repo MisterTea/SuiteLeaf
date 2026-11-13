@@ -1,3 +1,4 @@
+import { fillSlideText } from "./slide-text-helpers";
 import { test, expect, type Page } from "@playwright/test";
 
 const titles = ["Intro", "Garden", "Close"] as const;
@@ -21,26 +22,32 @@ async function threeSlideDeck(page: Page) {
   await page.getByRole("button", { name: "New presentation" }).click();
   await expect(page.locator(".slides-editor")).toBeVisible();
   await page.getByLabel("File title").fill("Numbered deck");
-  await page.locator(".slide-element textarea").first().fill(titles[0]);
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    titles[0],
+  );
   for (const title of titles.slice(1)) {
     await page.getByRole("button", { name: "+ New slide" }).click();
     await page.getByRole("menuitem", { name: "Title & body" }).click();
     await expect(page.locator(".thumbnail-row")).toHaveCount(
       titles.indexOf(title) + 1,
     );
-    await page.locator(".slide-element textarea").first().fill(title);
+    await fillSlideText(
+      page.locator(".slide-canvas .slide-text").first(),
+      title,
+    );
   }
   await expect(page.locator(".thumbnail-row")).toHaveCount(3);
   await page.getByRole("option", { name: /Slide 1: Intro/ }).click();
-  await expect(page.locator(".slide-canvas textarea").first()).toHaveValue(
-    "Intro",
-  );
+  await expect(
+    page.locator(".slide-canvas .element-textarea").first(),
+  ).toHaveText("Intro");
 }
 
 async function expectNumber(page: Page, title: string, n: number) {
   const canvas = page.locator(".slide-canvas");
   const number = canvas.locator(".slide-number");
-  await expect(canvas.locator("textarea").first()).toHaveValue(title);
+  await expect(canvas.locator(".element-textarea").first()).toHaveText(title);
   await expect(number).toBeVisible();
   await expect(number).toHaveText(String(n));
   await expect(number).toHaveAttribute("aria-label", `Slide number ${n}`);
@@ -50,7 +57,9 @@ async function expectNumber(page: Page, title: string, n: number) {
 }
 
 async function savedFlag(page: Page): Promise<unknown> {
-  const raw = await page.locator(".slides-editor").getAttribute("data-deck-snapshot");
+  const raw = await page
+    .locator(".slides-editor")
+    .getAttribute("data-deck-snapshot");
   return JSON.parse(raw ?? "{}").slideNumbers;
 }
 
@@ -63,7 +72,9 @@ test("slide numbers follow the deck, stay out of the text, and persist", async (
 
   await expect(page.locator(".slide-number")).toHaveCount(0);
 
-  await menuBar(page).getByRole("button", { name: "View", exact: true }).click();
+  await menuBar(page)
+    .getByRole("button", { name: "View", exact: true })
+    .click();
   const toggle = page.getByRole("menuitemcheckbox", {
     name: "Slide numbers",
     exact: true,
@@ -73,9 +84,15 @@ test("slide numbers follow the deck, stay out of the text, and persist", async (
   await toggle.click();
 
   await expectNumber(page, "Intro", 1);
-  await page.locator(".slide-canvas textarea").first().fill("Intro revised");
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    "Intro revised",
+  );
   await expect(page.locator(".slide-canvas .slide-number")).toHaveText("1");
-  await page.locator(".slide-canvas textarea").first().fill("Intro");
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    "Intro",
+  );
   await expectNumber(page, "Intro", 1);
   expect(await savedFlag(page)).toBe(true);
 
@@ -117,28 +134,40 @@ test("slide numbers follow the deck, stay out of the text, and persist", async (
   await expectNumber(page, "Intro", 2);
   expect(await savedFlag(page)).toBe(true);
 
-  await menuBar(page).getByRole("button", { name: "View", exact: true }).click();
+  await menuBar(page)
+    .getByRole("button", { name: "View", exact: true })
+    .click();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
   await expect(toggle.locator(".menu-item-check")).toHaveText("✓");
   await toggle.click();
   await expect(page.locator(".slide-number")).toHaveCount(0);
-  await expect(page.locator(".slide-canvas textarea").first()).toHaveValue("Intro");
+  await expect(
+    page.locator(".slide-canvas .element-textarea").first(),
+  ).toHaveText("Intro");
   expect(await savedFlag(page)).toBeUndefined();
   await page.getByRole("option", { name: /Slide 1: Close/ }).click();
-  await expect(page.locator(".slide-canvas textarea").first()).toHaveValue("Close");
+  await expect(
+    page.locator(".slide-canvas .element-textarea").first(),
+  ).toHaveText("Close");
   await expect(page.locator(".slide-number")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Numbered deck" }).click();
   await expect(page.locator(".slides-editor")).toBeVisible();
   await expect(page.locator(".slide-number")).toHaveCount(0);
-  await expect(page.locator(".slide-canvas textarea").first()).toHaveValue("Close");
+  await expect(
+    page.locator(".slide-canvas .element-textarea").first(),
+  ).toHaveText("Close");
   await page.getByRole("option", { name: /Slide 2: Intro/ }).click();
-  await expect(page.locator(".slide-canvas textarea").first()).toHaveValue("Intro");
+  await expect(
+    page.locator(".slide-canvas .element-textarea").first(),
+  ).toHaveText("Intro");
   await expect(page.locator(".slide-number")).toHaveCount(0);
   expect(await savedFlag(page)).toBeUndefined();
 
-  await menuBar(page).getByRole("button", { name: "View", exact: true }).click();
+  await menuBar(page)
+    .getByRole("button", { name: "View", exact: true })
+    .click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await page.keyboard.press("Escape");
   await expect(page.locator(".slide-number")).toHaveCount(0);

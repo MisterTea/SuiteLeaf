@@ -1,3 +1,4 @@
+import { sourceEditor, sourceValue, sourceSelection, selectSourceRange, sourceHeight, sourceScrollTop, setSourceScrollTop } from "./slide-source-control";
 import React, {
   startTransition,
   useCallback,
@@ -7,7 +8,7 @@ import React, {
   type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
-import ace, { Range, type Ace } from "ace-builds";
+import ace, { type Ace } from "ace-builds";
 import "ace-builds/src-noconflict/mode-markdown";
 import "ace-builds/src-noconflict/mode-xml";
 import "ace-builds/src-noconflict/mode-dot";
@@ -90,15 +91,15 @@ export function scrollMarkdownTo(area: HTMLTextAreaElement, offset: number) {
  * A Mac only scrolls a text box, which would leave the slide behind.
  */
 function pageCaret(area: HTMLTextAreaElement, direction: 1 | -1, extend: boolean) {
-  const text = area.value;
-  const backward = area.selectionDirection === "backward";
-  const caret = backward ? area.selectionStart : area.selectionEnd;
-  const anchor = backward ? area.selectionEnd : area.selectionStart;
+  const text = sourceValue(area);
+  const selection = sourceSelection(area);
+  const caret = selection.backward ? selection.start : selection.end;
+  const anchor = selection.backward ? selection.end : selection.start;
   const lines = text.split("\n");
   const line = lineAt(text, caret);
   const column = caret - (text.lastIndexOf("\n", caret - 1) + 1);
-  const height = parseFloat(getComputedStyle(area).lineHeight) || 19;
-  const step = Math.max(1, Math.floor(area.clientHeight / height) - 1);
+  const height = sourceEditor(area)?.renderer.lineHeight || parseFloat(getComputedStyle(area).lineHeight) || 19;
+  const step = Math.max(1, Math.floor(sourceHeight(area) / height) - 1);
   const target = Math.min(lines.length - 1, Math.max(0, line + direction * step));
   let next = 0;
   for (let i = 0; i < target; i++) next += lines[i].length + 1;
@@ -109,9 +110,9 @@ function pageCaret(area: HTMLTextAreaElement, direction: 1 | -1, extend: boolean
         : 0
       : next + Math.min(column, lines[target].length);
   if (extend)
-    area.setSelectionRange(Math.min(anchor, next), Math.max(anchor, next), next < anchor ? "backward" : "forward");
-  else area.setSelectionRange(next, next);
-  area.scrollTop += direction * step * height;
+    selectSourceRange(area, Math.min(anchor, next), Math.max(anchor, next), next < anchor ? "backward" : "forward");
+  else selectSourceRange(area, next);
+  setSourceScrollTop(area, sourceScrollTop(area) + direction * step * height);
   scrollMarkdownTo(area, next);
 }
 
@@ -257,93 +258,7 @@ export function MarpTextarea({
       HTMLTextAreaElement.prototype,
       "value",
     )?.get;
-    const nativeValueSetter = Object.getOwnPropertyDescriptor(
-      HTMLTextAreaElement.prototype,
-      "value",
-    )?.set;
-    const nativeSetSelectionRange = HTMLTextAreaElement.prototype.setSelectionRange;
-
-    // Define properties on textarea so tests and existing code accessing areaRef or textarea work seamlessly
-    Object.defineProperty(textarea, "value", {
-      get: () => editor.getValue(),
-      set: (val: string) => {
-        nativeValueSetter?.call(textarea, val);
-        if (isAceBuffer) return;
-        if (editor.getValue() !== val) {
-          isInternalChange.current = true;
-          try {
-            editor.setValue(val, -1);
-          } finally {
-            isInternalChange.current = false;
-          }
-        }
-        pending.current = val;
-        setDraft(val);
-        window.clearTimeout(timer.current);
-        timer.current = window.setTimeout(flush, MARP_TYPING_PAUSE_MS);
-      },
-      configurable: true,
-    });
-
-    let selectionDir: "forward" | "backward" | "none" = "forward";
-
-    textarea.setSelectionRange = (
-      start: number,
-      end: number,
-      direction?: "forward" | "backward" | "none",
-    ) => {
-      selectionDir = direction ?? (start > end ? "backward" : "forward");
-      nativeSetSelectionRange?.call(textarea, start, end, direction);
-      if (isAceBuffer) return;
-      const doc = editor.getSession().getDocument();
-      const startPos = doc.indexToPosition(start, 0);
-      const endPos = doc.indexToPosition(end, 0);
-      const range = new Range(startPos.row, startPos.column, endPos.row, endPos.column);
-      editor.getSelection().setSelectionRange(range, direction === "backward");
-    };
-
-    Object.defineProperty(textarea, "selectionStart", {
-      get: () => {
-        const range = editor.getSelectionRange();
-        const doc = editor.getSession().getDocument();
-        return doc.positionToIndex(range.start, 0);
-      },
-      configurable: true,
-    });
-
-    Object.defineProperty(textarea, "selectionEnd", {
-      get: () => {
-        const range = editor.getSelectionRange();
-        const doc = editor.getSession().getDocument();
-        return doc.positionToIndex(range.end, 0);
-      },
-      configurable: true,
-    });
-
-    Object.defineProperty(textarea, "selectionDirection", {
-      get: () => {
-        if (editor.selection.isBackwards()) return "backward";
-        return selectionDir;
-      },
-      configurable: true,
-    });
-
-    Object.defineProperty(textarea, "scrollTop", {
-      get: () => editor.renderer.getScrollTop(),
-      set: (val: number) => {
-        editor.renderer.scrollToY(val);
-      },
-      configurable: true,
-    });
-
-    Object.defineProperty(textarea, "clientHeight", {
-      get: () => container.clientHeight || 500,
-      configurable: true,
-    });
-
-    if (areaRef) {
-      areaRef.current = textarea;
-    }
+    if (areaRef) areaRef.current = textarea;
 
     // Ignore synthetic mousedown directly targeting the hidden input textarea
     const onEditorMouseDown = (e: any) => {
@@ -366,9 +281,10 @@ export function MarpTextarea({
       if (e.key !== "PageDown" && e.key !== "PageUp") return;
       if (e.altKey || e.metaKey || e.ctrlKey) return;
       e.preventDefault();
+      e.stopImmediatePropagation();
       pageCaret(textarea, e.key === "PageDown" ? 1 : -1, e.shiftKey);
     };
-    textarea.addEventListener("keydown", onKeyDown);
+    textarea.addEventListener("keydown", onKeyDown, true);
 
     // Typing changes inside Ace session
     const onSessionChange = () => {
@@ -382,8 +298,9 @@ export function MarpTextarea({
     editor.session.on("change", onSessionChange);
 
     // Changes dispatched directly on the textarea (e.g. testing-library fireEvent.change)
-    const onTextareaChange = () => {
-      if (isAceBuffer) return;
+    const onTextareaChange = (event: Event) => {
+      // Programmatic whole-source changes are accepted; native changes belong to Ace's input buffer.
+      if (isAceBuffer || event.isTrusted) return;
       const nextVal = nativeValueGetter?.call(textarea) ?? textarea.value;
       if (typeof nextVal === "string" && editor.getValue() !== nextVal) {
         isInternalChange.current = true;
@@ -402,7 +319,7 @@ export function MarpTextarea({
 
     // Cursor / caret line updates
     const onCursor = () => {
-      if (isAceBuffer) return;
+      if (isAceBuffer || isInternalChange.current || document.activeElement !== textarea) return;
       const range = editor.getSelectionRange();
       const line = range.start.row;
       if (line === caretLine.current) return;
@@ -455,7 +372,7 @@ export function MarpTextarea({
         textarea.removeEventListener("change", onTextareaChange);
         textarea.removeEventListener("select", onCursor);
         textarea.removeEventListener("blur", onBlur);
-        textarea.removeEventListener("keydown", onKeyDown);
+        textarea.removeEventListener("keydown", onKeyDown, true);
         textarea.removeEventListener("mousedown", stopMouse);
         textarea.removeEventListener("mouseup", stopMouse);
         if (areaRef && areaRef.current === textarea) {
@@ -486,12 +403,7 @@ export function MarpTextarea({
           const cursor = editor.getCursorPosition();
           editor.setValue(target, -1);
           editor.moveCursorToPosition(cursor);
-          const textarea = editor.textInput.getElement() as HTMLTextAreaElement;
-          const nativeValueSetter = Object.getOwnPropertyDescriptor(
-            HTMLTextAreaElement.prototype,
-            "value",
-          )?.set;
-          nativeValueSetter?.call(textarea, target);
+
         } finally {
           isInternalChange.current = false;
         }
@@ -499,6 +411,9 @@ export function MarpTextarea({
     } finally {
       isInsideEffect.current = false;
     }
+    const active = editorRef.current;
+    if (active && document.activeElement === active.textInput.getElement())
+      onCaretLineRef.current?.(active.getValue(), active.getCursorPosition().row);
   }, [source, draft]);
 
   // Update readOnly

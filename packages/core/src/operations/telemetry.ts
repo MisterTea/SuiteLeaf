@@ -1,9 +1,4 @@
-import {
-  ERROR_REMEDIES,
-  type NodeTelemetrySnapshot,
-  type OperationalAlert,
-  type StableErrorCode,
-} from "./types";
+import { ERROR_REMEDIES, type NodeTelemetrySnapshot, type OperationalAlert } from "./types";
 
 export interface TelemetryInputs {
   nodeId: string;

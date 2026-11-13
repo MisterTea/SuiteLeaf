@@ -105,7 +105,7 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
     PERSONAL_DICTIONARY_KEY,
   );
   expect(JSON.parse(dictionary ?? "{}").added).toContain("kenkey");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const saved = await download(page);
   const id = saved.content.workbook.sheetOrder[0];
   const cells = saved.content.workbook.sheets[id].cellData;
@@ -138,8 +138,8 @@ test("slide spelling replaces one word and keeps the rest of the box", async ({ 
     if (/recieve|the keys/i.test(body)) leaks.push(request.url());
   });
   await openNative(page, "Update.slslides", updateDeck());
-  const box = page.locator(".slide-canvas textarea").nth(1);
-  await expect(box).toHaveValue("recieve the keys");
+  const box = page.locator(".slide-canvas .element-textarea").nth(1);
+  await expect(box).toHaveText("recieve the keys");
   await expect(page.locator(".slide-spell-mirror .spelling-misspelling")).toHaveText("recieve");
   await context.setOffline(true);
   await page.getByRole("button", { name: "Tools", exact: true }).click();
@@ -148,9 +148,10 @@ test("slide spelling replaces one word and keeps the rest of the box", async ({ 
   await expect(spelling).toContainText("recieve → receive");
   await expect(spelling).toContainText("recieve the keys");
   await spelling.getByRole("button", { name: "receive", exact: true }).click();
-  await expect(box).toHaveValue("receive the keys");
+  await expect(box).toHaveText("receive the keys");
   await expect(page.locator(".slide-spell-mirror")).toHaveCount(0);
   await expect(spelling).toContainText("Spelling check finished");
+  await spelling.getByRole("button", { name: "Close spelling", exact: true }).click();
   const saved = await download(page);
   const slide = Object.values(saved.content.slides)[0] as {
     elements: { content?: string; italic?: boolean }[];

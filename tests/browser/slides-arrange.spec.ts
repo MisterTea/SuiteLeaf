@@ -58,7 +58,7 @@ test("every Slides Edit, Insert, Format, and Slide menu item does something", as
   await choose(page, "Insert", "Text box");
   const box = page.locator(".slide-text.selected");
   await expect(texts()).toHaveCount(beforeTexts + 1);
-  await expect(box.locator("textarea")).toBeFocused();
+  await expect(box.locator('.element-editor[contenteditable="true"]')).toBeFocused();
 
   await choose(page, "Format", "Bold", "Text");
   await expect(box).toHaveCSS("font-weight", "700");

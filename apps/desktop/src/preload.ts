@@ -1,15 +1,29 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopBridge } from "@suiteleaf/core";
+import type { DesktopBridge, DocumentScanProgress } from "@suiteleaf/core";
 import type { AiGenerateEvent, AiStatus } from "@suiteleaf/core/ai";
 const bridge: DesktopBridge = {
   getDocumentsDirectory: () => ipcRenderer.invoke("documents:get"),
   chooseDocumentsDirectory: () => ipcRenderer.invoke("documents:choose"),
+  rescanDocumentsDirectory: () => ipcRenderer.invoke("documents:rescan"),
+  onDocumentScan: (callback) => {
+    const listener = (_event: unknown, progress: unknown) => {
+      if (!progress || typeof progress !== "object") return;
+      const { files, folders, total } = progress as DocumentScanProgress;
+      if (!Number.isFinite(files) || !Number.isFinite(folders)) return;
+      if (total != null && !Number.isFinite(total)) return;
+      callback(total == null ? { files, folders } : { files, folders, total });
+    };
+    ipcRenderer.on("documents:scan", listener);
+    return () => ipcRenderer.removeListener("documents:scan", listener);
+  },
   onFilesChanged: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("files:changed", listener);
     return () => ipcRenderer.removeListener("files:changed", listener);
   },
   reload: (id) => ipcRenderer.invoke("files:reload", id),
+  trashFolder: (folder) => ipcRenderer.invoke("folders:trash", folder),
+  exportFolderSelection: (folders, ids) => ipcRenderer.invoke("folders:export-selection", folders, ids),
   listFolders: () => ipcRenderer.invoke("folders:list"),
   createFolder: (parent, name) =>
     ipcRenderer.invoke("folders:create", parent, name),
@@ -19,6 +33,7 @@ const bridge: DesktopBridge = {
     ipcRenderer.invoke("folders:move", folder, parent),
   moveFile: (id, folder) => ipcRenderer.invoke("files:move", id, folder),
   list: () => ipcRenderer.invoke("files:list"),
+  setTrashed: (ids, trashed) => ipcRenderer.invoke("files:set-trashed", ids, trashed),
   get: (id) => ipcRenderer.invoke("files:get", id),
   save: (r) => ipcRenderer.invoke("files:save", r),
   remove: (id) => ipcRenderer.invoke("files:remove", id),

@@ -1,5 +1,6 @@
+import { applySelectedParagraphAnimation, type AnimationTextSelection } from "./slide-animation-selection";
 import type { Presentation, Slide } from "@suiteleaf/core";
-import { animationClicks, animationSequence } from "@suiteleaf/core/slide-motion";
+import { animationClicks, animationSequence, type ParagraphBuild, type ExitBuild } from "@suiteleaf/core/slide-motion";
 
 /** Hidden in the slideshow until the next click, then faded in. Visible while editing. */
 export const FADE_ON_CLICK = "fade-on-click" as const;
@@ -25,6 +26,8 @@ type FadeElement = {
   animation?: string;
   animationOrder?: number;
   animationTrigger?: string;
+  paragraphBuilds?: readonly ParagraphBuild[];
+  animationExit?: ExitBuild;
 };
 
 export function fadesOnClick(el: { animation?: string } | null | undefined): boolean {
@@ -283,16 +286,21 @@ export function applySlideAnimation(
   slideId: string,
   elementId: string,
   animation: SlideAnimationKind | null,
+  selection?: AnimationTextSelection | null,
 ): Presentation | null {
   const slide = deck.slides[slideId];
   const target = slide?.elements.find((el) => el.id === elementId);
   if (!slide || !target) return null;
-  if (animation === null && !target.animation) return null;
-  if (animation && target.animation === animation) return null;
+  if (animation && selection && selection.end !== selection.start)
+    return applySelectedParagraphAnimation(deck, slideId, elementId, animation, selection);
+  const parts = slide.elements.filter((el) => el.id === elementId ||
+    !!target.sourceShapeId && el.sourceShapeId === target.sourceShapeId);
+  if (parts.every((el) => (el.animation ?? null) === animation && !el.paragraphBuilds?.length)) return null;
+  const partIds = new Set(parts.map((el) => el.id));
   const order =
     animation == null
       ? undefined
-      : Math.max(0, ...slide.elements.map((el) => el.animationOrder ?? 0)) + 1;
+      : target.animationOrder ?? Math.max(0, ...animationSequence(slide.elements).map((item) => item.order)) + 1;
   return {
     ...deck,
     slides: {
@@ -301,8 +309,10 @@ export function applySlideAnimation(
         ...slide,
         timing: undefined,
         elements: slide.elements.map((el) =>
-          el.id === elementId
-            ? { ...el, animation: animation ?? undefined, animationOrder: order }
+          partIds.has(el.id)
+            ? { ...el, animation: animation ?? undefined, animationOrder: order, paragraphBuilds: undefined,
+                animationTrigger: animation ? target.animationTrigger : undefined,
+                animationDuration: animation ? target.animationDuration : undefined }
             : el,
         ),
       },
@@ -334,15 +344,17 @@ export type AnimationRow = {
   ms: number;
 };
 
-/** 1-based slideshow click number for each animated object on a slide. */
+/** Slideshow click numbers for each object, including paragraph builds and exits. */
 export function animationSequenceMap(
   elements: readonly FadeElement[] | undefined,
-): Map<string, number> {
-  const map = new Map<string, number>();
+): Map<string, number[]> {
+  const map = new Map<string, number[]>();
   if (!elements) return map;
   animationClicks(elements).forEach((click, index) => {
-    for (const id of click.ids) {
-      if (!map.has(id)) map.set(id, index + 1);
+    for (const id of new Set(click.ids)) {
+      const numbers = map.get(id) ?? [];
+      numbers.push(index + 1);
+      map.set(id, numbers);
     }
   });
   return map;

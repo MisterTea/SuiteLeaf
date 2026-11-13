@@ -165,16 +165,23 @@ impl NetHandle {
     }
 }
 
-#[derive(NetworkBehaviour)]
-struct Behaviour {
-    identify: identify::Behaviour,
-    ping: ping::Behaviour,
-    kad: kad::Behaviour<kad::store::MemoryStore>,
-    gossipsub: gossipsub::Behaviour,
-    mdns: Toggle<mdns::tokio::Behaviour>,
-    db_sync: request_response::cbor::Behaviour<Raw, Raw>,
-    blob: request_response::cbor::Behaviour<Raw, Raw>,
+// libp2p's generated handler includes uninhabited protocol events on Linux.
+// Scope the allowance to the generated behaviour, including its derived impls.
+#[allow(unreachable_code)]
+mod behaviour {
+    use super::*;
+    #[derive(NetworkBehaviour)]
+    pub(super) struct Behaviour {
+        pub(super) identify: identify::Behaviour,
+        pub(super) ping: ping::Behaviour,
+        pub(super) kad: kad::Behaviour<kad::store::MemoryStore>,
+        pub(super) gossipsub: gossipsub::Behaviour,
+        pub(super) mdns: Toggle<mdns::tokio::Behaviour>,
+        pub(super) db_sync: request_response::cbor::Behaviour<Raw, Raw>,
+        pub(super) blob: request_response::cbor::Behaviour<Raw, Raw>,
+    }
 }
+use behaviour::{Behaviour, BehaviourEvent};
 
 fn request_behaviour(protocol: Protocol) -> request_response::cbor::Behaviour<Raw, Raw> {
     request_response::cbor::Behaviour::with_codec(

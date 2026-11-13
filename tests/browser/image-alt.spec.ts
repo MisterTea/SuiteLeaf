@@ -61,9 +61,14 @@ async function newDocument(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
-  await title.click();
-  await title.press("ControlOrMeta+A");
-  await title.fill("Seed swap sign-up");
+  if (await title.isVisible()) await title.fill("Seed swap sign-up");
+  else {
+    await page.getByRole("button", { name: "File", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Rename file" });
+    await dialog.getByRole("textbox").fill("Seed swap sign-up");
+    await dialog.getByRole("button", { name: "Rename", exact: true }).click();
+  }
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();
   return editor;
@@ -126,7 +131,7 @@ test("a new photo starts with an empty description and alt text stays with the i
   await card.getByRole("button", { name: "Alt text", exact: true }).click();
   await field.fill(sentence);
   await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   const native = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();

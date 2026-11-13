@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
-import { placeSlideGroup, slideOp, snapSlideBox, type Slide } from "@suiteleaf/core";
+import { placeSlideGroup, snapSlideBox, type Presentation, type Slide } from "@suiteleaf/core";
 import { hasTextRuns } from "./slide-runs";
 import { isMarpChrome, isMarpTitle, reorderFittedMarpItem, reorderMarpItem } from "./slide-marp";
 import type { ResizeHandle, SlidesEditorState } from "./slide-editor-state";
@@ -9,15 +9,20 @@ import type { SlideUpdates } from "./slide-editor-elements";
 /** Moving, resizing, and reordering objects on the slide with the mouse. */
 export function useElementDrag(
   state: SlidesEditorState,
-  { activeSlide, updateElement }: Pick<SlideUpdates, "updateElement"> & { activeSlide: Slide },
+  { activeSlide, updateElement, publishLive }: Pick<SlideUpdates, "updateElement"> & {
+    activeSlide: Slide;
+    publishLive: (next: Presentation) => void;
+  },
 ) {
   const {
     deck, deckRef, activeRef, textPress, dragMoved, selectedIdsRef, selectedElementRef,
     setSelectedElementId, setTableCell, editingRef, setEditingId, textRange, readOnlyRef,
-    draggingRef, marpOpenRef, stageRef, liveDirty, setDeck, onChangeRef, setSnapGuide, historyRef,
+    draggingRef, marpOpenRef, stageRef, liveDirty, setSnapGuide, historyRef,
     commitRef,
   } = state;
   const lastTouchTap = useRef<{ id: string; time: number } | null>(null);
+  const publishRef = useRef(publishLive);
+  publishRef.current = publishLive;
   const touchPress = useRef<{ id: number; elementId: string; handle?: ResizeHandle } | null>(null);
 
   // Mouse drag & resize handlers for elements
@@ -87,6 +92,7 @@ export function useElementDrag(
       handle,
       initW: el.width,
       initH: el.height,
+      proportional: el.type === "image" && handle?.length === 2,
       group,
     };
   };
@@ -95,6 +101,7 @@ export function useElementDrag(
     if (e.pointerType !== "touch" || window.innerWidth > 700) return;
     if (!handle && editingRef.current === elementId) return;
     e.preventDefault();
+    state.ignoreCanvasClick.current = true;
     onElementMouseDown(e, elementId, handle);
     touchPress.current = { id: e.pointerId, elementId, handle };
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -131,6 +138,7 @@ export function useElementDrag(
         handle,
         initW = 100,
         initH = 50,
+        proportional,
         reorder,
         fitted,
         group,
@@ -158,14 +166,10 @@ export function useElementDrag(
         );
         if (!nextSlide) return;
         const prev = deckRef.current;
-        const next = {
+        publishRef.current({
           ...prev,
           slides: { ...prev.slides, [slide.id]: nextSlide },
-        };
-        deckRef.current = next;
-        liveDirty.current = true;
-        setDeck(next);
-        onChangeRef.current(next, slideOp(prev, next));
+        });
         return;
       }
       if (deckRef.current.marp) return;
@@ -175,7 +179,24 @@ export function useElementDrag(
       const dx = (e.clientX - startX) / scale;
       const dy = (e.clientY - startY) / scale;
 
-      if (handle) {
+      if (handle && proportional && initW > 0 && initH > 0) {
+        const west = handle.includes("w");
+        const north = handle.includes("n");
+        const outwardX = west ? -dx : dx;
+        const outwardY = north ? -dy : dy;
+        // Project the pointer movement onto the original diagonal.
+        const growth = (outwardX * initW + outwardY * initH) / (initW ** 2 + initH ** 2);
+        const minimum = Math.min(1, Math.max(30 / initW, 20 / initH));
+        const factor = Math.max(minimum, 1 + growth);
+        const width = initW * factor;
+        const height = initH * factor;
+        updateElement(elementId, {
+          x: west ? initX + initW - width : initX,
+          y: north ? initY + initH - height : initY,
+          width,
+          height,
+        }, { live: true });
+      } else if (handle) {
         let newX = initX;
         let newY = initY;
         let newW = initW;
@@ -222,15 +243,10 @@ export function useElementDrag(
         );
         if (slide && group && group.length > 1) {
           const elements = placeSlideGroup(slide.elements, group, snapped.x - initX, snapped.y - initY);
-          const prev = deckRef.current;
-          const next = {
-            ...prev,
-            slides: { ...prev.slides, [slide.id]: { ...slide, elements } },
-          };
-          deckRef.current = next;
-          liveDirty.current = true;
-          setDeck(next);
-          onChangeRef.current(next, slideOp(prev, next));
+          publishRef.current({
+            ...deckRef.current,
+            slides: { ...deckRef.current.slides, [slide.id]: { ...slide, elements } },
+          });
         } else {
           updateElement(elementId, { x: snapped.x, y: snapped.y }, { live: true });
         }

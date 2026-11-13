@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 import { dashMultipliers, officeGradient, straightGradientBackground, svgFillMarkup, type LineMarker, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
+import { masterForSlide } from "./slide-master";
+import { MASTER_PAGE_ID, isMasterPage } from "./slide-master-view";
 
 /**
  * SVG fill rejects a CSS gradient and paints the default black. Each ellipse
@@ -36,7 +38,11 @@ export function isFittedDeck(deck: Presentation) {
 }
 
 export function slideBackground(deck: Presentation, slide: Slide | undefined) {
-  return slide?.background?.color || deck.master?.background?.color || "#ffffff";
+  if (slide?.id === MASTER_PAGE_ID) return slide.background?.color || "#ffffff";
+  if (isMasterPage(slide?.id)) {
+    return slide?.background?.color || deck.slides[MASTER_PAGE_ID]?.background?.color || "#ffffff";
+  }
+  return slide?.background?.color || masterForSlide(deck, slide).background?.color || "#ffffff";
 }
 
 /** Solid colours use background-color. Gradients need the background shorthand. */

@@ -85,3 +85,15 @@
   .fade-on-click-mark { display: none !important; }
   .slide-element.has-fade-on-click { box-shadow: none; }
 }
+
+.paragraph-animation-marks { display: contents; }
+.paragraph-animation-mark {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  transform: translate(-100%, -50%);
+}
+.paragraph-animation-mark .fade-on-click-mark {
+  position: static;
+  vertical-align: top;
+}

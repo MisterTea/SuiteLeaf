@@ -5,7 +5,7 @@ async function newFile(page: Page, kind: string, title: string, text?: string) {
   const box = page.getByLabel("File title");
   await box.fill(title);
   if (text) await page.getByRole("textbox", { name: "Document content" }).fill(text);
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await expect(page.getByLabel("Search files")).toBeVisible();
 }
@@ -24,7 +24,7 @@ test("a title typed while a new spreadsheet loads keeps every keystroke", async 
   await page.waitForTimeout(1500);
   await expect(title).toHaveValue("Garden club budget");
   await expect(title).toBeFocused();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   // The grid still takes typing once someone clicks into it.
   await page

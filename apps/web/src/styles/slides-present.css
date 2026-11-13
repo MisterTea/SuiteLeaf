@@ -19,7 +19,7 @@
   .slides-sidebar.selecting-slides { flex-wrap: wrap; }
   .slide-selection-mode { flex: 0 0 100%; box-sizing: border-box; }
   .selecting-slides .thumbnails-list { touch-action: none; }
-  .thumbnail-row { -webkit-touch-callout: none; user-select: none; }
+  .thumbnail-row { -webkit-touch-callout: none; user-select: none; touch-action: pan-y; }
   .slide-canvas .slide-element { touch-action: none; }
   .slide-canvas textarea.element-textarea { pointer-events: none; }
   .slide-canvas .resize-handle { width: 16px; height: 16px; touch-action: none; }

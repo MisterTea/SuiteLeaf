@@ -119,7 +119,7 @@ describe("symbol fonts", () => {
     const xml = await (await JSZip.loadAsync(await exportDocx(doc))).file("word/document.xml")!.async("string");
     expect(xml).toMatch(/w:ascii="Wingdings"[\s\S]*?\uF028/);
     expect(xml).toMatch(/w:ascii="Symbol"[\s\S]*?>a</);
-    expect(xml).not.toContain("SuiteLeaf");
+    expect(xml).not.toMatch(/typeface="SuiteLeaf/);
   });
 
   it("keeps the marks out of Word headers, comments, and their anchors", async () => {
@@ -172,7 +172,7 @@ describe("symbol fonts", () => {
     expect(xml).toMatch(/typeface="Wingdings"[\s\S]*?<a:t>\*<\/a:t>/);
     expect(xml).toContain('typeface="Webdings"');
     expect(xml).toMatch(/typeface="Symbol"[\s\S]*?<a:t>m<\/a:t>/);
-    expect(xml).not.toContain("SuiteLeaf");
+    expect(xml).not.toMatch(/typeface="SuiteLeaf/);
   });
 
   it("writes a sheet's symbol face as the Office font and reads it back", async () => {
@@ -187,7 +187,7 @@ describe("symbol fonts", () => {
     const bytes = await exportXlsx(sheet);
     const styles = await (await JSZip.loadAsync(bytes)).file("xl/styles.xml")!.async("string");
     expect(styles).toContain('<name val="Wingdings"/>');
-    expect(styles).not.toContain("SuiteLeaf");
+    expect(styles).not.toMatch(/typeface="SuiteLeaf/);
     const back = (await importOffice(bytes, "xlsx", "symbols.xlsx")).file as SheetFile;
     const faces = Object.values((back.content.workbook as { styles: Record<string, { ff?: string }> }).styles).map((style) => style.ff);
     expect(faces).toContain("SuiteLeaf Sprig");

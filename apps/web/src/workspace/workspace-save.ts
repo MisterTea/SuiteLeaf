@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { cloneJson, readLibraryMarks, serializeFile } from "@suiteleaf/core";
+import { cloneJson, nativeFilename, readLibraryMarks, serializeFile } from "@suiteleaf/core";
 import { storage } from "../storage";
 import { recordSaveStatus, unackedEditCount } from "../save-state";
 import { retriesAutomatically, sameUploadBody, sendUploadSpans, uploadDelay, uploadQueue } from "../upload-queue";
@@ -187,6 +187,11 @@ export function useWorkspaceSave(ws: WorkspaceState) {
       snapshotExplicit.current = false;
       if (alive.current && current.current.drive && !driveConflictRef.current) {
         if (collabDocRef.current) {
+          const name = nativeFilename(snapshot);
+          if (current.current.drive.name !== name) {
+            await drive.update(current.current.drive.itemId, { name });
+            current.current.drive.name = name;
+          }
           clearTimeout(driveTimer.current);
           driveTimer.current = undefined;
           current.current = {

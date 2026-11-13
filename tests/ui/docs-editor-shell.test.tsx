@@ -433,6 +433,20 @@ describe("a shared document", () => {
     expect(onLocalSelection).toHaveBeenCalledWith(2, 2);
   });
 
+  it("restores saved formatting and comment threads when the room has the same paragraphs", async () => {
+    const room = new Y.Doc();
+    markSeedDocument(room);
+    const text = new Y.Text(); text.insert(0, "Shared start");
+    room.getArray<Y.Text>("paragraphs").push([text]);
+    const threads = [{ id: "t1", comments: [] }];
+    const content = paragraphs("Shared start");
+    content.content![0].content![0].marks = [{ type: "bold" }];
+    const { editor } = openDocs(docFile({ ...content, attrs: { commentThreads: threads } } as JsonNode), { collabDoc: room });
+    const ed = await editor();
+    await waitFor(() => expect(ed.getHTML()).toContain("<strong>Shared start</strong>"));
+    expect(room.getMap("docAttrs").get("commentThreads")).toBe(JSON.stringify(threads));
+  });
+
   it("starts from the room's paragraphs when the room already has text", async () => {
     const room = new Y.Doc();
     markSeedDocument(room);

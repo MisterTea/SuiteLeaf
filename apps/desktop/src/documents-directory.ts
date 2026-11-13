@@ -1,6 +1,7 @@
 import { watch, type FSWatcher } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { DocumentScanProgress } from "@suiteleaf/core";
 import type { FileStore } from "./store";
 
 /** Native notifications plus reconciliation for cloud clients that drop events. */
@@ -13,7 +14,11 @@ export class DocumentsDirectory {
     private store: FileStore,
     private changed: () => void,
   ) {}
-  async set(directory: string) {
+  async set(
+    directory: string,
+    onProgress?: (progress: DocumentScanProgress) => void,
+    options?: { rebuild?: boolean },
+  ) {
     const next = resolve(directory);
     await mkdir(next, { recursive: true });
     let watcher: FSWatcher | undefined;
@@ -27,13 +32,17 @@ export class DocumentsDirectory {
       watcher = undefined;
     }
     try {
-      const changed = await this.store.syncFolder(next, this.directory);
+      const changed = options?.rebuild
+        ? await this.store.syncFolder(next, this.directory, onProgress, options)
+        : onProgress
+          ? await this.store.syncFolder(next, this.directory, onProgress)
+          : await this.store.syncFolder(next, this.directory);
       this.close();
       this.directory = next;
       this.watcher = watcher;
       this.poll = setInterval(() => this.schedule(), 15000);
       this.poll.unref();
-      if (changed) this.changed();
+      if (changed || options?.rebuild) this.changed();
       // Catch changes made while the initial snapshot was being read.
       this.schedule();
     } catch (error) {

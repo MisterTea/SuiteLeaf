@@ -70,6 +70,10 @@ export const textRunSchema = z.object({
    * Left edge of this paragraph's first line, in slide units.
    * Set when list levels in one box do not share a margin.
    */
+  listDepth: z.number().int().min(0).max(8).optional(),
+  listColors: z.array(z.string().max(40).nullable()).max(9).optional(),
+  /** Body type size for each Office list level, including levels not yet used. */
+  listFontSizes: z.array(z.number().positive().nullable()).max(9).optional(),
   paraMargin: z.number().nonnegative().max(20000).optional(),
   /** Hanging marker width for this paragraph, in slide units. */
   paraHang: z.number().nonnegative().max(20000).optional(),
@@ -334,6 +338,7 @@ export const slideElementSchema = z.object({
   paragraphBuilds: z
     .array(
       z.object({
+        kind: z.enum(["fade-on-click", "appear-on-click", "fly-on-click", "wipe-on-click", "zoom-on-click"]).optional(),
         start: z.number().int().nonnegative().max(500),
         end: z.number().int().nonnegative().max(500),
         order: z.number().int().nonnegative(),
@@ -563,7 +568,7 @@ export const slideSchema = z.object({
     })
     .optional(),
   layout: z
-    .enum(["title", "title-body", "section", "two-column", "blank"])
+    .enum(["title", "title-body", "section", "two-column", "three-column", "blank"])
     .optional(),
   elements: z.array(slideElementSchema),
   /**
@@ -580,6 +585,8 @@ export const slideSchema = z.object({
   timing: z.string().max(100_000).optional(),
   /** Hidden in a PowerPoint slideshow. PDF export skips the slide. */
   hidden: z.boolean().optional(),
+  /** Which slide master this slide uses. Absent means the first master. */
+  masterId: z.string().min(1).max(80).optional(),
 });
 export type Slide = z.infer<typeof slideSchema>;
 export const slideThemeSchema = z.object({
@@ -601,6 +608,26 @@ export const embeddedFontSchema = z.object({
   data: z.string().min(30).max(12_000_000),
 });
 export type EmbeddedFont = z.infer<typeof embeddedFontSchema>;
+export const slideMasterSchema = z.object({
+  id: z.string().min(1).max(80).optional(),
+  name: z.string().min(1).max(80).optional(),
+  background: z.object({ color: z.string().max(40).optional() }).optional(),
+  elements: z.array(slideElementSchema).max(30),
+  /**
+   * Edited copies of the built-in layouts. Absent layouts still use the
+   * built-in placeholders. These are the layout slides of the master view.
+   */
+  layouts: z
+    .array(
+      z.object({
+        name: z.enum(["title", "title-body", "section", "two-column", "three-column", "blank"]),
+        elements: z.array(slideElementSchema).max(30),
+        background: z.object({ color: z.string().max(40).optional() }).optional(),
+      }),
+    )
+    .max(6)
+    .optional(),
+});
 export const presentationSchema = z.object({
   id: z.string(),
   width: z.number().positive(),
@@ -617,14 +644,11 @@ export const presentationSchema = z.object({
   proofingLanguage: z.enum(["en", "es", "fr", "de", "ar", "he"]).optional(),
   /** Fonts that were embedded in the PowerPoint file. The renderer loads these by family name. */
   fonts: z.array(embeddedFontSchema).max(16).optional(),
-  /** Objects and a background drawn behind every slide. */
-  master: z
-    .object({
-      background: z.object({ color: z.string().max(40).optional() }).optional(),
-      elements: z.array(slideElementSchema).max(30),
-    })
-    .optional(),
-  /** A MARP deck is markdown with a single column or two columns, not free placement. */
+  /** The first slide master. Older decks have only this. */
+  master: slideMasterSchema.optional(),
+  /** Every slide master, including the first, once the deck has more than one. */
+  masters: z.array(slideMasterSchema).max(8).optional(),
+  /** A MARP deck is markdown with one, two, or three columns, not free placement. */
   marp: z.boolean().optional(),
   /** When set, each slide shows its place in the deck, starting at 1. Absent means off. */
   slideNumbers: z.boolean().optional(),

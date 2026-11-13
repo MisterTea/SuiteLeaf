@@ -68,7 +68,7 @@ test("odd and even pages keep the letterhead, mirror numbers, and survive reopen
   await setup.getByLabel("Odd page footer").fill("Right edge");
   await setup.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(setup).toBeHidden();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   await expect(face(page, 0).locator(".page-header")).toHaveText(
     "Riverside Garden Club",

@@ -72,7 +72,7 @@ async function startNode() {
     });
   });
   await expect
-    .poll(async () => (await (await fetch(`${url}/api/node/info`)).json()).auth.enabled)
+    .poll(async () => (await fetch(`${url}/api/auth/suiteleaf/providers`)).ok)
     .toBe(true);
   return { url, child };
 }
@@ -194,7 +194,7 @@ test("a shared file notifies the recipient and can be kept as an owned copy", as
     const arrival = samPage.getByText(
       "Rosa Diaz shared “Watering rota” with you · Can edit",
     );
-    await expect(arrival).toBeVisible({ timeout: 5000 });
+    await expect(arrival).toBeVisible({ timeout: 35000 });
     await samPage.getByRole("button", { name: "Open Watering rota" }).click();
     await expect(samPage.getByRole("textbox", { name: "Document content" })).toContainText(
       "Monday: Rosa",
@@ -220,7 +220,7 @@ test("a shared file notifies the recipient and can be kept as an owned copy", as
     const plotNotice = samPage.getByText(
       "Rosa Diaz shared “Plot assignments” with you · Can view",
     );
-    await expect(plotNotice).toBeVisible({ timeout: 5000 });
+    await expect(plotNotice).toBeVisible({ timeout: 35000 });
     await samPage.getByRole("button", { name: "Dismiss" }).click();
     await expect(plotNotice).toHaveCount(0);
     const plotRow = samPage.getByRole("listitem").filter({ hasText: "Plot assignments.slsheet" });

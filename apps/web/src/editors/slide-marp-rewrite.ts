@@ -296,7 +296,25 @@ function patchChars(segment: string, before: SlideElement, after: SlideElement):
   const oldMid = oldText.slice(p, oldText.length - s);
   const newMid = newText.slice(p, newText.length - s);
   if (!oldMid && !newMid) return segment;
-  if (oldMid === newMid) return wrapStyled(segment, before, oldStyles, newStyles, p, oldText.length - s);
+  if (oldText === newText) {
+    // Several formatting commands can share the same uncommitted text draft.
+    // Wrap each changed range independently so untouched links keep their targets.
+    const ranges: [number, number][] = [];
+    let at = p;
+    while (at < oldText.length - s) {
+      if (same(oldStyles[at], newStyles[at])) { at++; continue; }
+      const from = at++;
+      while (at < oldText.length - s && !same(oldStyles[at], newStyles[at])) at++;
+      ranges.push([from, at]);
+    }
+    let result = segment;
+    for (const [from, to] of ranges.reverse()) {
+      const next = wrapStyled(result, before, oldStyles, newStyles, from, to);
+      if (next === null) return null;
+      result = next;
+    }
+    return result;
+  }
   if (oldMid.includes("\n") || newMid.includes("\n")) return null;
   const midOld = oldStyles.slice(p, p + oldMid.length);
   const midNew = newStyles.slice(p, p + newMid.length);

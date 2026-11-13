@@ -1,3 +1,6 @@
+import { SlideAnimationRibbon } from "./slide-animation-ribbon";
+import { useAnimationPreview } from "./slide-animation-preview";
+import { SlideTextMenu, type SlideTextMenuTarget } from "./slide-text-menu";
 import { SlideEquationDialog, equationRun, hasSlideEquation, slideEquations } from "./slide-equation-dialog";
 import { SlidePrintDeck } from "./slide-print";
 import { SlideAccessPanel } from "./slide-access-notes";
@@ -33,7 +36,7 @@ import { useSlidesAgentHost } from "./slide-editor-agent";
 import { useSlideEditorActions, useSlideEditorKeys } from "./slide-editor-actions";
 import { editorCanvasHooks, SlideCanvasStage } from "./slide-editor-canvas";
 import { SlidesToolbar } from "./slide-editor-toolbar";
-import { SlideFormatTools } from "./slide-editor-format-tools";
+import { SlideFormatTools, SlideTextToolbar } from "./slide-editor-format-tools";
 import { SlideEditorPanels } from "./slide-editor-panels";
 import { SlideShowOverlay } from "./slide-editor-presenter";
 
@@ -70,14 +73,8 @@ export default function Slides({
   onLocalSelection?: (selection: SlideSelection) => void;
   onUndoConflict?: (text: string) => void;
 }) {
-  const state = useSlidesEditorState({ file, slideId, onSlideUrl, onChange, readOnly });
-  const {
-    deck, activeSlideId, selectedElementId, editingId, focusedBox, tableCell, notice,
-    contextMenu, setContextMenu, presenting, accessOpen, wordArtOpen, setWordArtOpen,
-    handoutsOpen, setHandoutsOpen, svgEdit, setSvgEdit, setPanel, apiRef, deckRef, commitRef,
-    anchorRef, readOnlyRef, imageInputRef, audioInputRef, videoInputRef,
-  } = state;
-  const history = useDeckHistory(state, {
+  const baseState = useSlidesEditorState({ file, slideId, onSlideUrl, onChange, readOnly });
+  const history = useDeckHistory(baseState, {
     collabDoc,
     onLocalSelection,
     slideId,
@@ -85,15 +82,28 @@ export default function Slides({
     onError,
     onUndoConflict,
   });
+  const state = { ...baseState, historyMarks: history.historyMarks };
+  const {
+    deck, activeSlideId, selectedElementId, editingId, focusedBox, tableCell, notice,
+    contextMenu, setContextMenu, presenting, accessOpen, wordArtOpen, setWordArtOpen,
+    handoutsOpen, setHandoutsOpen, svgEdit, setSvgEdit, setPanel, apiRef, deckRef, commitRef,
+    anchorRef, readOnlyRef, imageInputRef, audioInputRef, videoInputRef,
+  } = state;
   const { applySelection, commit, undo, redo, marpDraft } = history;
 
   // Active slide
   const activeSlide =
     deck.slides[activeSlideId] || deck.slides[deck.slideOrder[0]];
+  const animationRoot = useRef<HTMLDivElement>(null);
+  const [selectedAnimationKey, setSelectedAnimationKey] = useState<string | null>(null);
+  const animationPreview = useAnimationPreview(animationRoot, activeSlide);
   const selectedElement =
     activeSlide?.elements.find((el) => el.id === selectedElementId) || null;
   /** The box being typed in. It shows its own words over MARP's drawing. */
   const liveId = editingId ?? focusedBox ?? tableCell?.id ?? null;
+  const textElement = history.displaySlide(activeSlide)?.elements.find(
+    (el) => el.id === (selectedElement?.id ?? editingId),
+  );
   const liveLines =
     (liveId && activeSlide?.elements.find((el) => el.id === liveId)?.marpLines) || null;
   const slideComments = useSlideComments({
@@ -123,12 +133,14 @@ export default function Slides({
   const suppressThumbnailClick = useRef(false);
 
   /** The deck for tests to read, with embedded pictures named rather than copied. */
+  const displayDeck = history.displayDeck;
+  const storedDeck = history.materialize(displayDeck);
   const deckSnapshot = useMemo(
     () =>
       JSON.stringify(
-        deck.marpAssets ? { ...deck, marpAssets: Object.keys(deck.marpAssets) } : deck,
+        storedDeck.marpAssets ? { ...storedDeck, marpAssets: Object.keys(storedDeck.marpAssets) } : storedDeck,
       ),
-    [deck],
+    [storedDeck],
   );
   const marpInvalid = useMemo(
     () => (deck.marp && deck.marpSource !== undefined ? marpProblem(deck.marpSource) : null),
@@ -163,10 +175,10 @@ export default function Slides({
     openTransition: () => setPanel("transition"),
   };
 
-  const { updateSlide, updateElement } = useSlideUpdates(state, onChange);
+  const { updateSlide, updateElement } = useSlideUpdates(state, history.publishLive, history.editText);
   const objects = slideElementActions(state, { commit, updateElement, onError });
   const { selectElement, addTextBox, addShape, addWordArt, deleteSelectedElement } = objects;
-  const textFormat = slideTextFormat(state, { updateElement });
+  const textFormat = slideTextFormat(state, { updateElement, textDeck: history.textDeck });
   const { toggleBold, toggleItalic, toggleUnderline, alignText } = textFormat;
   const {
     copySelection,
@@ -209,7 +221,11 @@ export default function Slides({
   const api = useRef(latestApi);
   api.current = latestApi;
 
-  const { onElementMouseDown, onElementPointerDown, onElementPointerUp } = useElementDrag(state, { activeSlide, updateElement });
+  const { onElementMouseDown, onElementPointerDown, onElementPointerUp } = useElementDrag(state, {
+    activeSlide,
+    updateElement,
+    publishLive: history.publishLive,
+  });
   const deckExports = useSlideExports(state, { file, marpDraft });
   const { printing, printSlides } = deckExports;
   const showControls = useShowControls(state, { file, marpDraft, marpPages });
@@ -230,7 +246,7 @@ export default function Slides({
     openSlideResolved,
   });
   useSlideEditorKeys(state, { api, beginShow });
-  const playback = useShowPlayback(state, { ...showControls, activeSlide });
+  const playback = useShowPlayback(state, { ...showControls, activeSlide, marpPages });
 
   const equationElement = activeSlide.elements.find((element) => element.id === equationTarget);
   const equationChoices = equationElement ? slideEquations(equationElement) : [];
@@ -240,6 +256,7 @@ export default function Slides({
     return true;
   };
 
+  const [textMenu, setTextMenu] = useState<SlideTextMenuTarget | null>(null);
   const canvasHooks = editorCanvasHooks(state, {
     file,
     readOnly,
@@ -253,13 +270,20 @@ export default function Slides({
     selectElement,
     revealMarkdown,
     editEquation,
+    setTextMenu,
   });
 
   return (
     <div
+      ref={animationRoot}
       className="slides-editor"
       data-deck-snapshot={deckSnapshot}
     >
+      {textMenu && !readOnly && (
+        <SlideTextMenu target={textMenu} close={() => setTextMenu(null)} onError={onError}
+          comment={openSlideComment} bold={textFormat.toggleBold}
+          italic={textFormat.toggleItalic} underline={textFormat.toggleUnderline} />
+      )}
       {equationTarget !== null && !readOnly && (
         <SlideEquationDialog key={equationTarget} equations={equationChoices}
           onClose={() => setEquationTarget(null)}
@@ -334,6 +358,21 @@ export default function Slides({
           />
         }
       />
+
+      {state.panel === "animation" && <SlideAnimationRibbon deck={deck} slide={activeSlide}
+        selectedElementId={selectedElementId} selectedKey={selectedAnimationKey} readOnly={readOnly}
+        onChange={commit} onApplyEffect={applyAnimation} onPreview={animationPreview.play} playing={animationPreview.playing}
+        onStop={animationPreview.stop} onClose={() => { animationPreview.stop(); setPanel(null); }} />}
+
+      {textElement?.type === "text" ? (
+        <SlideTextToolbar
+          state={state}
+          selectedElement={textElement}
+          readOnly={readOnly}
+          updateElement={updateElement}
+          {...textFormat}
+        />
+      ) : null}
 
       {selectedElement?.themeOverride && deck.theme && !deck.marp ? (
         <div className="theme-override-bar" role="status">
@@ -422,7 +461,7 @@ export default function Slides({
           readOnly={readOnly}
           slideComments={slideComments}
           activeSlide={activeSlide}
-          shownSlide={shownSlide}
+          shownSlide={history.displaySlide(shownSlide)}
           currentSlideIndex={currentSlideIndex}
           canvasHooks={canvasHooks}
           marpPages={marpPages}
@@ -434,14 +473,19 @@ export default function Slides({
           showBackdrop={showBackdrop}
           liveLines={liveLines}
           marpDraft={marpDraft}
+          markdownSource={displayDeck.marpSource}
           typingOnCanvas={history.typingOnCanvas}
           relayoutMarp={history.relayoutMarp}
           selectElement={selectElement}
           updateSlide={updateSlide}
           onMarpChange={onMarpChange}
           followMarkdownCaret={followMarkdownCaret}
+          insertImageFile={objects.insertImageFile}
         />
         <SlideEditorPanels
+          animationKey={selectedAnimationKey}
+          onAnimationSelect={setSelectedAnimationKey}
+          onAnimationPreview={animationPreview.play}
           state={state}
           file={file}
           activeSlide={activeSlide}

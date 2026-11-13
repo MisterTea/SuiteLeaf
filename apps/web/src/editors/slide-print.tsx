@@ -4,6 +4,7 @@ import { sameJson, type Presentation } from "@suiteleaf/core";
 import { prepareMarpDocument } from "./slide-marp-runtime";
 import { renderMarpPages } from "./slide-marp-render";
 import { SlideStill, slideBackground, slideBackgroundPaint } from "./slide-surface";
+import { masterForSlide } from "./slide-master";
 
 /**
  * The print page and the slide surface both paint the background. A second
@@ -195,7 +196,7 @@ export function SlidePrintDeck({
               ...slideBackgroundPaint(
                 printPageBackground(
                   slideBackground(deck, slide),
-                  deck.master?.background?.color,
+                  masterForSlide(deck, slide).background?.color,
                 ),
               ),
             }}

@@ -1,3 +1,4 @@
+import { sourceValue, selectSourceRange, sourceHeight, setSourceScrollTop } from "./slide-source-control";
 import { useEffect, useRef } from "react";
 import type { SlideFile } from "@suiteleaf/core";
 import { deckToMarp } from "./slide-marp";
@@ -89,13 +90,13 @@ export function useMarpEditing(
     requestAnimationFrame(() => {
       const area = marpAreaRef.current;
       if (!area) return;
-      const all = area.value.split("\n");
+      const all = sourceValue(area).split("\n");
       const start = all.slice(0, lines[0]).join("\n").length + (lines[0] > 0 ? 1 : 0);
       const end = all.slice(0, lines[1]).join("\n").length;
       area.focus();
-      area.setSelectionRange(start, Math.max(start, end));
+      selectSourceRange(area, start, Math.max(start, end));
       const lineHeight = parseFloat(getComputedStyle(area).lineHeight) || 19;
-      area.scrollTop = Math.max(0, lines[0] * lineHeight - area.clientHeight / 3);
+      setSourceScrollTop(area, Math.max(0, lines[0] * lineHeight - sourceHeight(area) / 3));
     });
   };
 
@@ -108,10 +109,10 @@ export function useMarpEditing(
     const area = marpAreaRef.current;
     if (!area || document.activeElement === area) return;
     const index = deckRef.current.slideOrder.indexOf(activeSlideId);
-    const line = marpSlideScrollLine(area.value, index);
+    const line = marpSlideScrollLine(sourceValue(area), index);
     if (line === null) return;
-    const at = marpLineStart(area.value, line);
-    area.setSelectionRange(at, at);
+    const at = marpLineStart(sourceValue(area), line);
+    selectSourceRange(area, at, at);
     scrollMarkdownTo(area, at);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable
   }, [deck.marp, marpOpen, activeSlideId, selectedElementId]);
@@ -124,8 +125,8 @@ export function useMarpEditing(
     )?.marpLines;
     const area = marpAreaRef.current;
     if (!lines || !area || document.activeElement === area) return;
-    const at = marpLineStart(area.value, lines[0]);
-    area.setSelectionRange(at, at);
+    const at = marpLineStart(sourceValue(area), lines[0]);
+    selectSourceRange(area, at, at);
     scrollMarkdownTo(area, at);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable
   }, [deck.marp, marpOpen, selectedElementId]);

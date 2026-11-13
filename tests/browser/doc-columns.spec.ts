@@ -104,7 +104,7 @@ test("two columns apply to the selection, survive reopen, and export to Word", a
   await expect(page.locator(".doc-columns")).toBeVisible();
   await expect(page.locator(".document-content > h1")).toHaveText(heading);
   await expect(page.locator(".doc-columns > p")).not.toHaveCount(0);
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   await page.reload();
   await expect(page.locator(".doc-columns")).toBeVisible();

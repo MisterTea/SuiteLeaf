@@ -1,3 +1,4 @@
+import { marpFragmentStep } from "./editors/slide-marp-fragments";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CAST_NAMESPACE, frameAssembler, type CastFrame } from "./editors/slide-cast-protocol";
@@ -34,7 +35,7 @@ export function CastReceiver({ context }: { context?: ReceiverContext }) {
   return (
     <main className="cast-audience" aria-label="Audience slide">
       <div className="cast-slide" style={{ aspectRatio: `${deck.width || 960} / ${deck.height || 540}`, width: `min(100vw, calc(100vh * ${deck.width || 960} / ${deck.height || 540}))` }}>
-        <SlideStill deck={deck} slide={slide} index={index} pages={pages} hooks={showAudienceHooks(slide, cursor)} />
+        <SlideStill deck={deck} slide={slide} index={index} pages={pages} fragmentStep={marpFragmentStep(deck, index, cursor.revealed)} hooks={showAudienceHooks(slide, cursor)} />
         {blank ? <div className="cast-blank" style={{ backgroundColor: blank }} /> : null}
       </div>
     </main>

@@ -64,7 +64,7 @@ test("a Word letterhead keeps three editable headers through save and reopen", a
   await expect(faces.nth(1).locator(".page-header-text")).toHaveText("Minutes");
   await expect(faces.nth(2).locator(".page-header-text")).toHaveText("Council");
 
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "council-minutes", exact: true }).click();
   const reopened = page.locator(".page-furniture-page");

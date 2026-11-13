@@ -82,7 +82,7 @@ test("a page-setup watermark stays behind the text and exports to Word", async (
   await field.fill("  DRAFT  ");
   await setup.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(marks).toHaveText(["DRAFT", "DRAFT"]);
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   const native = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();

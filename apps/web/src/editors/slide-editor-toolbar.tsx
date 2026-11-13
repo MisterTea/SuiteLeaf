@@ -14,6 +14,7 @@ import {
   Redo2,
   Square,
   StickyNote,
+  Star,
   Type,
   Undo2,
 } from "lucide-react";
@@ -26,7 +27,7 @@ import { ReleaseDropdown } from "../release-dropdown";
 import type { SlidesEditorState } from "./slide-editor-state";
 import type { DeckHistoryApi } from "./slide-editor-history";
 import type { SlideOrderActions } from "./slide-editor-commands";
-import type { SlideElementActions } from "./slide-editor-elements";
+import { SLIDE_IMAGE_TYPES, type SlideElementActions } from "./slide-editor-elements";
 import type { SlideExports } from "./slide-editor-exports";
 import type { ShowControls } from "./slide-editor-show";
 
@@ -105,6 +106,10 @@ export function SlidesToolbar({
           <StickyNote size={16} aria-hidden="true" />
         </Tool>
       </div>
+      <button type="button" className="menu-trigger theme-toggle" aria-pressed={panel === "animation"}
+        onClick={() => setPanel((open) => open === "animation" ? null : "animation")}>
+        <Star size={16} aria-hidden="true" /><span>Animations</span>
+      </button>
       <fieldset className="toolbar-edits" disabled={readOnly}>
       <div className="tool-group">
         <button
@@ -189,6 +194,9 @@ export function SlidesToolbar({
               <MenuItem onSelect={() => addSlide("two-column")}>
                 Two columns
               </MenuItem>
+              <MenuItem onSelect={() => addSlide("three-column")}>
+                Three columns
+              </MenuItem>
             </>
           ) : (
             <>
@@ -258,7 +266,7 @@ export function SlidesToolbar({
           hidden
           type="file"
           ref={imageInputRef}
-          accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+          accept={SLIDE_IMAGE_TYPES.join(",")}
           onChange={handleImageUpload}
         />
         <input

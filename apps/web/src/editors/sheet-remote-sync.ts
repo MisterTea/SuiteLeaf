@@ -39,7 +39,7 @@ export function watchRemoteSheet(
   },
 ) {
   const commandOf = () =>
-    api.current?.executeCommand as ((id: string, params: unknown) => void) | undefined;
+    api.current?.executeCommand?.bind(api.current) as ((id: string, params: unknown) => void) | undefined;
   const stopCells = watchRemoteSheetCells(collabDoc, (writes) => {
     const command = commandOf();
     if (!command) return;

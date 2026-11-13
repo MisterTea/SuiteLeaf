@@ -17,6 +17,7 @@
   flex-shrink: 0;
 }
 .workspace-status-toast {
+  pointer-events: none;
   position: fixed;
   bottom: max(20px, env(safe-area-inset-bottom));
   left: 50%;
@@ -35,6 +36,9 @@
   color: var(--text-primary);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   overflow-wrap: anywhere;
+}
+.workspace-status-toast button {
+  pointer-events: auto;
 }
 .workspace-status-toast[hidden] {
   display: none;
@@ -152,11 +156,16 @@
 }
 .file-menu {
   display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
+  padding: 3px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
-.file-menu-more {
-  display: none;
+.file-menu > * {
+  flex-shrink: 0;
 }
 .menu-trigger {
   border: 0;
@@ -336,8 +345,7 @@
   align-items: center;
   gap: 2px;
 }
-.editor-toolbar-navigation .back,
-.editor-toolbar-navigation .file-menu-more {
+.editor-toolbar-navigation .back {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -345,26 +353,6 @@
   height: 36px;
   min-width: 36px;
   padding: 0;
-}
-.workspace:has(.editor-toolbar-navigation) .file-menu {
-  display: none;
-  position: fixed;
-  z-index: 80;
-  flex-direction: column;
-  align-items: stretch;
-  width: max-content;
-  min-width: 180px;
-  max-width: calc(100vw - 24px);
-  max-height: min(70vh, 520px);
-  overflow: auto;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 4px 12px #0003;
-}
-.workspace:has(.editor-toolbar-navigation) .file-menu.open {
-  display: flex;
 }
 .editor-toolbar-actions .header-right-tools {
   flex-wrap: nowrap;

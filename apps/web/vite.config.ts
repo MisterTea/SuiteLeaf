@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { defineConfig, type Connect } from "vite";
 import react from "@vitejs/plugin-react";
+import { rollupWarnings } from "./build-warnings";
 import { offline } from "./offline";
 import { conditionalFormatDefaults } from "./conditional-format-defaults";
 
@@ -62,10 +63,12 @@ export default defineConfig({
   base: "./",
   worker: {
     format: "es",
+    rollupOptions: rollupWarnings,
   },
   build: {
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
+      ...rollupWarnings,
       input: {
         app: resolve(import.meta.dirname, "index.html"),
         castReceiver: resolve(import.meta.dirname, "cast-receiver.html"),

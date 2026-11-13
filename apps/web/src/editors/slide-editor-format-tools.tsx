@@ -29,7 +29,7 @@ import type { SlideDesign } from "./slide-editor-design";
 import type { SlideElementActions, SlideUpdates } from "./slide-editor-elements";
 import type { SlideTextFormat } from "./slide-editor-text";
 
-/** Fill, border, and type for the selected object, or the slide's background and layout. */
+/** Fill and border for the selected object, or the slide's background and layout. */
 export function SlideFormatTools({
   state,
   activeSlide,
@@ -39,21 +39,18 @@ export function SlideFormatTools({
   deleteSelectedElement,
   toggleBold,
   toggleItalic,
-  toggleUnderline,
-  applyAccent,
-  changeIndent,
   setDeckBackground,
   applyLayoutToSlide,
 }: Pick<DeckHistoryApi, "commit"> &
   Pick<SlideUpdates, "updateElement"> &
   Pick<SlideElementActions, "deleteSelectedElement"> &
-  Pick<SlideTextFormat, "toggleBold" | "toggleItalic" | "toggleUnderline" | "applyAccent" | "changeIndent"> &
+  Pick<SlideTextFormat, "toggleBold" | "toggleItalic"> &
   Pick<SlideDesign, "setDeckBackground" | "applyLayoutToSlide"> & {
     state: SlidesEditorState;
     activeSlide: Slide;
     selectedElement: SlideElement | null;
   }) {
-  const { deck, editingId, caretMarks, tableCell } = state;
+  const { deck, tableCell } = state;
   return selectedElement ? (
     <div className="tool-group">
       {deck.marp ? null : (
@@ -139,205 +136,7 @@ export function SlideFormatTools({
       </>
       )}
 
-      {selectedElement.type === "text" ? (
-        <>
-          {deck.marp ? null : (
-          <FontControls>
-          <select
-            className="toolbar-select font-family-select"
-            aria-label="Font family"
-            value={selectedElement.fontFamily || "Arial"}
-            onChange={(e) =>
-              updateElement(
-                selectedElement.id,
-                handStyle({ fontFamily: e.target.value }),
-              )
-            }
-          >
-            {selectedElement.fontFamily &&
-            ![...THEME_FONTS, "Roboto", "Helvetica"].includes(selectedElement.fontFamily) ? (
-              <option value={selectedElement.fontFamily}>{selectedElement.fontFamily}</option>
-            ) : null}
-            {THEME_FONTS.map((font) => (
-              <option key={font} value={font}>
-                {font}
-              </option>
-            ))}
-            <option value="Roboto">Roboto</option>
-            <option value="Helvetica">Helvetica</option>
-          </select>
-
-          {selectedElement.wordArt ? null : (
-            <Tool
-              label="Autofit"
-              active={!!selectedElement.autofit}
-              onClick={() =>
-                updateElement(selectedElement.id, {
-                  autofit: !selectedElement.autofit,
-                })
-              }
-            >
-              Autofit
-            </Tool>
-          )}
-
-          <div className="font-size-stepper">
-            <button
-              type="button"
-              className="stepper-btn"
-              title="Decrease font size"
-              aria-label="Decrease font size"
-              onClick={() =>
-                updateElement(selectedElement.id, {
-                  fontSize: Math.max(
-                    6,
-                    (selectedElement.fontSize || 20) - 1,
-                  ),
-                })
-              }
-            >
-              <Minus size={12} />
-            </button>
-            <input
-              className="font-size-input"
-              aria-label="Font size"
-              value={selectedElement.fontSize || 20}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                if (val > 0)
-                  updateElement(
-                    selectedElement.id,
-                    { fontSize: val },
-                    { coalesce: `size:${selectedElement.id}` },
-                  );
-              }}
-            />
-            <button
-              type="button"
-              className="stepper-btn"
-              title="Increase font size"
-              aria-label="Increase font size"
-              onClick={() =>
-                updateElement(selectedElement.id, {
-                  fontSize: Math.min(
-                    96,
-                    (selectedElement.fontSize || 20) + 1,
-                  ),
-                })
-              }
-            >
-              <Plus size={12} />
-            </button>
-          </div>
-          </FontControls>
-          )}
-
-          <Tool
-            label="Bold"
-            active={
-              editingId === selectedElement.id && caretMarks?.id === selectedElement.id
-                ? caretMarks.bold
-                : hasTextRuns(selectedElement)
-                  ? !!selectedElement.runs?.every((run) => run.bold)
-                  : !!selectedElement.bold
-            }
-            onClick={toggleBold}
-          >
-            <Bold size={16} />
-          </Tool>
-          <Tool
-            label="Italic"
-            active={
-              editingId === selectedElement.id && caretMarks?.id === selectedElement.id
-                ? caretMarks.italic
-                : hasTextRuns(selectedElement)
-                  ? !!selectedElement.runs?.every((run) => run.italic)
-                  : !!selectedElement.italic
-            }
-            onClick={toggleItalic}
-          >
-            <Italic size={16} />
-          </Tool>
-          <Tool
-            label="Underline"
-            active={
-              editingId === selectedElement.id && caretMarks?.id === selectedElement.id
-                ? caretMarks.underline
-                : hasTextRuns(selectedElement)
-                  ? !!selectedElement.runs?.every((run) => run.underline)
-                  : !!selectedElement.underline
-            }
-            onClick={toggleUnderline}
-          >
-            <Underline size={16} />
-          </Tool>
-          <Tool
-            label="Accent colour for the selection"
-            active={
-              editingId === selectedElement.id &&
-              caretMarks?.id === selectedElement.id &&
-              caretMarks.color === (deck.theme?.accent ?? "").toLowerCase()
-            }
-            onClick={applyAccent}
-          >
-            <span className="text-color-tool">
-              <span className="text-color-a">A</span>
-              <span
-                className="text-color-bar"
-                style={{ background: deck.theme?.accent ?? "#188038" }}
-              />
-            </span>
-          </Tool>
-          {deck.marp ? null : (
-          <>
-          <Tool
-            label="Align left"
-            active={selectedElement.align === "left"}
-            onClick={() =>
-              updateElement(selectedElement.id, { align: "left" })
-            }
-          >
-            <AlignLeft size={16} />
-          </Tool>
-          <Tool
-            label="Align center"
-            active={selectedElement.align === "center"}
-            onClick={() =>
-              updateElement(selectedElement.id, { align: "center" })
-            }
-          >
-            <AlignCenter size={16} />
-          </Tool>
-          <Tool
-            label="Align right"
-            active={selectedElement.align === "right"}
-            onClick={() =>
-              updateElement(selectedElement.id, { align: "right" })
-            }
-          >
-            <AlignRight size={16} />
-          </Tool>
-          <Tool label="Decrease indent" onClick={() => changeIndent(-1)}>
-            <IndentDecrease size={16} />
-          </Tool>
-          <Tool label="Increase indent" onClick={() => changeIndent(1)}>
-            <IndentIncrease size={16} />
-          </Tool>
-          <Tool
-            label="Bullet list"
-            active={!!selectedElement.bullet}
-            onClick={() =>
-              updateElement(selectedElement.id, {
-                bullet: !selectedElement.bullet,
-              })
-            }
-          >
-            <List size={16} />
-          </Tool>
-          </>
-          )}
-        </>
-      ) : selectedElement.type === "table" && tableCell?.id === selectedElement.id ? (
+      {selectedElement.type === "table" && tableCell?.id === selectedElement.id ? (
         <>
           <Tool
             label="Bold"
@@ -444,6 +243,226 @@ export function SlideFormatTools({
       </Menu>
       )}
 
+    </div>
+  );
+}
+
+export function SlideTextToolbar({
+  state,
+  selectedElement,
+  readOnly,
+  updateElement,
+  toggleBold,
+  toggleItalic,
+  toggleUnderline,
+  applyAccent,
+  changeIndent,
+}: Pick<SlideUpdates, "updateElement"> &
+  Pick<SlideTextFormat, "toggleBold" | "toggleItalic" | "toggleUnderline" | "applyAccent" | "changeIndent"> & {
+    state: SlidesEditorState;
+    selectedElement: SlideElement;
+    readOnly: boolean;
+  }) {
+  const { deck, editingId, caretMarks } = state;
+  return (
+    <div className="slides-toolbar slide-text-toolbar" role="toolbar" aria-label="Slide text formatting">
+      <fieldset className="toolbar-edits" disabled={readOnly}>
+        {deck.marp ? null : (
+        <FontControls>
+        <select
+          className="toolbar-select font-family-select"
+          aria-label="Font family"
+          value={selectedElement.fontFamily || "Arial"}
+          onChange={(e) =>
+            updateElement(
+              selectedElement.id,
+              handStyle({ fontFamily: e.target.value }),
+            )
+          }
+        >
+          {selectedElement.fontFamily &&
+          ![...THEME_FONTS, "Roboto", "Helvetica"].includes(selectedElement.fontFamily) ? (
+            <option value={selectedElement.fontFamily}>{selectedElement.fontFamily}</option>
+          ) : null}
+          {THEME_FONTS.map((font) => (
+            <option key={font} value={font}>
+              {font}
+            </option>
+          ))}
+          <option value="Roboto">Roboto</option>
+          <option value="Helvetica">Helvetica</option>
+        </select>
+
+        {selectedElement.wordArt ? null : (
+          <Tool
+            label="Autofit"
+            active={!!selectedElement.autofit}
+            onClick={() =>
+              updateElement(selectedElement.id, {
+                autofit: !selectedElement.autofit,
+              })
+            }
+          >
+            Autofit
+          </Tool>
+        )}
+
+        <div className="font-size-stepper">
+          <button
+            type="button"
+            className="stepper-btn"
+            title="Decrease font size"
+            aria-label="Decrease font size"
+            onClick={() =>
+              updateElement(selectedElement.id, {
+                fontSize: Math.max(
+                  6,
+                  (selectedElement.fontSize || 20) - 1,
+                ),
+              })
+            }
+          >
+            <Minus size={12} />
+          </button>
+          <input
+            className="font-size-input"
+            aria-label="Font size"
+            value={selectedElement.fontSize || 20}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              if (val > 0)
+                updateElement(
+                  selectedElement.id,
+                  { fontSize: val },
+                  { coalesce: `size:${selectedElement.id}` },
+                );
+            }}
+          />
+          <button
+            type="button"
+            className="stepper-btn"
+            title="Increase font size"
+            aria-label="Increase font size"
+            onClick={() =>
+              updateElement(selectedElement.id, {
+                fontSize: Math.min(
+                  96,
+                  (selectedElement.fontSize || 20) + 1,
+                ),
+              })
+            }
+          >
+            <Plus size={12} />
+          </button>
+        </div>
+        </FontControls>
+        )}
+
+        <Tool
+          label="Bold"
+          active={
+            editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+              ? caretMarks.bold
+              : hasTextRuns(selectedElement)
+                ? !!selectedElement.runs?.every((run) => run.bold)
+                : !!selectedElement.bold
+          }
+          onClick={toggleBold}
+        >
+          <Bold size={16} />
+        </Tool>
+        <Tool
+          label="Italic"
+          active={
+            editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+              ? caretMarks.italic
+              : hasTextRuns(selectedElement)
+                ? !!selectedElement.runs?.every((run) => run.italic)
+                : !!selectedElement.italic
+          }
+          onClick={toggleItalic}
+        >
+          <Italic size={16} />
+        </Tool>
+        <Tool
+          label="Underline"
+          active={
+            editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+              ? caretMarks.underline
+              : hasTextRuns(selectedElement)
+                ? !!selectedElement.runs?.every((run) => run.underline)
+                : !!selectedElement.underline
+          }
+          onClick={toggleUnderline}
+        >
+          <Underline size={16} />
+        </Tool>
+        <Tool
+          label="Accent colour for the selection"
+          active={
+            editingId === selectedElement.id &&
+            caretMarks?.id === selectedElement.id &&
+            caretMarks.color === (deck.theme?.accent ?? "").toLowerCase()
+          }
+          onClick={applyAccent}
+        >
+          <span className="text-color-tool">
+            <span className="text-color-a">A</span>
+            <span
+              className="text-color-bar"
+              style={{ background: deck.theme?.accent ?? "#188038" }}
+            />
+          </span>
+        </Tool>
+        {deck.marp ? null : (
+        <>
+        <Tool
+          label="Align left"
+          active={selectedElement.align === "left"}
+          onClick={() =>
+            updateElement(selectedElement.id, { align: "left" })
+          }
+        >
+          <AlignLeft size={16} />
+        </Tool>
+        <Tool
+          label="Align center"
+          active={selectedElement.align === "center"}
+          onClick={() =>
+            updateElement(selectedElement.id, { align: "center" })
+          }
+        >
+          <AlignCenter size={16} />
+        </Tool>
+        <Tool
+          label="Align right"
+          active={selectedElement.align === "right"}
+          onClick={() =>
+            updateElement(selectedElement.id, { align: "right" })
+          }
+        >
+          <AlignRight size={16} />
+        </Tool>
+        <Tool label="Decrease indent" onClick={() => changeIndent(-1)}>
+          <IndentDecrease size={16} />
+        </Tool>
+        <Tool label="Increase indent" onClick={() => changeIndent(1)}>
+          <IndentIncrease size={16} />
+        </Tool>
+        <Tool
+          label="Bullet list"
+          active={!!selectedElement.bullet}
+          onClick={() =>
+            updateElement(selectedElement.id, {
+              bullet: !selectedElement.bullet,
+            })
+          }
+        >
+          <List size={16} />
+        </Tool>
+        </>
+        )}
+      </fieldset>
     </div>
   );
 }

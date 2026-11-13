@@ -2,6 +2,7 @@
 // actions the request didn't ask for, it can only undo its own changes, and
 // every request leaves a list of changed files that one click puts back.
 import { parseFile, serializeFile, type FileRecord } from "@suiteleaf/core";
+import { storage } from "../storage";
 import { documentText, lineChanges } from "./edit-proposal";
 
 /** The request the assistant is working on now. */
@@ -114,7 +115,6 @@ const stamp = (r: FileRecord) => `${r.file.updatedAt}|${r.file.title}`;
 /** Snapshot the local library so the request's file changes can be listed and undone. */
 export async function takeCheckpoint(): Promise<Checkpoint> {
   // Loaded here so the tools (and their unit tests) don't need a browser to import this module.
-  const { storage } = await import("../storage");
   const before = new Map<string, FileRecord>();
   // Bodies of on-disk files are not in the catalog. Keep each file's text, one at a time.
   const bodies = new Map<string, string>();

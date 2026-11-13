@@ -79,7 +79,7 @@ test("insert a text box and shapes, move them, and keep them after reopen", asyn
     await ellipse.evaluate((element) => parseFloat(getComputedStyle(element).borderTopLeftRadius)),
   ).toBeGreaterThan(8);
 
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: title }).click();
   const reopened = page.getByRole("textbox", { name: "Document content" });

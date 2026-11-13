@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import JSZip from "jszip";
+import { HashRouter, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFile, type FileRecord, type SuiteFile } from "../../packages/core/src";
 
@@ -8,6 +9,8 @@ type ImportProps = {
   onImport: (r: FileRecord, name?: string) => Promise<void>;
   onError: (s: string) => void;
   importer?: { current: ((f: File) => Promise<void>) | null };
+  dropImporter?: { current: ((data: DataTransfer) => Promise<void>) | null };
+  openDroppedFile?: boolean;
   placeInFolder?: (file: SuiteFile, folder: string) => Promise<FileRecord | void>;
   keepImported?: (file: SuiteFile) => Promise<void>;
   onBatchDone?: () => void | Promise<void>;
@@ -29,6 +32,7 @@ const hoisted = vi.hoisted(() => {
     },
   });
   return {
+  exportBinary: vi.fn(),
   records: new Map<string, FileRecord>(),
   failSave: null as null | string,
   failRemove: null as null | string,
@@ -45,6 +49,7 @@ const hoisted = vi.hoisted(() => {
 });
 
 vi.mock("../../apps/web/src/storage", () => ({
+  exportBinary: hoisted.exportBinary,
   storage: {
     list: async () => {
       if (hoisted.failList) throw new Error(hoisted.failList);
@@ -149,6 +154,71 @@ afterEach(() => {
 });
 
 describe("LocalHome in the browser", () => {
+  it("copies file links and downloads a ZIP without losing files with the same title", async () => {
+    record("doc", "Plan");
+    record("doc", "Plan");
+    let finishCopy!: () => void;
+    const writeText = vi.fn(() => new Promise<void>((resolve) => { finishCopy = resolve; }));
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    try {
+      renderHome();
+      const all = await screen.findByRole("checkbox", { name: "Select all files" });
+      fireEvent.click(all);
+      const links = screen.getAllByRole("link", { name: "Plan" }).map((link) =>
+        new URL(link.getAttribute("href")!, window.location.href).href,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Copy links to selection" }));
+      const progress = screen.getByRole("progressbar", { name: "Copying links" });
+      expect(progress.hasAttribute("value")).toBe(false);
+      await act(async () => finishCopy());
+      await screen.findByText("Links copied");
+      expect(screen.queryByRole("progressbar")).toBeNull();
+      expect(writeText).toHaveBeenCalledWith(links.join("\n"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Download selection" }));
+      await waitFor(() => expect(hoisted.exportBinary).toHaveBeenCalled());
+      const [name, bytes, mime] = hoisted.exportBinary.mock.lastCall!;
+      expect(name).toBe("SuiteDrive selection.zip");
+      expect(mime).toBe("application/zip");
+      const zip = await JSZip.loadAsync(bytes);
+      expect(Object.keys(zip.files)).toEqual(["Plan.sldoc", "Plan (2).sldoc"]);
+    } finally {
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  it("selects visible files, clears all, and undoes a batch move to Trash", async () => {
+    const plan = record("doc", "Plan");
+    const budget = record("sheet", "Budget");
+    renderHome();
+
+    const first = await screen.findByRole("checkbox", { name: "Select Plan" }) as HTMLInputElement;
+    const all = screen.getByRole("checkbox", { name: "Select all files" }) as HTMLInputElement;
+    fireEvent.click(first);
+    expect(first.checked).toBe(true);
+    expect(all.indeterminate).toBe(true);
+    expect(screen.getByText("1 selected")).toBeTruthy();
+
+    fireEvent.click(all);
+    expect(all.checked).toBe(true);
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    fireEvent.click(all);
+    expect(first.checked).toBe(false);
+    expect(screen.queryByRole("group", { name: "Selection actions" })).toBeNull();
+
+    fireEvent.click(all);
+    fireEvent.click(screen.getByRole("button", { name: "Move selection to Trash" }));
+    await screen.findByText("2 files moved to Trash");
+    expect(hoisted.records.get(plan.file.id)?.trashedAt).toBeTruthy();
+    expect(hoisted.records.get(budget.file.id)?.trashedAt).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await screen.findByRole("checkbox", { name: "Select Plan" });
+    expect(hoisted.records.get(plan.file.id)?.trashedAt).toBeUndefined();
+    expect(hoisted.records.get(budget.file.id)?.trashedAt).toBeUndefined();
+  });
+
   it("welcomes an empty library and opens a new file or a sample", async () => {
     renderHome();
     expect(await screen.findByText("A workspace waiting for you")).toBeTruthy();
@@ -586,6 +656,162 @@ describe("LocalHome on the desktop", () => {
     const top = within(screen.getByRole("navigation", { name: "Folder path" })).getAllByRole("button")[0]!;
     if (!(top as HTMLButtonElement).disabled) fireEvent.click(top);
   };
+
+  it("selects folders and files together, downloads them, and copies folder links", async () => {
+    const plan = record("doc", "Plan", { path: "/docs/Plan.sldoc" });
+    bridge.exportFolderSelection = vi.fn(async () => "/downloads/selection.zip");
+    const copy = vi.fn(async (_text: string) => {});
+    const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: copy } });
+    try {
+      renderHome();
+      await screen.findByRole("navigation", { name: "Folder path" });
+      goTop();
+      fireEvent.click(await screen.findByRole("checkbox", { name: "Select all files" }));
+      expect(screen.getByText("3 selected")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Download selection" }));
+      await waitFor(() => expect(bridge.exportFolderSelection).toHaveBeenCalledWith(["Garden", "Recipes"], [plan.file.id]));
+      await waitFor(() => expect(screen.queryByRole("progressbar")).toBeNull());
+      fireEvent.click(screen.getByRole("button", { name: "Copy links to selection" }));
+      await screen.findByText("Links copied");
+      expect(copy.mock.calls[0][0]).toContain("?localFolder=Garden");
+      expect(copy.mock.calls[0][0]).toContain(`/file/${plan.file.id}`);
+      fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+      expect((screen.getByRole("checkbox", { name: "Select folder Garden" }) as HTMLInputElement).checked).toBe(false);
+    } finally {
+      if (original) Object.defineProperty(navigator, "clipboard", original);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  it("moves selected folders and prevents destinations within them", async () => {
+    record("doc", "Plan", { path: "/docs/Plan.sldoc" });
+    renderHome();
+    await screen.findByRole("navigation", { name: "Folder path" });
+    goTop();
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select folder Garden" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move selection" }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.queryByRole("button", { name: "Garden" })).toBeNull();
+    expect(dialog.queryByRole("button", { name: "Garden / Beds" })).toBeNull();
+    fireEvent.click(dialog.getByRole("button", { name: "Recipes" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Move here" }));
+    await waitFor(() => {
+      expect(bridge.moveFolder).toHaveBeenCalledWith("Garden", "Recipes");
+      expect(bridge.moveFile).toHaveBeenCalledWith(expect.any(String), "Recipes");
+      expect(screen.queryByRole("group", { name: "Selection actions" })).toBeNull();
+    });
+  });
+
+  it("trashes selected folders and keeps failed folders selected", async () => {
+    bridge.trashFolder = vi.fn(async (folder: string) => {
+      if (folder === "Recipes") throw new Error("Permission denied");
+      folders = folders.filter((path) => path !== folder && !path.startsWith(folder + "/"));
+    });
+    renderHome();
+    await screen.findByRole("navigation", { name: "Folder path" });
+    goTop();
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select all files" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move selection to Trash" }));
+    await screen.findByText(/1 folder moved to the system Trash/);
+    expect(bridge.trashFolder).toHaveBeenCalledWith("Garden");
+    expect((screen.getByRole("alert")).textContent).toContain("Recipes: Permission denied");
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect((screen.getByRole("checkbox", { name: "Select folder Recipes" }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("accepts PPTX drops across Drive and keeps the import in the current folder", async () => {
+    renderHome();
+    fireEvent.click(await screen.findByRole("button", { name: /^Garden/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Beds/ }));
+    const importDrop = vi.fn(async () => {});
+    hoisted.importProps!.dropImporter!.current = importDrop;
+    expect(hoisted.importProps!.openDroppedFile).toBe(false);
+    const dataTransfer = { types: ["Files"], dropEffect: "none", files: [new File(["pptx"], "Lesson.pptx")] };
+    for (const target of [
+      screen.getByRole("heading", { name: "This folder is empty" }),
+      screen.getByPlaceholderText("Search your files"),
+      screen.getByRole("button", { name: "New folder" }),
+    ]) {
+      fireEvent.dragOver(target, { dataTransfer });
+      fireEvent.drop(target, { dataTransfer });
+    }
+    expect(importDrop).toHaveBeenCalledTimes(3);
+    expect(importDrop).toHaveBeenLastCalledWith(dataTransfer);
+    expect(dataTransfer.dropEffect).toBe("copy");
+    const file = createFile("slide", "Lesson");
+    await act(async () => { await hoisted.importProps!.keepImported!(file); });
+    expect(bridge.moveFile).toHaveBeenCalledWith(file.id, "Garden/Beds");
+    goTop();
+  });
+
+  it("reopens the same desktop folder from the URL after reload", async () => {
+    const nested = "Garden/Beds & seeds #1";
+    folders.push(nested);
+    record("doc", "Seed notes", { path: `${root}/${nested}/Seed notes.sldoc` });
+    const priorHash = window.location.hash;
+    window.history.replaceState(null, "", "#/?localFolder=");
+    const mount = () => render(<HashRouter><LocalHome /></HashRouter>);
+    try {
+      const first = mount();
+      fireEvent.click(await screen.findByRole("button", { name: /^Garden/ }));
+      fireEvent.click(await screen.findByRole("button", { name: /^Beds & seeds #1/ }));
+      expect(await screen.findByText("Seed notes")).toBeTruthy();
+      const reloadHash = window.location.hash;
+      expect(new URLSearchParams(reloadHash.split("?")[1]).get("localFolder")).toBe(nested);
+
+      // Visit the root to clear the in-memory folder before mounting at the saved URL.
+      goTop();
+      await waitFor(() => expect(window.location.hash).toBe("#/?localFolder="));
+      first.unmount();
+      window.history.replaceState(null, "", reloadHash);
+      mount();
+      expect(await screen.findByText("Seed notes")).toBeTruthy();
+      goTop();
+    } finally {
+      window.history.replaceState(null, "", priorHash || window.location.pathname);
+    }
+  });
+
+  it("moves selected files to one destination and clears the selection", async () => {
+    const plan = record("doc", "Plan", { path: "/docs/Plan.sldoc" });
+    const notes = record("doc", "Notes", { path: "/docs/Notes.sldoc" });
+    renderHome();
+    await screen.findByRole("navigation", { name: "Folder path" });
+    goTop();
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Plan" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Notes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move selection" }));
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.click(dialog.getByRole("button", { name: "Recipes" }));
+    const move = bridge.moveFile.getMockImplementation()!;
+    let finishFirstMove!: () => void;
+    let finishSecondMove!: () => void;
+    bridge.moveFile
+      .mockImplementationOnce(async (id, target) => {
+        await new Promise<void>((resolve) => { finishFirstMove = resolve; });
+        return move(id, target);
+      })
+      .mockImplementationOnce(async (id, target) => {
+        await new Promise<void>((resolve) => { finishSecondMove = resolve; });
+        return move(id, target);
+      });
+    fireEvent.click(dialog.getByRole("button", { name: "Move here" }));
+    const progress = screen.getByRole("progressbar", { name: "Moving files" }) as HTMLProgressElement;
+    expect(progress.max).toBe(2);
+    expect(progress.value).toBe(0);
+    await act(async () => finishFirstMove());
+    expect(progress.value).toBe(1);
+    await act(async () => finishSecondMove());
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    await waitFor(() => {
+      expect(bridge.moveFile).toHaveBeenCalledWith(plan.file.id, "Recipes");
+      expect(bridge.moveFile).toHaveBeenCalledWith(notes.file.id, "Recipes");
+      expect(screen.queryByRole("group", { name: "Selection actions" })).toBeNull();
+    });
+  });
 
   it("browses folders, creates one, and files new work into the open folder", async () => {
     record("doc", "Top note", { path: `${root}/Top note.sldoc` });

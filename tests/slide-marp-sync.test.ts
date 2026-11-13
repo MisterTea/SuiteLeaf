@@ -243,7 +243,7 @@ describe("writing canvas edits into MARP markdown", () => {
       slideOrder: [...deck.slideOrder, twoColumns.id],
       slides: { ...deck.slides, [twoColumns.id]: twoColumns },
     }).deck;
-    expect(columns.marpSource).toMatch(/# New slide\n\n<div style="display: grid;[^\n]*>\n<div>\n\nLeft column/);
+    expect(columns.marpSource).toMatch(/# New slide\n\n<div class="columns">\n<div>\n\nLeft column/);
 
     const copy = duplicateSlides(deck, [deck.slideOrder[1]], () => "copy").deck;
     const duplicated = synced(deck, copy).deck.marpSource!;
@@ -502,6 +502,18 @@ describe("underline and color as inline HTML", () => {
     expect(second.marpSource).toContain(
       `Intro with <span style="color: ${ACCENT}">**bold**</span> and a [link](https://example.com).`,
     );
+  });
+
+  it("keeps links across successive underline and color edits", () => {
+    const deck = marpDeck(DECK);
+    const intro = boxWith(deck, 0, "Intro");
+    const first = synced(deck, edit(deck, 0, intro.id, styleSelection(intro, 0, 5, { type: "underline" }))).deck;
+    const current = boxWith(first, 0, "Intro");
+    const second = synced(first, edit(first, 0, current.id, styleSelection(current, 11, 15, { type: "color", color: ACCENT }))).deck;
+    const combined = synced(deck, edit(deck, 0, intro.id, styleSelection(styleSelection(intro, 0, 5, { type: "underline" }), 11, 15, { type: "color", color: ACCENT }))).deck;
+    expect(combined.marpSource).toContain(`<u>Intro</u> with <span style="color: ${ACCENT}">**bold**</span> and a [link](https://example.com).`);
+    expect(second.marpSource).toContain(`[link](https://example.com)`);
+    expect(second.marpSource).toContain(`<u>Intro</u> with <span style="color: ${ACCENT}">**bold**</span>`);
   });
 
   it("underlines a whole line that already has some bold, keeping its link", () => {

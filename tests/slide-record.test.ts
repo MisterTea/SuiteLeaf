@@ -1,15 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { Slide } from "@suiteleaf/core";
-import {
-  slideDrawOps,
-  paintOps,
-  RecordingTimeline,
-  RecordingError,
-  handleRecordingError,
-  validateVideoContainer,
-  TARGET_PLAYERS,
-} from "../apps/web/src/editors/slide-record";
+import { slideDrawOps, paintOps, RecordingTimeline, RecordingError, handleRecordingError, validateVideoContainer } from "../apps/web/src/editors/slide-record";
 
 describe("slideshow recording", () => {
   it("draws the background, master text, and the slide title", () => {
@@ -460,13 +452,12 @@ describe("slideshow recording", () => {
     // Start with mocked MediaRecorder if in environment
     const origMediaRecorder = (globalThis as any).MediaRecorder;
     try {
-      let dataAvailableCb: ((e: any) => void) | null = null;
       (globalThis as any).MediaRecorder = class MockMediaRecorder {
         state = "recording";
         mimeType = "video/webm";
         ondataavailable = null;
         onstop = null;
-        constructor(stream: any, options: any) {
+        constructor() {
           setTimeout(() => {
             if (this.ondataavailable) {
               (this.ondataavailable as any)({ data: new Blob(["chunk1"], { type: "video/webm" }) });

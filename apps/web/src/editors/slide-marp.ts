@@ -14,7 +14,12 @@ import {
   paintSlide,
   slideFromTheme,
 } from "./slide-theme";
-import { isMarpTitle, marpColumns, placeholders, reflowMarp } from "./slide-marp-columns";
+import {
+  isMarpTitle,
+  marpColumns,
+  placeholders,
+  reflowMarp,
+} from "./slide-marp-columns";
 import {
   THEME_FIELDS,
   parseChunk,
@@ -45,6 +50,7 @@ const SLOT_COUNT: Record<Layout, number> = {
   title: 2,
   "title-body": 2,
   "two-column": 3,
+  "three-column": 4,
   section: 1,
   blank: 0,
 };
@@ -57,7 +63,7 @@ export function slideIsMarpClean(slide: Slide): boolean {
   );
 }
 
-/** A new presentation whose slides are a single column or two columns. */
+/** A new presentation whose slides are one, two, or three columns. */
 export function createMarpFile(title = "Untitled presentation"): SlideFile {
   const file = createFile("slide", title) as SlideFile;
   const id = file.content.slideOrder[0];
@@ -75,7 +81,9 @@ export function createMarpFile(title = "Untitled presentation"): SlideFile {
 }
 
 function layoutOf(slide: Slide): Layout {
-  return slide.layout && slide.layout in SLOT_COUNT ? slide.layout : "title-body";
+  return slide.layout && slide.layout in SLOT_COUNT
+    ? slide.layout
+    : "title-body";
 }
 
 function sameTheme(a?: SlideTheme, b?: SlideTheme) {
@@ -120,13 +128,16 @@ function writeSlide(slide: Slide): string {
   if (slide.background?.pinned && slide.background.color)
     lines.push(`<!-- _backgroundColor: ${slide.background.color} -->`);
 
-  const title = placed.length ? (slots[0] ?? "").replace(/\s*\n\s*/g, " ").trim() : "";
+  const title = placed.length
+    ? (slots[0] ?? "").replace(/\s*\n\s*/g, " ").trim()
+    : "";
   if (title) lines.push("", `# ${title}`);
 
-  if (layout === "two-column") {
+  if (layout === "two-column" || layout === "three-column") {
     for (const [label, text] of [
       ["left", slots[1] ?? ""],
-      ["right", slots[2] ?? ""],
+      ...(layout === "three-column" ? [["middle", slots[2] ?? ""]] : []),
+      ["right", slots[layout === "three-column" ? 3 : 2] ?? ""],
     ] as const) {
       const body = writeBody(text);
       if (body) lines.push("", `:::${label}`, body, ":::");
@@ -136,12 +147,17 @@ function writeSlide(slide: Slide): string {
     if (body) lines.push("", body);
   }
 
-  const notes = slide.notes?.replace(/^\n+|\n+$/g, "").replace(/-->/g, "-- >") ?? "";
+  const notes =
+    slide.notes?.replace(/^\n+|\n+$/g, "").replace(/-->/g, "-- >") ?? "";
   if (notes) lines.push("", `<!--\n${notes}\n-->`);
   return lines.join("\n");
 }
 
 function writeMarpItem(el: SlideElement) {
+  if (el.type === "video" && el.src) {
+    const poster = el.poster ? ` poster="${el.poster}"` : "";
+    return `<video src="${el.src}"${poster} controls playsinline style="max-width: 100%; max-height: 15em;"></video>`;
+  }
   if (el.type === "image" && el.src) {
     const alt = (el.alt ?? "").replace(/[\[\]]/g, "");
     return `![${alt}](${el.src})`;
@@ -150,26 +166,34 @@ function writeMarpItem(el: SlideElement) {
   return writeBody(el.content ?? "");
 }
 
-/** MARP markdown: one column, or two columns written as divs. No coordinates. */
+/** MARP markdown: columns written as divs. No coordinates. */
 function writeMarpSlide(slide: Slide, width = 960): string {
   const title = (slide.elements.find(isMarpTitle)?.content ?? "")
     .replace(/\s*\n\s*/g, " ")
     .trim();
-  const [left, right] = marpColumns(slide, width);
+  const columns = marpColumns(slide, width);
+  const left = columns[0];
   const lines: string[] = [];
   if (slide.hidden) lines.push("<!-- _hidden: true -->");
   if (title) lines.push(`# ${title}`);
   const blocks = (items: SlideElement[]) =>
     items.map(writeMarpItem).filter(Boolean).join("\n\n");
-  if (slide.layout === "two-column") {
-    for (const text of [blocks(left), blocks(right)]) {
-      lines.push("", "<div>", "", text, "", "</div>");
+  if (slide.layout === "two-column" || slide.layout === "three-column") {
+    const className = slide.layout === "three-column" ? "three-columns" : "columns";
+    lines.push(
+      "",
+      `<div class="${className}">`,
+    );
+    for (const text of columns.map(blocks)) {
+      lines.push("<div>", "", text, "", "</div>");
     }
+    lines.push("</div>");
   } else {
     const body = blocks(left);
     if (body) lines.push("", body);
   }
-  const notes = slide.notes?.replace(/^\n+|\n+$/g, "").replace(/-->/g, "-- >") ?? "";
+  const notes =
+    slide.notes?.replace(/^\n+|\n+$/g, "").replace(/-->/g, "-- >") ?? "";
   if (notes) lines.push("", `<!--\n${notes}\n-->`);
   return lines.join("\n");
 }
@@ -179,7 +203,10 @@ export function themeFrontLines(theme?: SlideTheme): string[] {
   if (!theme) return [];
   const builtin = DECK_THEMES.find((item) => sameTheme(item, theme));
   if (builtin) return [`theme: ${builtin.id}`];
-  return ["theme:", ...THEME_FIELDS.map((key) => `  ${key}: ${quote(theme[key])}`)];
+  return [
+    "theme:",
+    ...THEME_FIELDS.map((key) => `  ${key}: ${quote(theme[key])}`),
+  ];
 }
 
 function themeLines(theme?: SlideTheme): string[] {
@@ -222,7 +249,10 @@ function assignSlots(slide: Slide, specs: SlotSpec[]): Slide {
         ...slide,
         elements: elements.map((el) =>
           el.id === last.id
-            ? { ...el, content: [el.content, ...extra].filter(Boolean).join("\n") }
+            ? {
+                ...el,
+                content: [el.content, ...extra].filter(Boolean).join("\n"),
+              }
             : el,
         ),
       };
@@ -290,7 +320,9 @@ function buildSlide(
   const count = SLOT_COUNT[parsed.layout];
   let base: Slide;
   if (!previous) {
-    base = theme ? slideFromTheme(parsed.layout, theme) : newSlide(parsed.layout);
+    base = theme
+      ? slideFromTheme(parsed.layout, theme)
+      : newSlide(parsed.layout);
   } else if (
     previous.layout !== parsed.layout ||
     contentSlots(previous).length !== count
@@ -312,7 +344,8 @@ function buildSlide(
   } else {
     base = previous;
   }
-  const filled = parsed.layout === "blank" ? base : assignSlots(base, parsed.slots);
+  const filled =
+    parsed.layout === "blank" ? base : assignSlots(base, parsed.slots);
   const painted = withBackground(filled, parsed.pinnedColor, previous, theme);
   return {
     ...painted,
@@ -325,9 +358,14 @@ function buildSlide(
   };
 }
 
-/** A MARP deck only has a single column or two columns. */
+/** A MARP deck only has one, two, or three columns. */
 function marpColumn(slide: ParsedSlide): ParsedSlide {
-  if (slide.layout === "two-column" || slide.layout === "title-body") return slide;
+  if (
+    slide.layout === "two-column" ||
+    slide.layout === "three-column" ||
+    slide.layout === "title-body"
+  )
+    return slide;
   const title = slide.slots[0] ?? { text: "", bullet: false };
   const rest = slide.slots.slice(1);
   return {
@@ -336,7 +374,10 @@ function marpColumn(slide: ParsedSlide): ParsedSlide {
     slots: [
       { text: title.text, bullet: false },
       {
-        text: rest.map((slot) => slot.text).filter(Boolean).join("\n\n"),
+        text: rest
+          .map((slot) => slot.text)
+          .filter(Boolean)
+          .join("\n\n"),
         bullet: rest.some((slot) => slot.bullet),
       },
     ],
@@ -363,7 +404,7 @@ function withoutImageTokens(slide: Slide): Slide {
 /** A blank line, or a picture, starts another item in the column. */
 function expandMarpBlocks(
   slide: Slide,
-  images: { alt: string; src: string }[],
+  images: { alt: string; src: string; poster?: string }[],
 ): Slide {
   const title = slide.elements.find(isMarpTitle);
   const rest = slide.elements.filter((el) => !isMarpTitle(el));
@@ -387,15 +428,17 @@ function expandMarpBlocks(
       if (token) {
         const image = images[Number(token[1])];
         if (!image) return;
+        const isVideo = /\.(mp4|m4v|webm|mov|mpg|mpeg)(?:[?#]|$)/i.test(image.src) || /^data:video\//i.test(image.src);
         elements.push({
           id,
-          type: "image",
+          type: isVideo ? "video" : "image",
           x: el.x,
           y: el.y + index,
           width: el.width,
           height: 120,
           src: image.src,
-          alt: image.alt,
+          alt: image.alt || (isVideo ? image.src.split("/").pop() || "Video" : ""),
+          ...(image.poster ? { poster: image.poster } : {}),
         });
         return;
       }
@@ -426,7 +469,9 @@ export function marpToDeck(
   const empty = !front.body.trim();
   const chunks = empty
     ? [""]
-    : front.body.split(/^---\s*$/m).map((part) => part.replace(/^\n+|\n+$/g, ""));
+    : front.body
+        .split(/^---\s*$/m)
+        .map((part) => part.replace(/^\n+|\n+$/g, ""));
   const asMarp = options?.marp ?? deck.marp ?? false;
   const warnings = [...resolved.warnings];
   const built: Slide[] = [];
@@ -439,7 +484,11 @@ export function marpToDeck(
         : parsed.warnings),
     );
     const slide = asMarp ? marpColumn(parsed.slide) : parsed.slide;
-    let builtSlide = buildSlide(slide, deck.slides[deck.slideOrder[i]], resolved.theme);
+    let builtSlide = buildSlide(
+      slide,
+      deck.slides[deck.slideOrder[i]],
+      resolved.theme,
+    );
     if (asMarp)
       builtSlide = expandMarpBlocks(builtSlide, parsed.slide.images ?? []);
     else if (parsed.slide.images?.length)
@@ -451,7 +500,9 @@ export function marpToDeck(
   let next: Presentation = {
     ...deck,
     marp: asMarp ? true : deck.marp,
-    ...(asMarp ? { slideNumbers: front.paginate === true ? true : undefined } : {}),
+    ...(asMarp
+      ? { slideNumbers: front.paginate === true ? true : undefined }
+      : {}),
     theme: resolved.theme,
     slideOrder,
     slides: Object.fromEntries(built.map((slide) => [slide.id, slide])),
@@ -465,7 +516,9 @@ export function marpToDeck(
       slides: Object.fromEntries(
         slideOrder.map((id) => [
           id,
-          known.has(id) ? next.slides[id] : paintSlide(next.slides[id], resolved.theme!),
+          known.has(id)
+            ? next.slides[id]
+            : paintSlide(next.slides[id], resolved.theme!),
         ]),
       ),
     };

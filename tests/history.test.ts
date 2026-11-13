@@ -49,6 +49,21 @@ function edited(
 }
 
 describe("solo version history", () => {
+  it("keeps content identity for a rename while isolating newly supplied content", () => {
+    const file = createFile("sheet", "Original");
+    const renamed = recordEdit(file, {
+      content: file.content, title: "Renamed", op: { kind: "title" }, by: maya,
+    }).file;
+    expect(renamed.content).toBe(file.content);
+    expect(renamed.title).toBe("Renamed");
+    expect(file.title).toBe("Original");
+    expect(renamed.edits).toHaveLength(1);
+    const content = { cells: { A1: "Fresh" } };
+    const edited = recordEdit(renamed, { content, op: { kind: "sheet" }, by: maya }).file;
+    content.cells.A1 = "Changed outside history";
+    expect(edited.content).toEqual({ cells: { A1: "Fresh" } });
+  });
+
   it("keeps edits inside 15 minutes off the version list and seals after the pause", () => {
     const start = "2026-10-13T18:00:00.000Z";
     const soon = "2026-10-13T18:05:00.000Z";

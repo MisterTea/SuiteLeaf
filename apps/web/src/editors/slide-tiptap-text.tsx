@@ -1,0 +1,129 @@
+import { Editor } from "@tiptap/core";
+import { useLayoutEffect, useMemo, useRef } from "react";
+import type { SlideTextBody } from "./slide-text";
+import { runsOf } from "./slide-runs";
+import { slideDocumentToRuns, slideRunsToDocument } from "./slide-tiptap-model";
+import { renderSlideText, slideTextKit } from "./slide-tiptap-schema";
+import { registerSlideTextEditor, restoreTiptapSelection, tiptapDomSelection, tiptapTextSelection } from "./slide-tiptap-selection";
+import "./slide-tiptap.css";
+
+type Props = Parameters<typeof SlideTextBody>[0];
+
+/** Static boxes have no editor, observers, plugins or React transaction subscription. */
+export function TiptapSlideTextBody(props: Props) {
+  const host = useRef<HTMLDivElement>(null);
+  const active = useRef<Editor | null>(null);
+  const latest = useRef(props);
+  latest.current = props;
+  const emitted = useRef<string | null>(null);
+  const pending = useRef(new Set<string>());
+  const revision = useRef(props.revision);
+  const previousCaret = useRef<{ start: number; end: number } | null>(null);
+  const { kern, hang, fontFamily, fontSize, lineHeight, lineHeightPt, align, nowrap, editing } = props;
+  // Local edits normalize inherited marks into runs. Keep equivalent base metrics
+  // stable so that normalization does not destroy the editor between keystrokes.
+  const baseMarks = useRef({ bold: !!props.bold, italic: !!props.italic });
+  if (!editing) baseMarks.current = { bold: !!props.bold, italic: !!props.italic };
+  const { bold, italic } = baseMarks.current;
+  const kit = useMemo(() => slideTextKit({ kern, hang, fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap }),
+    [kern, hang, fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap]);
+  const signature = JSON.stringify(runsOf(props));
+  const doc = useMemo(() => kit.schema.nodeFromJSON(slideRunsToDocument(JSON.parse(signature))), [kit, signature]);
+
+  useLayoutEffect(() => {
+    if (!editing) return;
+    const mount = host.current!;
+    mount.replaceChildren();
+    const p = latest.current;
+    const pendingChanges = pending.current;
+    const editor = new Editor({
+      element: mount,
+      extensions: kit.extensions,
+      content: slideRunsToDocument(runsOf(p)),
+      injectCSS: false,
+      editorProps: {
+        handleDOMEvents: {
+          beforeinput: () => {
+            const caret = tiptapDomSelection(editor);
+            if (caret) restoreTiptapSelection(editor, caret.start, caret.end);
+            return false;
+          },
+        },
+        handleKeyDown: (_view, event) => {
+          if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Tab", "Enter"].includes(event.key)) {
+            const caret = tiptapDomSelection(editor);
+            if (caret) restoreTiptapSelection(editor, caret.start, caret.end);
+          }
+          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+            editor.commands.selectAll();
+            return true;
+          }
+          if (!event.shiftKey && !event.metaKey && !event.ctrlKey &&
+            (event.key === "ArrowLeft" || event.key === "ArrowRight") && !editor.state.selection.empty) {
+            editor.commands.setTextSelection(event.key === "ArrowLeft" ? editor.state.selection.from : editor.state.selection.to);
+            return true;
+          }
+          return false;
+        },
+        attributes: {
+        class: "element-textarea element-editor slide-tiptap-text",
+        role: "textbox", "aria-multiline": "true", "aria-label": p.placeholder || "Slide text",
+        "data-placeholder": p.placeholder || "Click to add text", spellcheck: "false",
+      } },
+      onUpdate: ({ editor }) => {
+        const runs = slideDocumentToRuns(editor.state.doc);
+        emitted.current = JSON.stringify(runsOf({ runs }));
+        pendingChanges.add(emitted.current);
+        editor.view.dom.dataset.empty = editor.state.doc.textContent ? "false" : "true";
+        latest.current.onText(runs);
+      },
+      onSelectionUpdate: ({ editor }) => latest.current.onCaret(tiptapTextSelection(editor)),
+    });
+    active.current = editor;
+    const unregister = registerSlideTextEditor(editor.view.dom, editor);
+    editor.view.dom.dataset.empty = editor.state.doc.textContent ? "false" : "true";
+    if (previousCaret.current) restoreTiptapSelection(editor, previousCaret.current.start, previousCaret.current.end);
+    editor.commands.focus(previousCaret.current ? undefined : "start", { scrollIntoView: false });
+    return () => {
+      previousCaret.current = tiptapTextSelection(editor);
+      unregister();
+      active.current = null;
+      editor.destroy();
+      emitted.current = null;
+      pendingChanges.clear();
+    };
+  }, [editing, kit]);
+
+  useLayoutEffect(() => {
+    const editor = active.current;
+    if (editor) {
+      const forced = revision.current !== props.revision;
+      revision.current = props.revision;
+      // React may deliver an earlier keystroke after the editor has already advanced.
+      // Undo/redo carries a revision so an intentional earlier value still applies.
+      if (!forced && pending.current.has(signature)) {
+        if (signature === emitted.current) pending.current.clear();
+        return;
+      }
+      if (editor.state.doc.eq(doc) || editor.view.composing) return;
+      pending.current.clear();
+      const selection = tiptapTextSelection(editor);
+      emitted.current = null;
+      editor.commands.setContent(doc.toJSON(), { emitUpdate: false });
+      restoreTiptapSelection(editor, selection.start, selection.end);
+      return;
+    }
+    const root = document.createElement("div");
+    root.className = "element-textarea element-editor slide-tiptap-text";
+    root.contentEditable = "false";
+    root.setAttribute("aria-label", props.placeholder || "Slide text");
+    root.dataset.placeholder = props.placeholder || "Click to add text";
+    root.dataset.empty = doc.textContent ? "false" : "true";
+    root.append(renderSlideText(doc));
+    host.current!.replaceChildren(root);
+  }, [doc, signature, editing, props.placeholder, props.revision]);
+
+  return <div ref={host} className="slide-tiptap-mount" onMouseDown={event => {
+    if (editing) event.stopPropagation();
+  }} />;
+}

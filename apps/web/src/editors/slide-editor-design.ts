@@ -1,5 +1,6 @@
 import type { Slide, SlideTheme } from "@suiteleaf/core";
-import { applyBackground, applyLayout, type Layout } from "./slide-layouts";
+import { applyBackground, applyLayout, masterLayout, type Layout } from "./slide-layouts";
+import { isMasterPage, MASTER_PAGE_ID } from "./slide-master-view";
 import {
   TRANSITION_CHOICES,
   applyDeckTheme,
@@ -25,26 +26,41 @@ export function slideDesign(
   } = state;
 
   const applyLayoutToSlide = (layout: Layout) => {
-    if (!activeSlide) return;
-    const chosen: Layout = deck.marp && layout !== "two-column" ? "title-body" : layout;
+    if (!activeSlide || isMasterPage(activeSlide.id)) return;
+    const chosen: Layout = deck.marp && layout !== "two-column" && layout !== "three-column" ? "title-body" : layout;
+    const saved = masterLayout(deck, chosen, activeSlide.masterId);
+    const custom = saved?.elements;
     const laid = deck.marp
       ? switchMarpLayout(
           activeSlide,
-          chosen === "two-column" ? "two-column" : "title-body",
+          chosen === "two-column" || chosen === "three-column" ? chosen : "title-body",
           deck.width,
         )
       : deck.theme
-        ? layoutWithTheme(activeSlide, chosen, deck.theme)
-        : applyLayout(activeSlide, chosen);
-    const next = deck.marp && deck.theme ? paintSlide(laid, deck.theme) : laid;
+        ? layoutWithTheme(activeSlide, chosen, deck.theme, custom)
+        : applyLayout(activeSlide, chosen, custom);
+    const painted = deck.marp && deck.theme ? paintSlide(laid, deck.theme) : laid;
+    const next = saved?.background?.color
+      ? { ...painted, background: { ...painted.background, color: saved.background.color } }
+      : painted;
     commit({
       ...deck,
       slides: { ...deck.slides, [activeSlide.id]: next },
     });
   };
 
-  const setDeckBackground = (color: string, keepSections: boolean) =>
+  const setDeckBackground = (color: string, keepSections: boolean) => {
+    if (state.masterView) {
+      const page = deck.slides[MASTER_PAGE_ID];
+      if (!page) return;
+      commit({
+        ...deck,
+        slides: { ...deck.slides, [MASTER_PAGE_ID]: { ...page, background: { color } } },
+      });
+      return;
+    }
     commit({ ...deck, slides: applyBackground(deck.slides, color, keepSections) });
+  };
 
   if (deck.theme) themeEdits.current.set(deck.theme.id, deck.theme);
   const resolveTheme = (theme: SlideTheme) =>

@@ -55,7 +55,7 @@ test("word count is on by default, follows the selection, and stays hidden after
   await expect(page.locator(".word-count")).toHaveText("");
   await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save now" }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.reload();
   await expect(editor).toContainText("one two three four");
   await expect(page.locator(".word-count")).toHaveText("");
@@ -120,7 +120,7 @@ test("essay word count excludes a heading and is saved with the file", async ({ 
   await expect(dialog.locator("tr", { hasText: "Words" }).locator("td").nth(1)).toHaveText("1,488");
   await dialog.getByRole("button", { name: "Done" }).click();
   await expect(page.locator(".word-count")).toHaveText("1,488 words (excludes References)");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Independence essay" }).click();
   await expect(page.locator(".word-count")).toHaveText("1,488 words (excludes References)");

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { sourceValue } from "../../apps/web/src/editors/slide-source-control";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EmbeddedDrawing from "../../apps/web/src/editors/drawing-embed";
@@ -17,7 +18,7 @@ describe("Drawing opened on a picture in another file", () => {
   it("covers the file with the picture's SVG and a way back", () => {
     const { source } = open();
     expect(screen.getByRole("dialog", { name: "Picture in Q3 plan" })).toBeTruthy();
-    expect(source).toHaveProperty("value", SVG);
+    expect(sourceValue(source as HTMLTextAreaElement)).toBe(SVG);
   });
 
   it("says nothing changed when the picture was left alone", async () => {

@@ -2,7 +2,10 @@ import type { Slide, SlideElement, TextRun } from "@suiteleaf/core";
 
 /** A bar, pill, or logo the layout draws from the theme. It is not in the markdown. */
 export function isMarpChrome(el: SlideElement): boolean {
-  return (el.type === "shape" && !el.marpHtml) || (el.type === "image" && !el.marpLines && el.src === "beam-ut-logo");
+  return (
+    (el.type === "shape" && !el.marpHtml) ||
+    (el.type === "image" && !el.marpLines && el.src === "beam-ut-logo")
+  );
 }
 
 /** The layout title stays put. Other text and pictures can be reordered around it. */
@@ -30,10 +33,14 @@ function writeRuns(el: SlideElement, runs: TextRun[]) {
   const meaningful = runs.filter((run) => run.text.replace(/\n/g, "") !== "");
   const bold = meaningful.length > 0 && meaningful.every((run) => run.bold);
   const italic = meaningful.length > 0 && meaningful.every((run) => run.italic);
-  const underline = meaningful.length > 0 && meaningful.every((run) => run.underline);
+  const underline =
+    meaningful.length > 0 && meaningful.every((run) => run.underline);
   const uniform = meaningful.every(
     (run) =>
-      !!run.bold === bold && !!run.italic === italic && !!run.underline === underline && !run.color,
+      !!run.bold === bold &&
+      !!run.italic === italic &&
+      !!run.underline === underline &&
+      !run.color,
   );
   el.content = content;
   if (uniform) {
@@ -56,7 +63,10 @@ function writeRuns(el: SlideElement, runs: TextRun[]) {
  * A box drawn from the same markdown lines as before keeps its id, so the
  * selection and review comments stay on it after the slide is laid out again.
  */
-export function keepElementIds(previous: SlideElement[], next: SlideElement[]): SlideElement[] {
+export function keepElementIds(
+  previous: SlideElement[],
+  next: SlideElement[],
+): SlideElement[] {
   const ids = new Map<string, string>();
   for (const el of previous) {
     const key = el.marpLines ? `${el.type}:${el.marpLines[0]}` : null;
@@ -100,7 +110,10 @@ export function mergeConsecutiveText(elements: SlideElement[]): SlideElement[] {
     );
     const left = runsOf(prev);
     if (left.length && !left[left.length - 1].text.endsWith("\n")) {
-      left[left.length - 1] = { ...left[left.length - 1], text: `${left[left.length - 1].text}\n` };
+      left[left.length - 1] = {
+        ...left[left.length - 1],
+        text: `${left[left.length - 1].text}\n`,
+      };
     }
     const rightEdge = Math.max(prev.x + prev.width, el.x + el.width);
     const bottom = Math.max(prev.y + prev.height, el.y + el.height);
@@ -117,7 +130,10 @@ export function mergeConsecutiveText(elements: SlideElement[]): SlideElement[] {
     writeRuns(prev, [...left, ...right]);
     const font = prev.fontSize || 20;
     if (rows > 1)
-      prev.lineHeight = Math.min(4, Math.round((prev.height / (rows * font)) * 100) / 100);
+      prev.lineHeight = Math.min(
+        4,
+        Math.round((prev.height / (rows * font)) * 100) / 100,
+      );
   }
   return merged;
 }
@@ -131,14 +147,14 @@ function textRows(el: SlideElement) {
 
 function canMergeText(a: SlideElement, b: SlideElement) {
   if (a.type !== "text" || b.type !== "text") return false;
-  if (a.preformatted || b.preformatted || a.math || b.math || a.fill || b.fill) return false;
+  if (a.preformatted || b.preformatted || a.math || b.math || a.fill || b.fill)
+    return false;
   if (isMarpTitle(a) || isMarpTitle(b)) return false;
   if (!sameTextStyle(a, b)) return false;
   // One box has one hanging indent, so list items join only at the same depth and marker width.
   if ((a.hang ?? 0) !== (b.hang ?? 0)) return false;
   if (a.hang && Math.abs(a.x - b.x) > 1) return false;
-  const overlap =
-    Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const overlap = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
   if (overlap < Math.min(a.width, b.width) * 0.45) return false;
   const gap = b.y - (a.y + a.height);
   const line = (a.fontSize || 20) * (a.lineHeight || 1.4);
@@ -151,21 +167,29 @@ function byReadingOrder(a: SlideElement, b: SlideElement) {
   return a.x - b.x;
 }
 
-function inRightColumn(el: SlideElement, width: number) {
-  return el.x + el.width / 2 > width / 2;
+function columnCount(slide: Slide): number {
+  return slide.layout === "three-column"
+    ? 3
+    : slide.layout === "two-column"
+      ? 2
+      : 1;
 }
 
-/** Content under the title, left column then right column, top to bottom. */
-export function marpColumns(
-  slide: Slide,
-  width = 960,
-): [SlideElement[], SlideElement[]] {
-  const items = slide.elements.filter((el) => !isMarpTitle(el));
-  if (slide.layout !== "two-column") return [items.sort(byReadingOrder), []];
-  return [
-    items.filter((el) => !inRightColumn(el, width)).sort(byReadingOrder),
-    items.filter((el) => inRightColumn(el, width)).sort(byReadingOrder),
-  ];
+function columnAt(x: number, count: number, width: number) {
+  return Math.max(0, Math.min(count - 1, Math.floor(x / (width / count))));
+}
+
+/** Content under the title, column by column, top to bottom. */
+export function marpColumns(slide: Slide, width = 960): SlideElement[][] {
+  const count = columnCount(slide);
+  // Keep the empty second entry for callers of the original single-column API.
+  const columns: SlideElement[][] = Array.from(
+    { length: Math.max(2, count) },
+    () => [],
+  );
+  for (const el of slide.elements.filter((el) => !isMarpTitle(el)))
+    columns[columnAt(el.x + el.width / 2, count, width)].push(el);
+  return columns.map((column) => column.sort(byReadingOrder));
 }
 
 const MARP_MARGIN = 48;
@@ -190,11 +214,13 @@ function stacked(items: SlideElement[], x: number, columnWidth: number) {
 export function reflowMarp(slide: Slide, width = 960): Slide {
   const title = slide.elements.find(isMarpTitle);
   const items = slide.elements.filter((el) => !isMarpTitle(el));
-  const two = slide.layout === "two-column";
-  const left = two ? items.filter((el) => !inRightColumn(el, width)) : items;
-  const right = two ? items.filter((el) => inRightColumn(el, width)) : [];
+  const count = columnCount(slide);
+  const columns = Array.from({ length: count }, (_, i) =>
+    items.filter((el) => columnAt(el.x + el.width / 2, count, width) === i),
+  );
   const inner = Math.max(120, width - MARP_MARGIN * 2);
-  const columnWidth = two ? Math.round((inner - MARP_GAP) / 2) : inner;
+  const columnWidth =
+    count > 1 ? Math.round((inner - MARP_GAP * (count - 1)) / count) : inner;
   const elements = [
     ...(title
       ? [
@@ -207,8 +233,9 @@ export function reflowMarp(slide: Slide, width = 960): Slide {
           },
         ]
       : []),
-    ...stacked(left, MARP_MARGIN, columnWidth),
-    ...stacked(right, MARP_MARGIN + columnWidth + MARP_GAP, columnWidth),
+    ...columns.flatMap((column, i) =>
+      stacked(column, MARP_MARGIN + i * (columnWidth + MARP_GAP), columnWidth),
+    ),
   ];
   return { ...slide, elements };
 }
@@ -225,35 +252,32 @@ export function reorderMarpItem(
 ): Slide | null {
   const dragged = slide.elements.find((el) => el.id === elementId);
   if (!dragged || isMarpTitle(dragged)) return null;
-  const [left, right] = marpColumns(slide, width);
-  const two = slide.layout === "two-column";
-  const targetRight = two && point.x >= width / 2;
-  const parked = { ...dragged, x: targetRight ? width : 0 };
-  const leftRest = left.filter((el) => el.id !== elementId);
-  const rightRest = right.filter((el) => el.id !== elementId);
-  const column = targetRight ? rightRest : leftRest;
-  let index = column.length;
-  for (let i = 0; i < column.length; i++) {
-    if (point.y < column[i].y + column[i].height / 2) {
-      index = i;
-      break;
-    }
-  }
-  const nextLeft = targetRight
-    ? leftRest
-    : [...column.slice(0, index), parked, ...column.slice(index)];
-  const nextRight = targetRight
-    ? [...column.slice(0, index), parked, ...column.slice(index)]
-    : rightRest;
-  const same =
-    left.map((el) => el.id).join() === nextLeft.map((el) => el.id).join() &&
-    right.map((el) => el.id).join() === nextRight.map((el) => el.id).join();
-  if (same) return null;
+  const columns = marpColumns(slide, width);
+  const target = columnAt(point.x, columnCount(slide), width);
+  const parked = {
+    ...dragged,
+    x: (target * width) / columnCount(slide),
+    width: 0,
+  };
+  const next = columns.map((column) =>
+    column.filter((el) => el.id !== elementId),
+  );
+  const column = next[target];
+  let index = column.findIndex((el) => point.y < el.y + el.height / 2);
+  if (index < 0) index = column.length;
+  column.splice(index, 0, parked);
+  if (
+    columns.every(
+      (items, i) =>
+        items.map((el) => el.id).join() === next[i].map((el) => el.id).join(),
+    )
+  )
+    return null;
   const title = slide.elements.find(isMarpTitle);
   return reflowMarp(
     {
       ...slide,
-      elements: [...(title ? [title] : []), ...nextLeft, ...nextRight],
+      elements: [...(title ? [title] : []), ...next.flat()],
     },
     width,
   );
@@ -291,7 +315,9 @@ export function reorderFittedMarpItem(
     height: el.height,
   }));
   const placed = next.map((el, i) => ({ ...el, ...slots[i] }));
-  const fixed = slide.elements.filter((el) => isMarpTitle(el) || isMarpChrome(el));
+  const fixed = slide.elements.filter(
+    (el) => isMarpTitle(el) || isMarpChrome(el),
+  );
   return { ...slide, elements: [...fixed, ...placed] };
 }
 
@@ -301,60 +327,50 @@ function hasColumnContent(el: SlideElement) {
   return true;
 }
 
-/**
- * Single column to two columns leaves every item on the left and adds an empty
- * box on the right. Two columns to one column appends the right-hand items
- * after the left-hand ones.
- */
+/** Preserve reading order when changing the number of columns. */
 export function switchMarpLayout(
   slide: Slide,
-  layout: "title-body" | "two-column",
+  layout: "title-body" | "two-column" | "three-column",
   width = 960,
 ): Slide {
   if (slide.layout === layout) return slide;
   const title = slide.elements.find(isMarpTitle);
-  const [left, right] = marpColumns(slide, width);
-  if (layout === "two-column") {
-    const empty: SlideElement = {
-      id: crypto.randomUUID(),
-      type: "text",
-      x: width,
-      y: MARP_CONTENT_TOP,
-      width: 200,
-      height: 80,
-      content: "",
-      placeholder: "Click to add text",
-      fontSize: 18,
-      align: "left",
-    };
-    return reflowMarp(
-      {
-        ...slide,
-        layout,
-        elements: [
-          ...(title ? [title] : []),
-          ...left.map((el) => ({ ...el, x: 0 })),
-          empty,
-        ],
-      },
-      width,
-    );
-  }
+  const previous = marpColumns(slide, width).slice(0, columnCount(slide));
+  const count = columnCount({ ...slide, layout });
+  const columns: SlideElement[][] = Array.from({ length: count }, () => []);
+  previous.forEach((items, i) =>
+    columns[Math.min(i, count - 1)].push(...items.filter(hasColumnContent)),
+  );
+  const body = columns.flatMap((items, i) => {
+    const content = items.length
+      ? items
+      : [
+          {
+            id: crypto.randomUUID(),
+            type: "text" as const,
+            x: 0,
+            y: MARP_CONTENT_TOP,
+            width: 200,
+            height: 80,
+            content: "",
+            placeholder: "Click to add text",
+            fontSize: 18,
+            align: "left" as const,
+          },
+        ];
+    return content.map((el) => ({ ...el, x: (i * width) / count, width: 0 }));
+  });
   return reflowMarp(
-    {
-      ...slide,
-      layout: "title-body",
-      elements: [
-        ...(title ? [title] : []),
-        ...[...left, ...right.filter(hasColumnContent)].map((el) => ({ ...el, x: 0 })),
-      ],
-    },
+    { ...slide, layout, elements: [...(title ? [title] : []), ...body] },
     width,
   );
 }
 
 /** Append a column's text to the other column and clear the one it left. */
-export function moveToOtherColumn(slide: Slide, elementId: string): Slide | null {
+export function moveToOtherColumn(
+  slide: Slide,
+  elementId: string,
+): Slide | null {
   if (slide.layout !== "two-column") return null;
   const slots = placeholders(slide);
   const index = slots.findIndex((el) => el.id === elementId);
@@ -362,11 +378,14 @@ export function moveToOtherColumn(slide: Slide, elementId: string): Slide | null
   const from = slots[index];
   const to = slots[index === 1 ? 2 : 1];
   if (!from.content?.trim()) return slide;
-  const content = [to.content?.trim(), from.content.trim()].filter(Boolean).join("\n");
+  const content = [to.content?.trim(), from.content.trim()]
+    .filter(Boolean)
+    .join("\n");
   return {
     ...slide,
     elements: slide.elements.map((el) => {
-      if (el.id === to.id) return { ...el, content, bullet: to.bullet || from.bullet };
+      if (el.id === to.id)
+        return { ...el, content, bullet: to.bullet || from.bullet };
       if (el.id === from.id) {
         const next = { ...el, content: "" };
         delete next.bullet;

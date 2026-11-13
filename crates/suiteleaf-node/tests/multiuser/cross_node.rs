@@ -377,7 +377,9 @@ async fn simultaneous_joins_see_the_saved_edit() {
                 )
                 .await;
             room["mode"].as_str() == Some("multiuser")
-                && updates.as_array().is_some_and(|rows| !rows.is_empty())
+                // The seed reaches this log before either paragraph edit. Wait
+                // for all three distinct updates before testing initial joins.
+                && updates.as_array().is_some_and(|rows| rows.len() >= 3)
         })
         .await;
     let (ravi, noor) = tokio::join!(

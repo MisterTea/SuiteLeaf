@@ -92,8 +92,17 @@ export function AutofitBox({
       const node = textNode(root);
       if (natural <= 0 || node.clientWidth <= 0 || node.clientHeight <= 0) return;
       const previous = node.style.fontSize;
+      const previousPoint = node.style.getPropertyValue("--slide-text-pt");
+      const previousLine = node.style.lineHeight;
+      const lineAt = (ratio: number) => typeof style?.lineHeight === "string" && style.lineHeight !== "normal"
+        ? `calc(${style.lineHeight} * ${ratio})` : style?.lineHeight;
+
       const fits = (px: number) => {
         node.style.fontSize = `${px}px`;
+        node.style.setProperty("--slide-text-pt", `calc(var(--slide-pt, 1) * ${px / natural})`);
+        const line = lineAt(px / natural);
+        if (line !== undefined) node.style.lineHeight = String(line);
+
         return (
           node.scrollHeight <= node.clientHeight + 1 &&
           node.scrollWidth <= node.clientWidth + 1
@@ -101,6 +110,8 @@ export function AutofitBox({
       };
       const next = autofitFontSize(fits, natural);
       node.style.fontSize = previous;
+      node.style.setProperty("--slide-text-pt", previousPoint);
+      node.style.lineHeight = previousLine;
       const value = natural - next < 0.05 ? null : Math.floor(next * 100) / 100;
       setOverride((current) => {
         if (value == null) return current == null ? current : null;
@@ -114,12 +125,18 @@ export function AutofitBox({
     const observer = new ResizeObserver(() => measure());
     observer.observe(watch);
     return () => observer.disconnect();
-  }, [autofit, normalPx, signature]);
+  }, [autofit, normalPx, signature, style?.lineHeight]);
 
   const fontSize =
     autofit && override != null ? `${override}px` : style?.fontSize;
   return (
-    <div ref={ref} {...rest} style={{ ...style, fontSize }}>
+    <div ref={ref} {...rest} style={{ ...style, fontSize,
+      ...(autofit && override != null ? {
+        ["--slide-text-pt" as string]: `calc(var(--slide-pt, 1) * ${override / normalPx})`,
+        ...(typeof style?.lineHeight === "string" && style.lineHeight !== "normal"
+          ? { lineHeight: `calc(${style.lineHeight} * ${override / normalPx})` } : {}),
+      } : {}),
+    }}>
       {children}
     </div>
   );

@@ -1,3 +1,4 @@
+import { marpAudienceDocument, marpFragmentStep, showBuildIds } from "./slide-marp-fragments";
 import { ChevronLeft, ChevronRight, StickyNote, X } from "lucide-react";
 import { useState } from "react";
 import { filename, type SlideFile } from "@suiteleaf/core";
@@ -5,7 +6,8 @@ import { exportBinary } from "../storage";
 import { audienceLines, openAudienceScreen } from "./audience-screen";
 import { PresenterNextSlide } from "./slide-master-ui";
 import { SlideshowRecorder } from "./slide-record";
-import { readMaster } from "./slide-master";
+import { masterForSlide } from "./slide-master";
+import { slideBackground } from "./slide-surface-paint";
 import { transitionMs } from "./slide-theme";
 import { SlideStill } from "./slide-surface";
 import type { MarpPages } from "./slide-marp-backdrop";
@@ -62,10 +64,7 @@ export function SlideShowOverlay({
         data-audience-slide={frame.audience.slideIndex}
         data-audience-blank={frame.audience.blank ? "yes" : "no"}
         style={{
-          backgroundColor:
-            presentSlide?.background?.color ||
-            deck.master?.background?.color ||
-            "#ffffff",
+          backgroundColor: slideBackground(deck, presentSlide),
           ["--deck-motion" as string]: `${transitionMs(presentSlide?.transition, reducedMotion)}ms`,
           aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
           width: showSpeakerNotes
@@ -89,6 +88,7 @@ export function SlideShowOverlay({
                 pages={marpPages}
                 hooks={audienceHooks(presentSlide)}
                 interactive
+                fragmentStep={marpFragmentStep(deck, n, showCursor.revealed)}
               />
             ) : (
               <SlideStill
@@ -98,6 +98,11 @@ export function SlideShowOverlay({
                 index={n}
                 pages={marpPages}
                 className="slide-still-waiting"
+                fragmentStep={marpFragmentStep(
+                  deck,
+                  n,
+                  n < presentSlideIndex ? showBuildIds(deck, n).length : 0,
+                )}
               />
             ),
           )}
@@ -203,7 +208,8 @@ export function SlideShowOverlay({
               if (!openAudienceScreen(
                 popup,
                 frame.audience,
-                presentSlide ? audienceLines(presentSlide.elements, showCursor.revealed, deck.master?.elements ?? []) : [],
+                presentSlide ? audienceLines(presentSlide.elements, showCursor.revealed, masterForSlide(deck, presentSlide).elements) : [],
+                marpPages?.pages[presentSlideIndex] ? marpAudienceDocument(marpPages.pages[presentSlideIndex].plain, marpFragmentStep(deck, presentSlideIndex, showCursor.revealed)) : undefined,
               )) {
                 showFullscreenRef.current = wasFullscreen && !!document.fullscreenElement;
                 setAudienceError("Could not open the audience screen. Allow pop-ups for SuiteLeaf and try again.");
@@ -251,7 +257,7 @@ export function SlideShowOverlay({
               return;
             }
             const recorder = new SlideshowRecorder(deck.width || 960, deck.height || 540);
-            const master = readMaster(deck);
+            const master = masterForSlide(deck, presentSlide);
             recorder.paint(
               presentSlide,
               deck.width || 960,

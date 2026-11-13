@@ -121,12 +121,11 @@ test.describe("cluster mode", () => {
       await page.getByRole("button", { name: "Close assistant" }).click();
 
       const chip = page.locator(".account-chip");
-      await expect(chip, why).toContainText("Leo Martins");
-      await expect(chip, why).toContainText(host);
+      await expect(chip.getByRole("button", { name: "Sign out" }), why).toBeVisible();
       await expect(page.locator(".home").getByText("Connect to a server"), why).toHaveCount(0);
       const chipBox = (await chip.boundingBox())!;
       await page.mouse.move(chipBox.x + chipBox.width - 16, chipBox.y + 20, { steps: 15 });
-      await caption(page, "The sidebar shows who he is and which server he's on, with Sign out and Disconnect.", 2400);
+      await caption(page, "The sidebar has an exit icon for signing out and a Disconnect button.", 2400);
 
       await page
         .getByRole("heading", { name: "SuiteDrive" })

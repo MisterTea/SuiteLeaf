@@ -37,7 +37,8 @@
   color: inherit;
 }
 
-.element-editor[data-empty="true"]::before {
+.element-editor[data-empty="true"]::before,
+.slide-text-face[data-empty="true"]::before {
   content: attr(data-placeholder);
   opacity: 0.5;
 }
@@ -68,4 +69,8 @@
   width: 14px;
   height: 3px;
   border-radius: 1px;
+}
+
+.slide-text-context-menu .menu-item[data-highlighted="true"] {
+  background: var(--menu-hover, rgba(127, 127, 127, 0.16));
 }

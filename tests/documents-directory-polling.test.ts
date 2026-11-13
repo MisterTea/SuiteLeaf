@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DocumentsDirectory } from "../apps/desktop/src/documents-directory";
 import type { FileStore } from "../apps/desktop/src/store";
+import type { DocumentScanProgress } from "../packages/core/src";
 
 vi.mock("node:fs", () => ({ watch: vi.fn() }));
 vi.mock("node:fs/promises", () => ({ mkdir: vi.fn() }));
@@ -50,6 +51,38 @@ it("indexes and keeps polling when native watching is unavailable", async () => 
     syncFolder.mockClear();
     await vi.advanceTimersByTimeAsync(30000);
     expect(syncFolder).not.toHaveBeenCalled();
+  } finally {
+    directory.close();
+  }
+});
+
+it("forwards scan progress when a directory change asks for it", async () => {
+  vi.mocked(watch).mockImplementation(() => {
+    throw new Error("Unsupported");
+  });
+  const syncFolder = vi.fn(
+    async (
+      _directory: string,
+      _previous: string | undefined,
+      onProgress?: (progress: DocumentScanProgress) => void,
+    ) => {
+      onProgress?.({ files: 0, folders: 1, total: 2 });
+      onProgress?.({ files: 2, folders: 1, total: 2 });
+      return false;
+    },
+  );
+  const onProgress = vi.fn();
+  const directory = new DocumentsDirectory(
+    { syncFolder } as unknown as FileStore,
+    vi.fn(),
+  );
+  try {
+    await directory.set(resolve("progress"), onProgress);
+    expect(syncFolder).toHaveBeenCalledWith(resolve("progress"), undefined, onProgress);
+    expect(onProgress.mock.calls.map(([progress]) => progress)).toEqual([
+      { files: 0, folders: 1, total: 2 },
+      { files: 2, folders: 1, total: 2 },
+    ]);
   } finally {
     directory.close();
   }

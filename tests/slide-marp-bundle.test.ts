@@ -70,3 +70,20 @@ it("retains a matching rendered Marp companion and resolves its document-relativ
   expect(result["@marp/compiled.html"]).toMatch(/^data:text\/html;base64,/);
   expect(result["../../fonts/book.otf"]).toMatch(/^data:font\/otf;base64,/);
 });
+
+it("resolves embedded video and poster paths from media/ in MARP bundles", async () => {
+  const md = [
+    "---",
+    "marp: true",
+    "---",
+    "# Demo",
+    '<video src="media/clip.mp4" poster="media/clip_poster.png" controls playsinline></video>',
+  ].join("\n");
+  expect(marpBundlePaths(md)).toEqual(["media/clip.mp4", "media/clip_poster.png"]);
+  const result = await loadMarpBundle("talk.md", md, [
+    picked("media/clip.mp4", "mp4-bytes"),
+    picked("media/clip_poster.png", "png-bytes"),
+  ]);
+  expect(result["media/clip.mp4"]).toMatch(/^data:video\/mp4;base64,/);
+  expect(result["media/clip_poster.png"]).toMatch(/^data:image\/png;base64,/);
+});

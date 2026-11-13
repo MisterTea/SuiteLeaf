@@ -10,6 +10,7 @@ const CLASS_LAYOUT: Record<string, Layout> = {
   "title-body": "title-body",
   section: "section",
   "two-column": "two-column",
+  "three-column": "three-column",
   blank: "blank",
 };
 
@@ -26,8 +27,7 @@ export const THEME_FIELDS = [
 
 export type SlotSpec = { text: string; bullet: boolean };
 type Piece =
-  | { kind: "paragraph"; text: string }
-  | { kind: "list"; items: string[] };
+  { kind: "paragraph"; text: string } | { kind: "list"; items: string[] };
 export type ThemeInput =
   | { kind: "absent" }
   | { kind: "name"; name: string }
@@ -40,7 +40,7 @@ export type ParsedSlide = {
   pinnedColor?: string;
   /** Objects on this slide are placed by hand, so the markdown does not list them. */
   freeform?: boolean;
-  images?: { alt: string; src: string }[];
+  images?: { alt: string; src: string; poster?: string }[];
 };
 
 function unquote(value: string) {
@@ -79,7 +79,10 @@ function parseThemeBlock(raw: string): {
     if (!line.trim()) continue;
     const match = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/.exec(line.trim());
     if (!match)
-      return { theme, error: `The header line "${line.trim()}" could not be read.` };
+      return {
+        theme,
+        error: `The header line "${line.trim()}" could not be read.`,
+      };
     if (match[1] === "paginate") paginate = unquote(match[2]) === "true";
     if (match[1] !== "theme") continue;
     if (match[2].trim()) {
@@ -124,11 +127,13 @@ export function parseFront(markdown: string): {
     return { body: text, theme: { kind: "absent" } };
   }
   const raw = text.slice(3, end).replace(/^\n/, "");
-  if (!looksLikeFrontMatter(raw)) return { body: text, theme: { kind: "absent" } };
+  if (!looksLikeFrontMatter(raw))
+    return { body: text, theme: { kind: "absent" } };
   let rest = text.slice(end + 4);
   if (rest.startsWith("\n")) rest = rest.slice(1);
   const parsed = parseThemeBlock(raw);
-  if (parsed.error) return { body: rest, theme: { kind: "absent" }, error: parsed.error };
+  if (parsed.error)
+    return { body: rest, theme: { kind: "absent" }, error: parsed.error };
   return { body: rest, theme: parsed.theme, paginate: parsed.paginate };
 }
 
@@ -150,7 +155,8 @@ export function resolveTheme(
   if (input.kind === "name") {
     const key = input.name.trim().toLowerCase();
     const found = DECK_THEMES.find(
-      (theme) => theme.id.toLowerCase() === key || theme.name.toLowerCase() === key,
+      (theme) =>
+        theme.id.toLowerCase() === key || theme.name.toLowerCase() === key,
     );
     if (!found)
       return {
@@ -179,7 +185,10 @@ export function resolveTheme(
     bodyFont: input.fields.bodyFont.trim(),
   });
   if (!parsed.success)
-    return { warnings: [], error: "The theme in the header could not be saved." };
+    return {
+      warnings: [],
+      error: "The theme in the header could not be saved.",
+    };
   return { theme: parsed.data, warnings: [] };
 }
 
@@ -268,7 +277,8 @@ function readDirectives(directives: string[]): {
       pinned = color;
     } else if (name === "freeform") freeform = true;
     else if (name === "hidden") {
-      if (value !== "true" && value !== "false") return { error: "Hidden must be true or false." };
+      if (value !== "true" && value !== "false")
+        return { error: "Hidden must be true or false." };
       hidden = value === "true";
     }
   }
@@ -337,16 +347,18 @@ function slotsFor(
   pieces: Piece[],
   left: Piece[],
   right: Piece[],
+  middle: Piece[],
   hadFence: boolean,
 ): SlotSpec[] {
   const heading = { text: title, bullet: false };
   const rest = piecesToText(pieces);
   if (layout === "blank") return [];
   if (layout === "section") return [heading];
-  if (layout === "two-column") {
+  if (layout === "two-column" || layout === "three-column") {
     return [
       heading,
       hadFence ? mergeText(rest, piecesToText(left)) : rest,
+      ...(layout === "three-column" ? [piecesToText(middle)] : []),
       hadFence ? piecesToText(right) : { text: "", bullet: false },
     ];
   }
@@ -373,50 +385,82 @@ export function parseChunk(
 
   const directives: string[] = [];
   const noteBlocks: string[] = [];
-  const withoutComments = chunk.replace(/<!--([\s\S]*?)-->/g, (_full, inner: string) => {
-    const text = String(inner).replace(/^\n|\n$/g, "").trim();
-    if (!text) return "";
-    if (text.startsWith("_") || isMarpDirective(text)) directives.push(text);
-    else noteBlocks.push(text);
-    return "";
-  });
+  const withoutComments = chunk.replace(
+    /<!--([\s\S]*?)-->/g,
+    (_full, inner: string) => {
+      const text = String(inner)
+        .replace(/^\n|\n$/g, "")
+        .trim();
+      if (!text) return "";
+      if (text.startsWith("_") || isMarpDirective(text)) directives.push(text);
+      else noteBlocks.push(text);
+      return "";
+    },
+  );
   const read = readDirectives(directives);
   if (read.error) return { error: `Slide ${slideNumber}: ${read.error}` };
 
   const warnings: string[] = [];
   let body = withoutComments;
-  const images: { alt: string; src: string }[] = [];
-  body = body.replace(/!\[([^\]]*)\]\(([^)\n]*)\)/g, (_full, alt: string, src: string) => {
-    const token = `@@image${images.length}@@`;
-    images.push({ alt, src });
-    return `\n\n${token}\n\n`;
-  });
-  if (images.length)
-    warnings.push(`Slide ${slideNumber}: an image in the markdown was left out.`);
+  const images: { alt: string; src: string; poster?: string }[] = [];
   body = body.replace(
-    /<div\b[^>]*display:\s*grid[^>]*>\s*([\s\S]*)<\/div>/i,
+    /!\[([^\]]*)\]\(([^)\n]*)\)/g,
+    (_full, alt: string, src: string) => {
+      const token = `@@image${images.length}@@`;
+      images.push({ alt, src });
+      return `\n\n${token}\n\n`;
+    },
+  );
+  body = body.replace(
+    /<video\b([^>]*)>[\s\S]*?<\/video>/gi,
+    (_full, attrs: string) => {
+      const src = /\bsrc=["']([^"']+)["']/i.exec(attrs)?.[1];
+      if (!src) return _full;
+      const poster = /\bposter=["']([^"']+)["']/i.exec(attrs)?.[1];
+      const alt = /\b(?:aria-label|title)=["']([^"']+)["']/i.exec(attrs)?.[1] ?? "";
+      const token = `@@image${images.length}@@`;
+      images.push({ alt, src, ...(poster ? { poster } : {}) });
+      return `\n\n${token}\n\n`;
+    },
+  );
+  if (images.length)
+    warnings.push(
+      `Slide ${slideNumber}: an image in the markdown was left out.`,
+    );
+  body = body.replace(
+    /<div\b[^>]*(?:display:\s*grid|class=["'][^"']*\b(?:three-columns|two-image-columns|three-image-columns|columns)\b[^"']*["'])[^>]*>\s*([\s\S]*)<\/div>/i,
     (_full, inner: string) => inner,
   );
   const divs: string[] = [];
-  body = body.replace(/<div\b[^>]*>\s*([\s\S]*?)\s*<\/div>/gi, (_full, inner: string) => {
-    divs.push(String(inner).trim());
-    return "";
-  });
+  body = body.replace(
+    /<div\b[^>]*>\s*([\s\S]*?)\s*<\/div>/gi,
+    (_full, inner: string) => {
+      divs.push(String(inner).trim());
+      return "";
+    },
+  );
 
   const main: string[] = [];
-  const columns = { left: [] as string[], right: [] as string[] };
-  let fence: "left" | "right" | null = null;
+  const columns = {
+    left: [] as string[],
+    middle: [] as string[],
+    right: [] as string[],
+  };
+  let fence: "left" | "middle" | "right" | null = null;
   let hadFence = false;
+  let hadMiddle = false;
   const hadDivs = divs.length >= 2;
   if (hadDivs) {
     columns.left = divs[0].split("\n");
-    columns.right = divs[1].split("\n");
+    columns.right = divs[divs.length >= 3 ? 2 : 1].split("\n");
+    if (divs.length >= 3) columns.middle = divs[1].split("\n");
   }
   for (const line of body.split("\n")) {
-    const open = /^:::\s*(left|right)\s*$/i.exec(line.trim());
+    const open = /^:::\s*(left|middle|right)\s*$/i.exec(line.trim());
     if (!fence && open) {
-      fence = open[1].toLowerCase() as "left" | "right";
+      fence = open[1].toLowerCase() as "left" | "middle" | "right";
       hadFence = true;
+      if (fence === "middle") hadMiddle = true;
       continue;
     }
     if (fence && /^:::\s*$/.test(line.trim())) {
@@ -441,33 +485,53 @@ export function parseChunk(
   const pieces = piecesFrom(restLines);
   const left = piecesFrom(columns.left);
   const right = piecesFrom(columns.right);
+  const middle = piecesFrom(columns.middle);
   const hasText =
     title !== null ||
     pieces.length > 0 ||
     left.length > 0 ||
     right.length > 0 ||
+    middle.length > 0 ||
     hadDivs;
 
   let layout = read.layout;
   if (!layout) {
     const oneParagraph =
-      !hadFence && !hadDivs && pieces.length === 1 && pieces[0].kind === "paragraph";
-    const headingOnly = title !== null && pieces.length === 0 && !hadFence && !hadDivs;
-    layout = hadFence || hadDivs
-      ? "two-column"
-      : title !== null && (oneParagraph || headingOnly)
-        ? "title"
-        : "title-body";
+      !hadFence &&
+      !hadDivs &&
+      pieces.length === 1 &&
+      pieces[0].kind === "paragraph";
+    const headingOnly =
+      title !== null && pieces.length === 0 && !hadFence && !hadDivs;
+    layout =
+      hadFence || hadDivs
+        ? "two-column"
+        : title !== null && (oneParagraph || headingOnly)
+          ? "title"
+          : "title-body";
   }
-  if (hadDivs) layout = "two-column";
+  if (hadDivs) layout = divs.length >= 3 ? "three-column" : "two-column";
+  if (hadMiddle) layout = "three-column";
   if (!read.freeform && layout === "blank" && hasText) layout = "title-body";
-  if (!read.freeform && layout === "section" && (pieces.length > 0 || hadFence || hadDivs))
+  if (
+    !read.freeform &&
+    layout === "section" &&
+    (pieces.length > 0 || hadFence || hadDivs)
+  )
     layout = "title-body";
 
   return {
     slide: {
       layout,
-      slots: slotsFor(layout, title ?? "", pieces, left, right, hadFence || hadDivs),
+      slots: slotsFor(
+        layout,
+        title ?? "",
+        pieces,
+        left,
+        right,
+        middle,
+        hadFence || hadDivs,
+      ),
       notes: noteBlocks.at(-1) ?? "",
       hidden: read.hidden,
       pinnedColor: read.pinned,

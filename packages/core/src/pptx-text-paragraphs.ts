@@ -69,7 +69,8 @@ function properties(element: SlideElement, runs: TextRun[]): string {
   const tabs = first.paraTabs?.length
     ? `<a:tabLst>${first.paraTabs.map((tab) => `<a:tab pos="${Math.round(tab.pos * 12700)}" algn="${tab.align}"/>`).join("")}</a:tabLst>`
     : "";
-  return `<a:pPr algn="${first.paraDistributed ? "dist" : alignment}"${geometry}${marker?.run.autoNumber?.level ? ` lvl="${marker.run.autoNumber.level}"` : ""}${first.paraTab ? ` defTabSz="${Math.round(first.paraTab * 12700)}"` : ""}>${line}${before}${bullet}${tabs}</a:pPr>`;
+  const depth = first.listDepth ?? marker?.run.autoNumber?.level;
+  return `<a:pPr algn="${first.paraDistributed ? "dist" : alignment}"${geometry}${depth ? ` lvl="${depth}"` : ""}${first.paraTab ? ` defTabSz="${Math.round(first.paraTab * 12700)}"` : ""}>${line}${before}${bullet}${tabs}</a:pPr>`;
 }
 
 /** PptxGenJS cannot express mixed paragraph pitches and folded imported gaps. */
@@ -119,7 +120,7 @@ export async function stampTextParagraphs(
         };
         for (const run of runs) {
           const style = { ...previous, ...run };
-          for (const _ of run.text.matchAll(/\n/g)) breaks.push(style);
+          for (let index = 0; index < (run.text.match(/\n/g)?.length ?? 0); index++) breaks.push(style);
           previous = style;
         }
         let breakIndex = 0;

@@ -9,13 +9,22 @@ import {
   ySyncPluginKey,
 } from "y-prosemirror";
 import type * as Y from "yjs";
-import { blockTexts, syncParagraphTexts, type JsonNode } from "@suiteleaf/core";
+import { blockTexts, paragraphTexts, paragraphsAsDocument, roomAlreadyHasText, syncParagraphTexts, type JsonNode } from "@suiteleaf/core";
 import { remoteCaretPlugin } from "../collab/caret-mark";
 import { collabHistoryPlugin, sharedUndoDepth, sharedUndoManager } from "./doc-collab-history";
 import { recordLocalParagraph, type LocalParagraphEdit } from "./doc-local-undo";
 import { shouldSeedDocument } from "../collab/session";
 import { commentSyncPlugin } from "./collab-comment-sync";
 import { reviewSyncPlugin } from "./collab-review-sync";
+
+/** A freshly restored room has plain paragraphs as well as the saved rich file. */
+export function documentRoomSeed(doc: Y.Doc, saved: JsonNode): JsonNode {
+  if (!roomAlreadyHasText(doc)) return saved;
+  const shared = paragraphTexts(doc);
+  return JSON.stringify(shared) === JSON.stringify(blockTexts(saved))
+    ? saved
+    : paragraphsAsDocument(shared);
+}
 
 /** Binds the editor to the shared Y.Doc. Undo falls back to this person's paragraph edits. */
 export function yCollabExtension(
