@@ -131,9 +131,16 @@ function editorOf(page: Page) {
 }
 
 async function typeAtEnd(page: Page, paragraph: string, extra: string) {
-  const block = editorOf(page).locator("p", { hasText: paragraph });
-  await block.click();
-  await page.keyboard.press("ControlOrMeta+ArrowRight");
+  await editorOf(page).evaluate((root, paragraph) => {
+    const editor = (root as HTMLElement & { editor: import("@tiptap/core").Editor }).editor;
+    let end = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isTextblock && node.textContent === paragraph) end = pos + 1 + node.content.size;
+    });
+    if (end < 0) throw new Error(`Missing paragraph: ${paragraph}`);
+    editor.chain().focus().setTextSelection(end).run();
+  }, paragraph);
+  await expect(editorOf(page)).toBeFocused();
   await page.keyboard.type(extra);
 }
 
@@ -416,6 +423,7 @@ test("a comment on one screen shows on the other and the paragraphs stay", async
       return editor.chain().focus().setTextSelection({ from, to }).run();
     }, "Beds");
     expect(placed).toBe(true);
+    await expect(editorOf(mayaPage)).toBeFocused();
     await mayaPage.keyboard.press("ControlOrMeta+Alt+KeyM");
     const comment = mayaPage.getByRole("textbox", { name: "Comment", exact: true });
     await expect(comment).toBeFocused();

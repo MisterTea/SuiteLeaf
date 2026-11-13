@@ -59,6 +59,7 @@ export function useSlidesEditorState({
     x: number;
     y: number;
   } | null>(null);
+  const [textRevision, setTextRevision] = useState(0);
   const [historyMarks, setHistoryMarks] = useState({
     undo: false,
     redo: false,
@@ -154,6 +155,7 @@ export function useSlidesEditorState({
   const pendingFocus = useRef<string | null>(null);
   /** A press that started in a text box. A click must not drop the selection. */
   const textPress = useRef(false);
+  const ignoreCanvasClick = useRef(false);
   const dragMoved = useRef(false);
   const [spellCaret, setSpellCaret] = useState<{ id: string; at: number } | null>(
     null,
@@ -208,7 +210,7 @@ export function useSlidesEditorState({
     selectedElementId, setSelectedElementId, svgEdit, setSvgEdit, tableCell, setTableCell,
     tableCellRef, editingId, setEditingId, caretMarks, setCaretMarks, selectedSlideIds,
     setSelectedSlideIds, onSlideUrlRef, notice, setNotice, contextMenu, setContextMenu,
-    historyMarks, setHistoryMarks, showNotes, setShowNotes, presenting, setPresenting,
+    textRevision, setTextRevision, historyMarks, setHistoryMarks, showNotes, setShowNotes, presenting, setPresenting,
     handoutsOpen, setHandoutsOpen, wordArtOpen, setWordArtOpen, showCursor, setShowCursor,
     presentSlideIndex, showSpeakerNotes, setShowSpeakerNotes, blankScreen, setBlankScreen,
     audiencePopup, showStartedAt, setShowStartedAt, timerPaused, setTimerPaused,
@@ -221,7 +223,7 @@ export function useSlidesEditorState({
     setTransitionStatus, canvasMotion, setCanvasMotion, showMotion, setShowMotion, themeEdits,
     apiRef, reducedMotion, libraryThemes, saveLibraryTheme, historyRef, deckRef, activeRef,
     selectedRef, selectedIdsRef, selectedElementRef, editingRef, textRange, anchorRef,
-    presentingRef, handoutsRef, showCursorRef, moveShowRef, pendingFocus, textPress, dragMoved,
+    presentingRef, handoutsRef, showCursorRef, moveShowRef, pendingFocus, textPress, ignoreCanvasClick, dragMoved,
     spellCaret, setSpellCaret, liveDirty, clipboard, commitRef, marpOpenRef, marpStale, painted,
     setPainted, focusedBox, setFocusedBox, marpAreaRef, onChangeRef, readOnlyRef, imageInputRef,
     audioInputRef, videoInputRef, spellingRef, stageRef, draggingRef, activeDeckSlide,

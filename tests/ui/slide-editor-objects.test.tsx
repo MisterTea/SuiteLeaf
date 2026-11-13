@@ -48,7 +48,7 @@ describe("inserting objects", () => {
     const added = editor.elements("a").at(-1)!;
     expect(added).toMatchObject({ type: "text" });
     expect(box(added.id).className).toContain("selected");
-    expect(document.activeElement).toBe(box(added.id).querySelector("textarea"));
+    expect(document.activeElement).toBe(box(added.id).querySelector('textarea, [contenteditable="true"]'));
     expect(screen.getByRole("toolbar", { name: "Slide text formatting" })).toBeTruthy();
 
     act(() => editor.slide().insertShape("ellipse"));

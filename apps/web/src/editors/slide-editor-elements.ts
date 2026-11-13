@@ -202,7 +202,11 @@ export function slideElementActions(
     if (!slide || !elements.length) return;
     commit(withElements(deckRef.current, slide.id, elements));
     selectElement(elements[elements.length - 1].id);
-    if (focusId) pendingFocus.current = focusId;
+    if (focusId) {
+      pendingFocus.current = focusId;
+      editingRef.current = focusId;
+      setEditingId(focusId);
+    }
   };
 
   const addTextBox = () => {

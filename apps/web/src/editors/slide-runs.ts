@@ -1,3 +1,4 @@
+import { normalizeColor } from "./slide-run-color";
 import { slideMathHtml } from "./slide-math";
 import { officeWrapLines } from "./slide-office-wrap";
 import {
@@ -9,7 +10,6 @@ import {
   type TabStop,
   type TextRun,
 } from "@suiteleaf/core";
-
 export function plainText(runs: readonly TextRun[]): string {
   return runs.map((run) => run.text).join("");
 }
@@ -225,20 +225,7 @@ export function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-const HEX = /^#[0-9a-f]{6}$/i;
-
-export function normalizeColor(value: string): string | undefined {
-  const trimmed = value.trim().toLowerCase();
-  if (HEX.test(trimmed)) return trimmed;
-  const rgb = trimmed.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (!rgb) return undefined;
-  const channel = (part: string) =>
-    Math.max(0, Math.min(255, Number(part)))
-      .toString(16)
-      .padStart(2, "0");
-  return `#${channel(rgb[1])}${channel(rgb[2])}${channel(rgb[3])}`;
-}
-
+export { normalizeColor } from "./slide-run-color";
 /**
  * A newline followed by more text is one break. A block with `min-height`
  * would add a second line, which drops the next paragraph down the box.
@@ -249,7 +236,7 @@ function lineBreakHtml(run: TextRun, trailing: boolean, editing?: boolean): stri
   const data: string[] = [];
   const rules: string[] = [];
   if (run.fontSize) {
-    rules.push(`font-size:calc(${run.fontSize} * var(--slide-pt, 1) * 1px)`);
+    rules.push(`font-size:calc(${run.fontSize} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)`);
     data.push(`data-font-size="${run.fontSize}"`);
   }
   if (run.paragraphBreak) data.push('data-paragraph-break="1"');
@@ -307,7 +294,7 @@ function pictureBulletHtml(run: TextRun): string | undefined {
   if (!src || !/^data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=\s]+$/.test(src))
     return;
   const size = run.fontSize && run.fontSize > 0 ? run.fontSize : 12;
-  return `<img alt="" src="${src}" style="height:calc(${size} * var(--slide-pt, 1) * 1px);width:auto;vertical-align:-0.15em"/>`;
+  return `<img alt="" src="${src}" style="height:calc(${size} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px);width:auto;vertical-align:-0.15em"/>`;
 }
 
 /** A list marker at the start of a longer run, such as MARP's `• words`. */
@@ -406,7 +393,7 @@ function lineBoxHtml(
   const rules = ["display:block", "margin:0"];
   const data = ['data-slide-line="1"'];
   if (line.font) {
-    rules.push(`font-size:calc(${line.font} * var(--slide-pt, 1) * 1px)`);
+    rules.push(`font-size:calc(${line.font} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)`);
     data.push(`data-font-size="${line.font}"`);
     if (lineFactor) rules.push(`line-height:${lineHeightCss(line.font, lineFactor)}`);
   }
@@ -455,7 +442,7 @@ function textWidthPt(text: string, run: TextRun, metrics?: TabMetrics, unkerned 
 function tabSpacer(points: number): string {
   const width = Math.round(points * 100) / 100;
   if (!(width > 0)) return "";
-  return `<span style="display:inline-block;width:calc(${width} * var(--slide-pt, 1) * 1px)"></span>`;
+  return `<span style="display:inline-block;width:calc(${width} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)"></span>`;
 }
 
 /** One visual line, split into text and tab pieces. */
@@ -634,14 +621,14 @@ function runSpan(run: TextRun, kern?: number): string {
       const stroke = run.stroke ? normalizeColor(run.stroke) : undefined;
       if (stroke && run.strokeWidth) {
         styles.push(
-          `-webkit-text-stroke:calc(${run.strokeWidth} * var(--slide-pt, 1) * 1px) ${stroke}`,
+          `-webkit-text-stroke:calc(${run.strokeWidth} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px) ${stroke}`,
           "paint-order:stroke fill",
           run.gradient ? "-webkit-text-fill-color:transparent" : "-webkit-text-fill-color:currentColor",
         );
         data.push(`data-stroke="${stroke}"`, `data-stroke-width="${run.strokeWidth}"`);
       }
       if (run.shadow) {
-        const shift = (value: number) => `calc(${value} * var(--slide-pt, 1) * 1px)`;
+        const shift = (value: number) => `calc(${value} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)`;
         styles.push(
           `text-shadow:${shift(run.shadow.x)} ${shift(run.shadow.y)} ${shift(run.shadow.blur)} ${run.shadow.color}`,
         );
@@ -658,7 +645,7 @@ function runSpan(run: TextRun, kern?: number): string {
         data.push('data-gradient="1"', runMetadata("gradient-value", run.gradient));
       }
       if (run.fontSize) {
-        styles.push(`font-size:calc(${run.fontSize} * var(--slide-pt, 1) * 1px)`);
+        styles.push(`font-size:calc(${run.fontSize} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)`);
         if (kern) styles.push(`font-kerning:${fontKerning(kern, run.fontSize)}`, `font-feature-settings:${kernFeature(kern, run.fontSize)}`);
         data.push(`data-font-size="${run.fontSize}"`);
       }
@@ -685,7 +672,7 @@ function runSpan(run: TextRun, kern?: number): string {
         if (run.scriptStrut) data.push(`data-script-strut="${run.scriptStrut}"`);
       }
       if (run.tracking) {
-        styles.push(`letter-spacing:calc(${run.tracking} * var(--slide-pt, 1) * 1px)`);
+        styles.push(`letter-spacing:calc(${run.tracking} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)`);
         data.push(`data-tracking="${run.tracking}"`);
       }
       if (run.bulletSrc && pictureBulletHtml(run))
@@ -833,7 +820,7 @@ function slidePx(value: number): string {
 
 /** PowerPoint advances by the exact line height, so lines alternate 19 and 20px for a 19.33px pitch. */
 function lineHeightCss(fontSize: number, factor: number): string {
-  return `calc(${fontSize} * var(--slide-pt, 1) * ${factor} * 1px)`;
+  return `calc(${fontSize} * var(--slide-text-pt, var(--slide-pt, 1)) * ${factor} * 1px)`;
 }
 
 /**
@@ -846,7 +833,7 @@ function lineHeightCss(fontSize: number, factor: number): string {
 function leadingShift(fontSize: number, factor: number): string | undefined {
   const single = presentationSingleSpacing;
   if (!(single > 0) || factor > single - 0.005) return;
-  return `calc((${lineHeightCss(fontSize, factor)} - ${fontSize} * var(--slide-pt, 1) * ${single} * 1px) / 2)`;
+  return `calc((${lineHeightCss(fontSize, factor)} - ${fontSize} * var(--slide-text-pt, var(--slide-pt, 1)) * ${single} * 1px) / 2)`;
 }
 
 /** A paragraph percentage explicitly ends an inherited exact-pitch setting. */
@@ -876,18 +863,18 @@ function paragraphStyle(run: TextRun | undefined, empty = false, metrics?: TabMe
   }
   const lineFactor = run.paraLine || metrics?.lineHeight;
   const points = paragraphLinePoints(run, metrics);
-  if (points) rules.push(`line-height:calc(${points} * var(--slide-pt, 1) * 1px)`);
+  if (points) rules.push(`line-height:calc(${points} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)`);
   else if (lineFactor) rules.push(`line-height:${lineFactor}`);
   // A paragraph without its own size uses the box's size and line height.
   const strutSize = run.fontSize || metrics?.fontSize;
   const shift = strutSize && lineFactor ? leadingShift(strutSize, points ? points / strutSize : lineFactor) : undefined;
   if (shift) rules.push("position:relative", `top:${shift}`);
   if (run.fontSize)
-    rules.push(`font-size:calc(${run.fontSize} * var(--slide-pt, 1) * 1px)`);
+    rules.push(`font-size:calc(${run.fontSize} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)`);
   // An empty block has no line box, so a blank paragraph would vanish.
   // `1lh` does not resolve while line-height is a rounded length, which
   // drops the blank line and pulls the next paragraph up.
-  if (empty && points) rules.push(`min-height:calc(${points} * var(--slide-pt, 1) * 1px)`);
+  if (empty && points) rules.push(`min-height:calc(${points} * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)`);
   else if (empty && run.fontSize && lineFactor)
     rules.push(`min-height:${lineHeightCss(run.fontSize, lineFactor)}`);
   else if (empty) rules.push("min-height:1lh");

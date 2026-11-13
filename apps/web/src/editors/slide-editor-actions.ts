@@ -247,8 +247,8 @@ export function useSlideEditorKeys(
   useEffect(() => {
     const id = pendingFocus.current;
     if (!id) return;
-    const node = stageRef.current?.querySelector<HTMLTextAreaElement>(
-      `[data-element-id="${CSS.escape(id)}"] textarea`,
+    const node = stageRef.current?.querySelector<HTMLElement>(
+      `[data-element-id="${CSS.escape(id)}"] textarea, [data-element-id="${CSS.escape(id)}"] [contenteditable="true"]`,
     );
     if (!node) return;
     node.focus();

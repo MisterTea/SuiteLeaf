@@ -10,14 +10,6 @@ export function sourceEditor(
 export function sourceValue(area: HTMLTextAreaElement): string {
   return sourceEditor(area)?.getValue() ?? area.value;
 }
-export function setSourceValue(area: HTMLTextAreaElement, value: string): void {
-  const editor = sourceEditor(area);
-  if (editor) editor.setValue(value, -1);
-  else {
-    area.value = value;
-    area.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-}
 export function sourceSelection(area: HTMLTextAreaElement) {
   const editor = sourceEditor(area);
   if (!editor)

@@ -283,6 +283,6 @@ describe("per-word slide formatting", () => {
     });
     const blankParas = blank.split('class="slide-para"').slice(1);
     expect(blankParas[1]).toContain("<br>");
-    expect(blankParas[1]).toContain("calc(14 * var(--slide-pt, 1)");
+    expect(blankParas[1]).toContain("calc(14 * var(--slide-text-pt, var(--slide-pt, 1))");
   });
 });

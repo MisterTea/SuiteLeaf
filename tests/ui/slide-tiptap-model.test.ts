@@ -290,13 +290,13 @@ it("sizes each paragraph's strut from its words instead of the larger box", () =
   root.append(renderSlideText(kit.schema.nodeFromJSON(slideRunsToDocument(runs))));
   const paragraphs = [...root.querySelectorAll<HTMLElement>("[data-slide-para]")];
   expect(paragraphs.map(p => p.style.fontSize)).toEqual([
-    "calc(64 * var(--slide-pt, 1) * 1px)",
-    "calc(56 * var(--slide-pt, 1) * 1px)",
-    "calc(32 * var(--slide-pt, 1) * 1px)",
-    "calc(40 * var(--slide-pt, 1) * 1px)",
+    "calc(64 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)",
+    "calc(56 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)",
+    "calc(32 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)",
+    "calc(40 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)",
   ]);
   expect(paragraphs[1].style.lineHeight).toBe("1.08");
-  expect(paragraphs[2].style.lineHeight).toBe("calc(20 * var(--slide-pt, 1) * 1px)");
+  expect(paragraphs[2].style.lineHeight).toBe("calc(20 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)");
   expect(root.querySelector<HTMLElement>(".slide-bullet-slot span")?.style.fontFamily).toContain("SuiteLeaf Sprig");
 });
 

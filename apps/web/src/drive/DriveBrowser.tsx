@@ -249,14 +249,17 @@ export function DriveBrowser({
     const trigger = menuTrigger.current;
     const popup = menuPopup.current;
     if (!menuId || !trigger || !popup) return;
-    const anchor = trigger.getBoundingClientRect();
-    const { width, height } = popup.getBoundingClientRect();
-    const gap = 6;
-    const below = anchor.bottom + gap;
-    const above = anchor.top - height - gap;
-    const top = below + height <= window.innerHeight - gap ? below : above;
-    popup.style.top = `${Math.max(gap, top)}px`;
-    popup.style.left = `${Math.max(gap, Math.min(anchor.right - width, window.innerWidth - width - gap))}px`;
+    const position = () => {
+      const anchor = trigger.getBoundingClientRect();
+      const { width, height } = popup.getBoundingClientRect();
+      const gap = 6;
+      const below = anchor.bottom + gap;
+      const above = anchor.top - height - gap;
+      const top = below + height <= window.innerHeight - gap ? below : above;
+      popup.style.top = `${Math.max(gap, top)}px`;
+      popup.style.left = `${Math.max(gap, Math.min(anchor.right - width, window.innerWidth - width - gap))}px`;
+    };
+    position();
     if (document.activeElement === trigger) popup.querySelector("button")?.focus({ preventScroll: true });
 
     const onPointerDown = (e: PointerEvent) => {
@@ -271,7 +274,7 @@ export function DriveBrowser({
       trigger.focus({ preventScroll: true });
     };
     const onScroll = (e: Event) => {
-      if (e.target !== popup) setMenuId(null);
+      if (!(e.target instanceof Node) || !popup.contains(e.target)) position();
     };
     const onResize = () => setMenuId(null);
     document.addEventListener("pointerdown", onPointerDown);

@@ -105,3 +105,28 @@ it("renders empty static boxes with their placeholder and repaints layout change
   expect(view.container.querySelectorAll(".ProseMirror")).toHaveLength(1);
   expect(view.container.querySelector(".slide-bullet-slot")).toBeNull();
 });
+
+it("ignores delayed local echoes while applying an explicit undo revision", () => {
+  const onText = vi.fn();
+  const props = { editing: true, onText, onCaret: noop, revision: 0 };
+  const view = render(<SlideTextBody {...props} content="" />);
+  const root = view.container.querySelector<HTMLElement>(".ProseMirror")!;
+  const editor = slideTextEditor(root)!;
+  act(() => { editor.commands.insertContent("K"); editor.commands.insertContent("ickoff"); });
+  view.rerender(<SlideTextBody {...props} content="K" />);
+  expect(editor.state.doc.textContent).toBe("Kickoff");
+  view.rerender(<SlideTextBody {...props} revision={1} content="K" />);
+  expect(editor.state.doc.textContent).toBe("K");
+  expect(root.textContent).toBe("K");
+});
+
+it("keeps the live editor when inherited bold is normalized into text runs", () => {
+  const props = { content: "North", bold: true, editing: true, onText: noop, onCaret: noop };
+  const view = render(<SlideTextBody {...props} />);
+  const root = view.container.querySelector<HTMLElement>(".ProseMirror")!;
+  const editor = slideTextEditor(root)!;
+  view.rerender(<SlideTextBody {...props} bold={false} content="W" runs={[{ text: "W", bold: true }]} />);
+  expect(slideTextEditor(root)).toBe(editor);
+  expect(editor.isDestroyed).toBe(false);
+  expect(editor.state.doc.textContent).toBe("W");
+});

@@ -1,3 +1,4 @@
+import { editSlideText } from "./slide-text-helpers";
 import type { Ace } from "ace-builds";
 import { fillSource, expectSourceValue } from "./source-editor-helpers";
 import { test, expect, type Page } from "@playwright/test";
@@ -442,7 +443,7 @@ test("Mobile slide editing keeps the toolbar above the keyboard without blank sc
   await page.goto("/");
   await page.getByRole("button", { name: /^New presentation/ }).click();
   const text = page.locator(".slide-canvas .element-textarea").first();
-  await page.locator(".slide-canvas .slide-text").first().dblclick();
+  await editSlideText(page.locator(".slide-canvas .slide-text").first());
   await expect(text).toBeFocused();
   await page.keyboard.type("Keyboard viewport");
   await page.evaluate(() => {
@@ -452,9 +453,11 @@ test("Mobile slide editing keeps the toolbar above the keyboard without blank sc
   });
   const toolbar = page.getByRole("toolbar", { name: "Slides toolbar" });
   await expect.poll(async () => (await page.locator(".workspace").boundingBox())!.y).toBe(140);
-  expect((await toolbar.boundingBox())!.y).toBeLessThanOrEqual(148);
-  await expect(toolbar.getByRole("button", { name: "Main menu", exact: true })).toBeInViewport();
-  const bold = toolbar.getByRole("button", { name: "Bold", exact: true });
+  const menu = (await page.getByRole("menubar", { name: "Main menu" }).boundingBox())!;
+  expect(menu.y).toBeGreaterThanOrEqual(140);
+  expect((await toolbar.boundingBox())!.y).toBeLessThanOrEqual(menu.y + menu.height + 8);
+  await expect(toolbar.getByRole("button", { name: "Menus", exact: true })).toBeInViewport();
+  const bold = page.getByRole("toolbar", { name: "Slide text formatting", exact: true }).getByRole("button", { name: "Bold", exact: true });
   await bold.scrollIntoViewIfNeeded();
   await expect(bold).toBeInViewport();
   const workspace = page.locator(".workspace");
@@ -479,6 +482,10 @@ test("Mobile slides touch: text selection, editing, slide holds and notes", asyn
   const text = page.locator('.slide-canvas [data-element-id="a-text"]');
   await expect(text).toBeVisible();
   await expect(page.locator(".speaker-notes-pane")).toBeHidden();
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
   const bounds = (await text.boundingBox())!;
   const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
   await touchGesture(page, center);
@@ -486,7 +493,9 @@ test("Mobile slides touch: text selection, editing, slide holds and notes", asyn
   await expect(text.locator(".resize-handle")).toHaveCount(8);
   await expect(text.locator('[contenteditable="true"]')).toHaveCount(0);
   await page.waitForTimeout(400);
-  await touchGesture(page, center, { x: center.x + 25, y: center.y + 20 });
+  const selectedBounds = (await text.boundingBox())!;
+  const dragCenter = { x: selectedBounds.x + selectedBounds.width / 2, y: selectedBounds.y + selectedBounds.height / 2 };
+  await touchGesture(page, dragCenter, { x: dragCenter.x + 25, y: dragCenter.y + 20 });
   await expect.poll(async () => (await text.boundingBox())!.x).toBeGreaterThan(bounds.x + 10);
   const resize = (await text.locator(".handle-se").boundingBox())!;
   const beforeResize = (await text.boundingBox())!;
@@ -499,6 +508,8 @@ test("Mobile slides touch: text selection, editing, slide holds and notes", asyn
   await expect(text.locator('[contenteditable="true"]')).toBeFocused();
   await page.keyboard.type("Edited");
   await page.keyboard.press("Escape");
+  await expect(text.locator('[contenteditable="true"]')).toHaveCount(0);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const thumb = page.locator('.thumbnail-row[data-slide-id="a"]');
   const thumbBox = (await thumb.boundingBox())!;
   const thumbCenter = { x: thumbBox.x + thumbBox.width / 2, y: thumbBox.y + thumbBox.height / 2 };

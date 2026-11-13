@@ -835,6 +835,17 @@ describe("the live room", () => {
     expect(status()).toBe("Saved to SuiteDrive");
   });
 
+  it("renames the SuiteDrive item when a title changes in a live room", async () => {
+    const plan = store("slide", "Deck");
+    await open(plan);
+    act(() => room().onDoc(new Y.Doc()));
+    fireEvent.change(screen.getByLabelText("File title"), { target: { value: "Renamed deck" } });
+    await advance(2000);
+    expect(driveApi.update).toHaveBeenCalledWith("item-1", { name: "Renamed deck.slslides" });
+    expect(saved(plan.file.id).drive?.name).toBe("Renamed deck.slslides");
+    expect(nodeExtras.uploadDriveSpan).not.toHaveBeenCalled();
+  });
+
   it("adopts a newer file after working alone again, or compacts the session", async () => {
     const plan = store();
     await open(plan);

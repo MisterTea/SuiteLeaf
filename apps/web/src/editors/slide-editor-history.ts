@@ -73,7 +73,7 @@ export function useDeckHistory(
   },
 ) {
   const {
-    setHistoryMarks, historyRef, deckRef, setDeck, activeSlideId, selectedElementId, readOnlyRef,
+    setTextRevision, setHistoryMarks, historyRef, deckRef, setDeck, activeSlideId, selectedElementId, readOnlyRef,
     activeRef, selectedRef, setActiveSlideId, setSelectedSlideIds, selectedElementRef,
     setSelectedElementId, editingRef, setEditingId, textRange, onSlideUrlRef, anchorRef, stageRef,
     liveDirty, marpStale, setNotice, commitRef, masterViewRef, setMasterView, returnSlideRef,
@@ -127,8 +127,13 @@ export function useDeckHistory(
   const draftRef = useRef<TextDraft | null>(null);
   const [draft, setDraft] = useState<TextDraft | null>(null);
   const showDraft = (next: TextDraft | null) => {
+    const before = collabDoc ? withTextDraft(deckRef.current, draftRef.current) : null;
     draftRef.current = next;
     setDraft(next);
+    if (collabDoc && next && before) {
+      const after = withTextDraft(deckRef.current, next);
+      onChange(materializeMasterView(after, editingMasterRef.current), slideOp(before, after));
+    }
   };
   const finishText = () => {
     const pending = draftRef.current;
@@ -167,6 +172,7 @@ export function useDeckHistory(
       const node = activeTextEditor();
       const caret = direction < 0 ? pending.carets[index].before : pending.carets[pending.index].after;
       if (node && caret) restoreCaret.current = { node, caret };
+      setTextRevision((revision) => revision + 1);
       showDraft({ ...pending, index });
     }
     return true;

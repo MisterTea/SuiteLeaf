@@ -151,7 +151,7 @@ test("slide spelling replaces one word and keeps the rest of the box", async ({ 
   await expect(box).toHaveText("receive the keys");
   await expect(page.locator(".slide-spell-mirror")).toHaveCount(0);
   await expect(spelling).toContainText("Spelling check finished");
-  await spelling.getByRole("button", { name: "Close", exact: true }).click();
+  await spelling.getByRole("button", { name: "Close spelling", exact: true }).click();
   const saved = await download(page);
   const slide = Object.values(saved.content.slides)[0] as {
     elements: { content?: string; italic?: boolean }[];

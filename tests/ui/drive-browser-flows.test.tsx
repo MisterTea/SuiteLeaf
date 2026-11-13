@@ -404,6 +404,8 @@ describe("DriveBrowser", () => {
     expect(within(menu).getByRole("button", { name: "Move Plan.sldoc" })).toBeTruthy();
     expect(within(menu).getByRole("button", { name: "Rename Plan.sldoc" })).toBeTruthy();
     expect(within(menu).getByRole("button", { name: "Move Plan.sldoc to trash" })).toBeTruthy();
+    fireEvent.scroll(window);
+    expect(screen.getByRole("menu", { name: "Actions for Plan.sldoc" })).toBe(menu);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu", { name: "Actions for Plan.sldoc" })).toBeNull();
   });

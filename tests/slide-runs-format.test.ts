@@ -233,7 +233,7 @@ describe("painting runs as HTML", () => {
       });
     const tight = box(1.2 * 0.8);
     expect(tight).toContain("position:relative");
-    expect(tight).toContain("- 20 * var(--slide-pt, 1) * 1.2 * 1px) / 2)");
+    expect(tight).toContain("- 20 * var(--slide-text-pt, var(--slide-pt, 1)) * 1.2 * 1px) / 2)");
     expect(box(1.2)).not.toContain("position:relative");
     expect(box(1.2 * 1.5)).not.toContain("position:relative");
   });

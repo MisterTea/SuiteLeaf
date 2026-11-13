@@ -115,6 +115,7 @@ export function editorCanvasHooks(
         /> : null}
         <SlideTextBody
           content={el.content}
+          revision={state.textRevision}
           runs={el.runs}
           bold={el.bold}
           italic={el.italic}
@@ -458,7 +459,17 @@ export function SlideCanvasStage({
       <div
         className="slide-stage-viewport"
         ref={stageRef}
+        onPointerDownCapture={(event) => {
+          if (!(event.target as HTMLElement).closest("[data-element-id]"))
+            state.ignoreCanvasClick.current = false;
+        }}
         onClick={() => {
+          // Selecting an object can move it below a newly opened toolbar before
+          // the browser synthesizes its touch click on the canvas background.
+          if (state.ignoreCanvasClick.current) {
+            state.ignoreCanvasClick.current = false;
+            return;
+          }
           if (textPress.current) return;
           selectElement(null);
         }}

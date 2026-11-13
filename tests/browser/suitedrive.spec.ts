@@ -101,6 +101,13 @@ async function startNode(
   return { url, p2p, dir: dataDir, process: child, signUps: 0 };
 }
 
+/** Exercise the snapshot upload path separately from the live collaboration specs. */
+async function snapshotContext(browser: Browser) {
+  const context = await browser.newContext();
+  await context.routeWebSocket(/\/api\/drive\/items\/[^/]+\/session/, socket => socket.close());
+  return context;
+}
+
 test.describe("SuiteDrive across two nodes", () => {
   test.skip(
     !ready,
@@ -224,7 +231,7 @@ test.describe("SuiteDrive across two nodes", () => {
   test("save on one node, open on another, and detect a conflicting edit", async ({
     browser,
   }) => {
-    const pageA = await (await browser.newContext()).newPage();
+    const pageA = await (await snapshotContext(browser)).newPage();
     const a = await signUp(pageA, "ann@example.com");
     const b = nodes.find((n) => n !== a)!;
 
@@ -236,7 +243,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await pageA.getByLabel("File title").fill("Field report");
     const editorA = pageA.getByRole("textbox", { name: "Document content" });
     await editorA.fill("Written on node A");
-    await expect(pageA.getByRole("status").first()).toHaveText("Saved to SuiteDrive", {
+    await expect(pageA.locator(".save-status")).toHaveText("Saved to SuiteDrive", {
       timeout: 20000,
     });
     await pageA.getByRole("button", { name: "File", exact: true }).click();
@@ -245,7 +252,7 @@ test.describe("SuiteDrive across two nodes", () => {
     ).toBeVisible();
     await pageA.keyboard.press("Escape");
 
-    const pageB = await (await browser.newContext()).newPage();
+    const pageB = await (await snapshotContext(browser)).newPage();
     await pageB.goto(b.url);
     await expect
       .poll(
@@ -266,7 +273,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await expect(editorB).toContainText("Written on node A");
 
     await editorB.fill("Rewritten on node B");
-    await expect(pageB.getByRole("status").first()).toHaveText("Saved to SuiteDrive", {
+    await expect(pageB.locator(".save-status")).toHaveText("Saved to SuiteDrive", {
       timeout: 20000,
     });
 
@@ -328,14 +335,14 @@ test.describe("SuiteDrive across two nodes", () => {
   test("reopening a file from SuiteDrive keeps edits that were never uploaded", async ({
     browser,
   }) => {
-    const page = await (await browser.newContext()).newPage();
+    const page = await (await snapshotContext(browser)).newPage();
     await signUp(page, "reopen@example.com");
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Offline notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
     await editor.fill("First draft");
     // The save status comes first; a room notice such as "Joining the shared document." can show beside it.
-    const status = page.getByRole("status").first();
+    const status = page.locator(".save-status");
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
     const reopen = async () => {
@@ -383,7 +390,7 @@ test.describe("SuiteDrive across two nodes", () => {
   type Held = Window & { holdWrites?: boolean; heldWrites: (() => void)[] };
   /** A page whose local IndexedDB writes stay in flight until the test releases them. */
   async function pageHoldingWrites(browser: Browser) {
-    const context = await browser.newContext();
+    const context = await snapshotContext(browser);
     await context.addInitScript(() => {
       const w = window as Held;
       w.heldWrites = [];
@@ -421,7 +428,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await page.getByLabel("File title").fill("Busy notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
     await editor.fill("First");
-    const status = page.getByRole("status").first();
+    const status = page.locator(".save-status");
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
     const ifMatch: (string | undefined)[] = [];
@@ -470,13 +477,13 @@ test.describe("SuiteDrive across two nodes", () => {
   test("reopening a file while its upload is in flight does not conflict", async ({
     browser,
   }) => {
-    const page = await (await browser.newContext()).newPage();
+    const page = await (await snapshotContext(browser)).newPage();
     await signUp(page, "reopen-inflight@example.com");
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Quick notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
     await editor.fill("First");
-    const status = page.getByRole("status").first();
+    const status = page.locator(".save-status");
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
     const uploads: { ifMatch?: string; release: () => void }[] = [];
@@ -527,7 +534,7 @@ test.describe("SuiteDrive across two nodes", () => {
   }) => {
     const page = await pageHoldingWrites(browser);
     await signUp(page, "leave-saving@example.com");
-    const status = page.getByRole("status").first();
+    const status = page.locator(".save-status");
     const editor = page.getByRole("textbox", { name: "Document content" });
     const uploads: {
       ifMatch?: string;
@@ -610,14 +617,14 @@ test.describe("SuiteDrive across two nodes", () => {
   test("saving a conflicting edit as a copy keeps the copy's own name", async ({
     browser,
   }) => {
-    const page = await (await browser.newContext()).newPage();
+    const page = await (await snapshotContext(browser)).newPage();
     await signUp(page, "copy@example.com");
     await page.getByRole("button", { name: "New document" }).click();
     const title = page.getByLabel("File title");
     await title.fill("Draft plan");
     const editor = page.getByRole("textbox", { name: "Document content" });
     await editor.fill("First draft");
-    const status = page.getByRole("status").first();
+    const status = page.locator(".save-status");
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
     await editor.fill("My version");
@@ -649,9 +656,9 @@ test.describe("SuiteDrive across two nodes", () => {
   test("signing out removes cached SuiteDrive files once their edits are uploaded", async ({
     browser,
   }) => {
-    const page = await (await browser.newContext()).newPage();
+    const page = await (await snapshotContext(browser)).newPage();
     await signUp(page, "sign-out@example.com");
-    const status = page.getByRole("status").first();
+    const status = page.locator(".save-status");
     const editor = page.getByRole("textbox", { name: "Document content" });
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Private notes");
@@ -765,10 +772,10 @@ test.describe("SuiteDrive across two nodes", () => {
     browser,
   }) => {
     const email = "disconnect@example.com";
-    const onNode = await (await browser.newContext()).newPage();
+    const onNode = await (await snapshotContext(browser)).newPage();
     const node = await signUp(onNode, email);
     // Served elsewhere, the web app can switch between modes.
-    const page = await (await browser.newContext()).newPage();
+    const page = await (await snapshotContext(browser)).newPage();
     await page.goto("/");
     const connect = async () => {
       await page.getByRole("button", { name: "Connect to a server" }).click();
@@ -862,7 +869,7 @@ test.describe("SuiteDrive across two nodes", () => {
     const dir = mkdtempSync(join(tmpdir(), "suitedrive-e2e-"));
     await run(["init", "--data-dir", dir]);
     const node = await startNode(dir);
-    const page = await (await browser.newContext()).newPage();
+    const page = await (await snapshotContext(browser)).newPage();
     await page.goto(node.url);
     await signIn(page, true, "outage@example.com");
     await page.evaluate(async () => {
@@ -907,7 +914,7 @@ test.describe("SuiteDrive across two nodes", () => {
   test("folders use in-app dialogs, and leaving a file returns to its folder", async ({
     browser,
   }) => {
-    const page = await (await browser.newContext()).newPage();
+    const page = await (await snapshotContext(browser)).newPage();
     const native: string[] = [];
     page.on("dialog", (d) => {
       native.push(d.message());
@@ -933,7 +940,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await page
       .getByRole("textbox", { name: "Document content" })
       .fill("Mon Rosa");
-    await expect(page.getByRole("status").first()).toHaveText("Saved to SuiteDrive", {
+    await expect(page.locator(".save-status")).toHaveText("Saved to SuiteDrive", {
       timeout: 20000,
     });
     await page.getByRole("button", { name: "Back to files" }).click();

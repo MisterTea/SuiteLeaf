@@ -653,7 +653,7 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
   );
 
   // Exit presentation mode
-  await page.getByRole("button", { name: "Exit" }).click();
+  await page.getByRole("button", { name: "Exit", exact: true }).click();
   await expect(page.locator(".presenter-overlay")).toHaveCount(0);
 
   // 6. Autosave check & Reopen from home

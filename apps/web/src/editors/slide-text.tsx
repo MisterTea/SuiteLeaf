@@ -328,6 +328,7 @@ function LegacySlideTextBody({
   onCaret,
 }: {
   content?: string;
+  revision?: number;
   runs?: TextRun[];
   bold?: boolean;
   italic?: boolean;

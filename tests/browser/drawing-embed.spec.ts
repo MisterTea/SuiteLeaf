@@ -86,8 +86,8 @@ test("an SVG file in a MARP deck opens in Drawing, and the deck keeps naming the
   const box = page.locator(".slide-canvas .slide-image").first();
   await box.dblclick();
   const drawing = page.getByRole("dialog", { name: "media/logo.svg in Untitled presentation" });
-  await expect(drawing.getByLabel("SVG source")).toHaveValue(LOGO);
-  await drawing.getByLabel("SVG source").fill(LOGO.replace('fill="#1a73e8"', 'fill="#d93025"'));
+  await expectSourceValue(drawing.getByLabel("SVG source"), LOGO);
+  await fillSource(drawing.getByLabel("SVG source"), LOGO.replace('fill="#1a73e8"', 'fill="#d93025"'));
   await drawing.getByRole("button", { name: "Back to Untitled presentation" }).click();
   await expect(drawing).toHaveCount(0);
   await expect.poll(() => svgOf(box.locator("img"))).toContain('fill="#d93025"');
@@ -120,7 +120,7 @@ test("editing one of two copies of an SVG in a document changes only that copy, 
   await drawing.locator(".drawing-host").locator("rect").click();
   const canvas = drawing.getByRole("application", { name: "Drawing canvas" });
   for (let i = 0; i < 5; i++) await canvas.press("ArrowRight");
-  await expect(drawing.getByLabel("SVG source")).toHaveValue(/<rect x="15" y="10"/);
+  await expectSourceValue(drawing.getByLabel("SVG source"), /<rect x="15" y="10"/);
   // The document is still as it was while the picture is open.
   expect(await svgOf(pictures.nth(0))).toBe(LOGO);
   expect(await svgOf(pictures.nth(1))).toBe(LOGO);
@@ -168,7 +168,7 @@ test("keys pressed in Drawing change the drawing, not the slide underneath, and 
   const canvas = drawing.getByRole("application", { name: "Drawing canvas" });
   await drawing.locator(".drawing-host").locator("rect").click();
   await canvas.press("Delete");
-  await expect(source).not.toHaveValue(/<rect/);
+  await expect.poll(() => sourceValue(source)).not.toMatch(/<rect/);
   await expect(box).toHaveCount(1);
   await canvas.press("ControlOrMeta+z");
   await expectSourceValue(source, LOGO);
@@ -190,7 +190,7 @@ test("a slide picture keeps its width and takes the drawing's new shape", async 
   const before = (await box.boundingBox())!;
   await box.dblclick();
   const drawing = page.getByRole("dialog", { name: "Picture in Untitled presentation" });
-  await drawing.getByLabel("SVG source").fill(LOGO.replace('height="100" viewBox="0 0 200 100"', 'height="400" viewBox="0 0 200 400"'));
+  await fillSource(drawing.getByLabel("SVG source"), LOGO.replace('height="100" viewBox="0 0 200 100"', 'height="400" viewBox="0 0 200 400"'));
   await drawing.getByRole("button", { name: "Back to Untitled presentation" }).click();
   await expect.poll(async () => (await box.boundingBox())!.height).toBeGreaterThan(before.height * 1.5);
   const after = (await box.boundingBox())!;
@@ -212,7 +212,7 @@ test("an SVG file a MARP deck shows twice changes in both places", async ({ page
   await expect(boxes).toHaveCount(2);
   await boxes.first().dblclick();
   const drawing = page.getByRole("dialog", { name: "media/logo.svg in Untitled presentation" });
-  await drawing.getByLabel("SVG source").fill(RED);
+  await fillSource(drawing.getByLabel("SVG source"), RED);
   await drawing.getByRole("button", { name: "Back to Untitled presentation" }).click();
   for (const i of [0, 1]) await expect.poll(() => svgOf(boxes.nth(i).locator("img"))).toBe(RED);
   expect((await sourceValue(markdown)).match(/\(media\/logo\.svg\)/g)?.length).toBe(2);

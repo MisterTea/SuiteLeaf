@@ -17,6 +17,7 @@
   flex-shrink: 0;
 }
 .workspace-status-toast {
+  pointer-events: none;
   position: fixed;
   bottom: max(20px, env(safe-area-inset-bottom));
   left: 50%;
@@ -35,6 +36,9 @@
   color: var(--text-primary);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   overflow-wrap: anywhere;
+}
+.workspace-status-toast button {
+  pointer-events: auto;
 }
 .workspace-status-toast[hidden] {
   display: none;

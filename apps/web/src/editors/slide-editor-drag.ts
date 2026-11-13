@@ -101,6 +101,7 @@ export function useElementDrag(
     if (e.pointerType !== "touch" || window.innerWidth > 700) return;
     if (!handle && editingRef.current === elementId) return;
     e.preventDefault();
+    state.ignoreCanvasClick.current = true;
     onElementMouseDown(e, elementId, handle);
     touchPress.current = { id: e.pointerId, elementId, handle };
     e.currentTarget.setPointerCapture?.(e.pointerId);

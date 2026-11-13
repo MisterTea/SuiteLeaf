@@ -63,7 +63,10 @@ function start({ readOnly = false, api = true, book = true } = {}) {
   stop = watchRemoteSheet(new Y.Doc(), {
     api: {
       current: api
-        ? { executeCommand: (id: string, params: unknown) => void calls.push({ id, params, remote: applyingRemote.current }) }
+        ? { executeCommand(this: { executeCommand: unknown }, id: string, params: unknown) {
+            expect(this.executeCommand).toBeTypeOf("function");
+            calls.push({ id, params, remote: applyingRemote.current });
+          } }
         : null,
     },
     book: {

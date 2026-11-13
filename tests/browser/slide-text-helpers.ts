@@ -12,6 +12,7 @@ export async function editSlideText(box: Locator): Promise<Locator> {
 
 export async function fillSlideText(box: Locator, text: string): Promise<void> {
   const editor = await editSlideText(box);
-  await editor.fill(text);
+  await editor.press("ControlOrMeta+a");
+  await editor.page().keyboard.insertText(text);
   await editor.blur();
 }

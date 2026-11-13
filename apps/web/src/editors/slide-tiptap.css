@@ -22,3 +22,8 @@
 .slide-tiptap-text .ProseMirror-selectednode {
   outline: 1px solid currentColor;
 }
+
+.slide-tiptap-text[contenteditable="true"] {
+  user-select: text;
+  cursor: text;
+}
