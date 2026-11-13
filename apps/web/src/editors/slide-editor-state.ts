@@ -79,6 +79,15 @@ export function useSlidesEditorState({
   const [panel, setPanel] = useState<
     "theme" | "transition" | "animation" | "master" | "language" | "geometry" | null
   >(null);
+  const [masterView, setMasterView] = useState(false);
+  const masterViewRef = useRef(false);
+  masterViewRef.current = masterView;
+  const returnSlideRef = useRef<string | null>(null);
+  const openMasterRef = useRef<() => void>(() => {});
+  const closeMasterRef = useRef<() => void>(() => {});
+  const switchMasterRef = useRef<(id: string) => void>(() => {});
+  const addMasterRef = useRef<() => void>(() => {});
+  const [editingMasterId, setEditingMasterId] = useState("master");
   const [accessOpen, setAccessOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorderRef = useRef<SlideshowRecorder | null>(null);
@@ -186,6 +195,7 @@ export function useSlidesEditorState({
     group?: { id: string; x: number; y: number }[];
     initW?: number;
     initH?: number;
+    proportional?: boolean;
     reorder?: boolean;
     fitted?: boolean;
   } | null>(null);
@@ -202,7 +212,9 @@ export function useSlidesEditorState({
     handoutsOpen, setHandoutsOpen, wordArtOpen, setWordArtOpen, showCursor, setShowCursor,
     presentSlideIndex, showSpeakerNotes, setShowSpeakerNotes, blankScreen, setBlankScreen,
     audiencePopup, showStartedAt, setShowStartedAt, timerPaused, setTimerPaused,
-    frozenElapsedMs, setFrozenElapsedMs, clock, setClock, panel, setPanel, accessOpen,
+    frozenElapsedMs, setFrozenElapsedMs, clock, setClock, panel, setPanel, masterView, setMasterView,
+    masterViewRef, returnSlideRef, openMasterRef, closeMasterRef, switchMasterRef, addMasterRef,
+    editingMasterId, setEditingMasterId, accessOpen,
     setAccessOpen, recording, setRecording, recorderRef, marpOpen, setMarpOpen, marpWarnings,
     setMarpWarnings, previewTheme, setPreviewTheme, transitionScope, setTransitionScope,
     transitionDuration, setDuration, chosenTransition, setChosenTransition, transitionStatus,

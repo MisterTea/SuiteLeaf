@@ -96,6 +96,14 @@ const templates: Record<Layout, Box[]> = {
       color: "#334155",
     })),
   ],
+  "three-column": [
+    title(50),
+    ...[80, 360, 640].map((x) => ({
+      x, y: 150, width: 240, height: 320,
+      placeholder: "Click to add text", fontSize: 18,
+      align: "left" as const, color: "#334155",
+    })),
+  ],
   section: [
     {
       x: 100,
@@ -112,6 +120,21 @@ const templates: Record<Layout, Box[]> = {
   blank: [],
 };
 
+/** The layout placeholders, with stable ids, before anyone edits them. */
+export function defaultLayoutElements(layout: Layout): SlideElement[] {
+  return templates[layout].map((box, index) => ({
+    id: `suiteleaf-layout-${layout}-${index}`,
+    type: "text" as const,
+    content: "",
+    ...box,
+  }));
+}
+
+/** A layout's background before anyone edits it. Section headers are dark. */
+export function defaultLayoutBackground(layout: Layout): string | undefined {
+  return layout === "section" ? sectionBackground : undefined;
+}
+
 /** Empty placeholder text boxes for a new slide with this layout. */
 export function layoutElements(layout: Layout): SlideElement[] {
   return templates[layout].map((box) => ({
@@ -120,6 +143,38 @@ export function layoutElements(layout: Layout): SlideElement[] {
     content: "",
     ...box,
   }));
+}
+
+/** A saved master layout, if this deck has one that was edited. */
+export function masterLayout(
+  deck: {
+    master?: { id?: string; layouts?: { name: string; elements: SlideElement[]; background?: { color?: string } }[] };
+    masters?: { id?: string; layouts?: { name: string; elements: SlideElement[]; background?: { color?: string } }[] }[];
+  } | undefined,
+  layout: Layout,
+  masterId?: string,
+): { elements: SlideElement[]; background?: { color?: string } } | undefined {
+  const list = deck?.masters?.length ? deck.masters : deck?.master ? [deck.master] : [];
+  const master = (masterId && list.find((item) => item.id === masterId)) || list[0];
+  const found = master?.layouts?.find((item) => item.name === layout);
+  if (!found) return undefined;
+  return { elements: found.elements, background: found.background };
+}
+
+/** A new slide. A saved layout supplies its boxes and background. */
+export function slideFromSavedLayout(
+  layout: Layout,
+  saved?: { elements: readonly SlideElement[]; background?: { color?: string } },
+): Slide {
+  if (!saved) return newSlide(layout);
+  const color = saved.background?.color ?? defaultLayoutBackground(layout);
+  return {
+    id: crypto.randomUUID(),
+    layout,
+    notes: "",
+    elements: saved.elements.map((el) => ({ ...structuredClone(el), id: crypto.randomUUID() })),
+    ...(color ? { background: { color } } : {}),
+  };
 }
 
 /** A new slide whose text boxes are empty placeholders. */
@@ -139,8 +194,12 @@ export function newSlide(layout: Layout): Slide {
  * order; text that has no slot left is appended to the last slot so nothing
  * is lost. Shapes, images, and plain text boxes stay where they are.
  */
-export function applyLayout(slide: Slide, layout: Layout): Slide {
-  const slots = templates[layout];
+export function applyLayout(slide: Slide, layout: Layout, custom?: readonly SlideElement[]): Slide {
+  const slots = custom
+    ? custom
+        .filter((el) => el.type === "text" && el.placeholder !== undefined)
+        .map(({ id: _id, type: _type, ...box }) => box)
+    : templates[layout];
   const hasPlaceholders = slide.elements.some(
     (el) => el.type === "text" && el.placeholder !== undefined,
   );
@@ -185,6 +244,12 @@ export function applyLayout(slide: Slide, layout: Layout): Slide {
     ? elements.findIndex((el) => el.id === current[Math.min(current.length, slots.length) - 1]?.id)
     : -1;
   elements.splice(lastSlot + 1, 0, ...added);
+  for (const extra of (custom ?? []).filter((el) => !(el.type === "text" && el.placeholder !== undefined))) {
+    const placed = elements.some(
+      (el) => el.type === extra.type && el.x === extra.x && el.y === extra.y && el.width === extra.width && el.height === extra.height,
+    );
+    if (!placed) elements.push({ ...structuredClone(extra), id: crypto.randomUUID() });
+  }
 
   let background = slide.background;
   if (layout === "section" && (!background?.color || background.color === "#ffffff"))

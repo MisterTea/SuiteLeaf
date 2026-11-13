@@ -450,3 +450,109 @@ test("thumbnails and the slideshow show what the theme draws, as the editor does
   await expect(showing).toHaveClass(/marp-painted/);
   await expect.poll(async () => near(await colorAt(page, slide, 0.5, 0.97))).toBe(true);
 });
+
+test("fragmented lists reveal one item at a time in slideshow presentation mode", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const fragmentDeck = `---
+marp: true
+---
+
+# Milestones
+
+* Beta launch
+* Public release
+* Global rollout
+
+---
+
+# Wrap up
+`;
+  await openDeck(page, fragmentDeck);
+  await page.locator(".slideshow-btn").first().click();
+
+  const show = page.locator(".presenter-overlay");
+  await expect(show).toBeVisible();
+
+  const frame = page.frameLocator(".presenter-slide-box .slide-still:not(.slide-still-waiting) iframe.marp-frame");
+
+  await expect(frame.getByRole("heading", { name: "Milestones" })).toBeVisible();
+  await expect(frame.getByText("Beta launch")).toBeHidden();
+  await expect(frame.getByText("Public release")).toBeHidden();
+  await expect(frame.getByText("Global rollout")).toBeHidden();
+
+  await page.keyboard.press("ArrowRight");
+  await expect(frame.getByText("Beta launch")).toBeVisible();
+  await expect(frame.getByText("Public release")).toBeHidden();
+  await expect(frame.getByText("Global rollout")).toBeHidden();
+
+  await page.keyboard.press("ArrowRight");
+  await expect(frame.getByText("Beta launch")).toBeVisible();
+  await expect(frame.getByText("Public release")).toBeVisible();
+  await expect(frame.getByText("Global rollout")).toBeHidden();
+
+  await page.keyboard.press("ArrowRight");
+  await expect(frame.getByText("Beta launch")).toBeVisible();
+  await expect(frame.getByText("Public release")).toBeVisible();
+  await expect(frame.getByText("Global rollout")).toBeVisible();
+
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator(".presenter-counter")).toHaveText("Slide 2 of 2");
+
+  // Step backward: goes back to Slide 1 with all items visible
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator(".presenter-counter")).toHaveText("Slide 1 of 2");
+  await expect(frame.getByText("Beta launch")).toBeVisible();
+  await expect(frame.getByText("Public release")).toBeVisible();
+  await expect(frame.getByText("Global rollout")).toBeVisible();
+
+  // Step backward: hides third item
+  await page.keyboard.press("ArrowLeft");
+  await expect(frame.getByText("Beta launch")).toBeVisible();
+  await expect(frame.getByText("Public release")).toBeVisible();
+  await expect(frame.getByText("Global rollout")).toBeHidden();
+
+  // Step backward: hides second item
+  await page.keyboard.press("ArrowLeft");
+  await expect(frame.getByText("Beta launch")).toBeVisible();
+  await expect(frame.getByText("Public release")).toBeHidden();
+  await expect(frame.getByText("Global rollout")).toBeHidden();
+
+  // Step backward: hides first item
+  await page.keyboard.press("ArrowLeft");
+  await expect(frame.getByText("Beta launch")).toBeHidden();
+  await expect(frame.getByText("Public release")).toBeHidden();
+  await expect(frame.getByText("Global rollout")).toBeHidden();
+});
+
+
+
+test("a new three-column slide paints three equal columns without overlap", async ({ page }) => {
+  const { canvas } = await openDeck(page);
+  await page.getByRole("button", { name: "+ New slide", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Three columns", exact: true }).click();
+  await expect(canvas).toHaveClass(/marp-painted/);
+  const frame = canvas.locator(".marp-backdrop[data-state=shown]");
+  await expect.poll(() => frame.evaluate((node) => {
+    const doc = (node as HTMLIFrameElement).contentDocument;
+    return doc?.body.textContent?.includes("Middle column") ?? false;
+  })).toBe(true);
+  const geometry = await frame.evaluate((node) => {
+    const doc = (node as HTMLIFrameElement).contentDocument!;
+    const grid = doc.querySelector<HTMLElement>(".three-columns")!;
+    const bounds = grid.getBoundingClientRect();
+    return { grid: { x: bounds.x, right: bounds.right }, columns: Array.from(grid.children).map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, right: rect.right, width: rect.width };
+    }) };
+  });
+  expect(geometry.columns).toHaveLength(3);
+  const [left, middle, right] = geometry.columns;
+  expect(left.right).toBeLessThan(middle.x);
+  expect(middle.right).toBeLessThan(right.x);
+  expect(left.y).toBeCloseTo(middle.y, 0);
+  expect(middle.y).toBeCloseTo(right.y, 0);
+  expect(left.width).toBeCloseTo(middle.width, 0);
+  expect(middle.width).toBeCloseTo(right.width, 0);
+  expect(left.x).toBeGreaterThanOrEqual(geometry.grid.x);
+  expect(right.right).toBeLessThanOrEqual(geometry.grid.right + 1);
+});

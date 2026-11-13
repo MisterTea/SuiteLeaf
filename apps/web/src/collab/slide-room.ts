@@ -92,18 +92,43 @@ function shellOf(slide: unknown, elementOrder: string[]): unknown {
   return shell;
 }
 
-function masterRecord(value: unknown): { background?: { color: string }; elements: Record<string, unknown>[] } | null {
+const LAYOUT_NAMES = new Set(["title", "title-body", "section", "two-column", "three-column", "blank"]);
+
+function masterLayouts(value: unknown): { name: string; elements: Record<string, unknown>[]; background?: { color: string } }[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const layouts: { name: string; elements: Record<string, unknown>[]; background?: { color: string } }[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const name = (item as { name?: unknown }).name;
+    if (typeof name !== "string" || !LAYOUT_NAMES.has(name) || layouts.some((layout) => layout.name === name)) continue;
+    const color = (item as { background?: { color?: unknown } }).background?.color;
+    const background = typeof color === "string" && color && color.length <= 40 && !/[\u0000-\u001f]/.test(color)
+      ? { color }
+      : undefined;
+    layouts.push({
+      name,
+      elements: elementsIn(item).map((entry) => entry.body).slice(0, 30),
+      ...(background ? { background } : {}),
+    });
+    if (layouts.length >= 6) break;
+  }
+  return layouts.length ? layouts : undefined;
+}
+
+function masterRecord(value: unknown): { background?: { color: string }; elements: Record<string, unknown>[]; layouts?: { name: string; elements: Record<string, unknown>[]; background?: { color: string } }[] } | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const record = value as { background?: unknown; elements?: unknown };
+  const record = value as { background?: unknown; elements?: unknown; layouts?: unknown };
   const color = record.background && typeof record.background === "object"
     ? (record.background as { color?: unknown }).color
     : undefined;
   const background = typeof color === "string" && color && color.length <= 40 && !/[\u0000-\u001f]/.test(color)
     ? { color }
     : undefined;
+  const layouts = masterLayouts(record.layouts);
   return {
     ...(background ? { background } : {}),
     elements: elementsIn({ elements: record.elements }).map((entry) => entry.body),
+    ...(layouts ? { layouts } : {}),
   };
 }
 
@@ -171,7 +196,11 @@ export function mirrorSlides(doc: Y.Doc, content: unknown, op: unknown) {
   }, LOCAL);
 }
 
-export type RemoteMaster = { background?: { color: string }; elements: unknown[] } | null;
+export type RemoteMaster = {
+  background?: { color: string };
+  elements: unknown[];
+  layouts?: { name: string; elements: unknown[]; background?: { color: string } }[];
+} | null;
 
 export function watchRemoteMaster(doc: Y.Doc, apply: (master: RemoteMaster) => void): () => void {
   const deckMap = doc.getMap<string>("deck");

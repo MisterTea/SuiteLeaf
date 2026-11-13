@@ -58,6 +58,7 @@ describe("desktop preload bridge", () => {
     const calls: [Promise<unknown>, unknown[]][] = [
       [bridge.getDocumentsDirectory(), ["documents:get"]],
       [bridge.chooseDocumentsDirectory(), ["documents:choose"]],
+      [bridge.rescanDocumentsDirectory(), ["documents:rescan"]],
       [bridge.reload("a"), ["files:reload", "a"]],
       [bridge.listFolders(), ["folders:list"]],
       [bridge.createFolder("x", "y"), ["folders:create", "x", "y"]],
@@ -90,6 +91,20 @@ describe("desktop preload bridge", () => {
   });
 
   it("subscribes and unsubscribes file-change and menu listeners", () => {
+    const scans: unknown[] = [];
+    const stopScan = bridge.onDocumentScan((progress) => scans.push(progress));
+    electron.emit("documents:scan", { files: 1, folders: 2 });
+    electron.emit("documents:scan", { files: 1, folders: 2, total: 5 });
+    electron.emit("documents:scan", { files: "no" });
+    electron.emit("documents:scan", null);
+    expect(scans).toEqual([
+      { files: 1, folders: 2 },
+      { files: 1, folders: 2, total: 5 },
+    ]);
+    stopScan();
+    electron.emit("documents:scan", { files: 0, folders: 0 });
+    expect(scans).toHaveLength(2);
+
     const changed = vi.fn();
     const stopChanged = bridge.onFilesChanged(changed);
     electron.emit("files:changed");

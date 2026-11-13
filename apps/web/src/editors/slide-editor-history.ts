@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { slideOp, type SlideFile } from "@suiteleaf/core";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { placeSlideObject, slideOp, type Slide, type SlideElement, type SlideFile } from "@suiteleaf/core";
 import type * as Y from "yjs";
 import type { SlideSelection } from "../collab/selection";
 import { redoLocalSlide, slideConflictText, undoLocalSlide } from "../collab/slide-undo";
@@ -13,6 +13,42 @@ import {
 import { syncMarpSource } from "./slide-marp-sync";
 import type { MarpDraft } from "./slide-marp-textarea";
 import type { SlidesEditorState } from "./slide-editor-state";
+import { restoreSelection, selectionOffsets } from "./slide-text";
+import { DEFAULT_MASTER_ID, deckMasters, writeMasters } from "./slide-master";
+import { MASTER_PAGE_ID, attachMasterPages, isMasterPage, materializeMasterView } from "./slide-master-view";
+
+type TextSelection = { start: number; end: number };
+function readCaret(node: HTMLElement): TextSelection | null {
+  return node instanceof HTMLTextAreaElement
+    ? { start: node.selectionStart, end: node.selectionEnd }
+    : selectionOffsets(node);
+}
+
+type TextDraft = {
+  slideId: string;
+  elementId: string;
+  steps: Partial<SlideElement>[];
+  index: number;
+  carets: { before: TextSelection | null; after: TextSelection | null }[];
+};
+
+function withTextOnSlide(slide: Slide, draft: TextDraft | null): Slide {
+  if (!draft || draft.index === 0 || slide.id !== draft.slideId ||
+    !slide.elements.some((element) => element.id === draft.elementId)) return slide;
+  return {
+    ...slide,
+    elements: slide.elements.map((element) =>
+      element.id === draft.elementId ? placeSlideObject(element, draft.steps[draft.index]) : element,
+    ),
+  };
+}
+
+function withTextDraft(deck: SlideFile["content"], draft: TextDraft | null) {
+  const slide = draft && deck.slides[draft.slideId];
+  if (!slide) return deck;
+  const next = withTextOnSlide(slide, draft);
+  return next === slide ? deck : { ...deck, slides: { ...deck.slides, [slide.id]: next } };
+}
 
 /** Commits, undo and redo, the selection, and the shared room's edits. */
 export function useDeckHistory(
@@ -37,8 +73,25 @@ export function useDeckHistory(
     setHistoryMarks, historyRef, deckRef, setDeck, activeSlideId, selectedElementId, readOnlyRef,
     activeRef, selectedRef, setActiveSlideId, setSelectedSlideIds, selectedElementRef,
     setSelectedElementId, editingRef, setEditingId, textRange, onSlideUrlRef, anchorRef, stageRef,
-    liveDirty, marpStale, setNotice, commitRef,
+    liveDirty, marpStale, setNotice, commitRef, masterViewRef, setMasterView, returnSlideRef,
+    openMasterRef, closeMasterRef, switchMasterRef, addMasterRef, setEditingMasterId,
   } = state;
+
+  const storedRef = useRef(deckRef.current);
+  const editingMasterRef = useRef(DEFAULT_MASTER_ID);
+  const showStored = (stored: SlideFile["content"]) => {
+    const op = slideOp(storedRef.current, stored);
+    storedRef.current = stored;
+    const shown = masterViewRef.current ? attachMasterPages(stored, editingMasterRef.current) : stored;
+    deckRef.current = shown;
+    setDeck(shown);
+    onChange(stored, op);
+  };
+  const publishLive = (next: SlideFile["content"]) => {
+    const stored = materializeMasterView(next, editingMasterRef.current);
+    showStored(stored);
+    liveDirty.current = true;
+  };
 
   const refreshMarks = () =>
     setHistoryMarks({
@@ -46,11 +99,100 @@ export function useDeckHistory(
       redo: historyRef.current!.canRedo,
     });
 
+  const activeTextEditor = () => {
+    const node = document.activeElement;
+    return node instanceof HTMLElement && stageRef.current?.contains(node) &&
+      node.matches("textarea.element-textarea, .element-editor[contenteditable='true']") ? node : null;
+  };
+  const beforeInput = useRef<{ node: HTMLElement; caret: TextSelection | null } | null>(null);
+  const restoreCaret = useRef<{ node: HTMLElement; caret: TextSelection } | null>(null);
+  useEffect(() => {
+    const capture = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key !== "Enter" && event.key !== "Tab") return;
+      const node = activeTextEditor();
+      beforeInput.current = node && event.target === node ? { node, caret: readCaret(node) } : null;
+    };
+    window.addEventListener("keydown", capture, true);
+    window.addEventListener("beforeinput", capture, true);
+    return () => {
+      window.removeEventListener("keydown", capture, true);
+      window.removeEventListener("beforeinput", capture, true);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stageRef is stable
+  }, []);
+
+  const draftRef = useRef<TextDraft | null>(null);
+  const [draft, setDraft] = useState<TextDraft | null>(null);
+  const showDraft = (next: TextDraft | null) => {
+    draftRef.current = next;
+    setDraft(next);
+  };
+  const finishText = () => {
+    const pending = draftRef.current;
+    if (!pending) return;
+    showDraft(null);
+    const before = deckRef.current;
+    const next = withTextDraft(before, pending);
+    if (slideOp(before, next).edited.length) commit(next, undefined, false);
+  };
+  const editText = (slideId: string, elementId: string, partial: Partial<SlideElement>) => {
+    if (draftRef.current && (draftRef.current.slideId !== slideId || draftRef.current.elementId !== elementId)) {
+      finishText();
+    }
+    const current = draftRef.current ?? { slideId, elementId, steps: [{}], index: 0, carets: [] };
+    const next = { ...current.steps[current.index], ...partial };
+    const element = deckRef.current.slides[slideId]?.elements.find((el) => el.id === elementId);
+    if (!element) return;
+    const before = placeSlideObject(element, current.steps[current.index]);
+    if (JSON.stringify(before) === JSON.stringify(placeSlideObject(element, next))) return;
+    const node = activeTextEditor();
+    const after = node ? readCaret(node) : null;
+    const beforeCaret = beforeInput.current && beforeInput.current.node === node ? beforeInput.current.caret : after;
+    beforeInput.current = null;
+    showDraft({
+      ...current,
+      carets: [...current.carets.slice(0, current.index), { before: beforeCaret, after }],
+      steps: [...current.steps.slice(0, current.index + 1), next],
+      index: current.index + 1,
+    });
+  };
+  const stepText = (direction: number) => {
+    const pending = draftRef.current;
+    if (!pending) return !!editingRef.current || !!document.activeElement?.matches(".element-textarea");
+    const index = pending.index + direction;
+    if (index >= 0 && index < pending.steps.length) {
+      const node = activeTextEditor();
+      const caret = direction < 0 ? pending.carets[index].before : pending.carets[pending.index].after;
+      if (node && caret) restoreCaret.current = { node, caret };
+      showDraft({ ...pending, index });
+    }
+    return true;
+  };
+
+  useLayoutEffect(() => {
+    const restore = restoreCaret.current;
+    restoreCaret.current = null;
+    if (restore && document.activeElement === restore.node) {
+      const { node, caret } = restore;
+      if (node instanceof HTMLTextAreaElement) node.setSelectionRange(caret.start, caret.end);
+      else restoreSelection(node, caret.start, caret.end, true);
+    }
+    const pending = draftRef.current;
+    if (pending && (state.readOnlyRef.current || pending.slideId !== state.activeSlideId ||
+      pending.elementId !== (state.editingId ?? state.focusedBox))) finishText();
+  });
+
+  const finishTextRef = useRef(finishText);
+  finishTextRef.current = finishText;
+  useLayoutEffect(() => () => finishTextRef.current(), []);
+
   useEffect(() => {
     if (!collabDoc) return;
     const show = (next: SlideFile["content"]) => {
-      deckRef.current = next;
-      setDeck(next);
+      storedRef.current = next;
+      const shown = masterViewRef.current ? attachMasterPages(next, editingMasterRef.current) : next;
+      deckRef.current = shown;
+      setDeck(shown);
     };
     const stopSlides = watchRemoteSlides(collabDoc, (changes) => {
       show(deckWithRemoteSlides(deckRef.current, changes));
@@ -73,10 +215,7 @@ export function useDeckHistory(
 
   const applyDeck = (next: SlideFile["content"]) => {
     if (readOnlyRef.current) return;
-    const op = slideOp(deckRef.current, next);
-    deckRef.current = next;
-    setDeck(next);
-    onChange(next, op);
+    showStored(materializeMasterView(next, editingMasterRef.current));
   };
 
   const applySelection = (
@@ -97,11 +236,12 @@ export function useDeckHistory(
         textRange.current = null;
       }
     }
-    if (activeId) onSlideUrlRef.current?.(activeId);
+    if (activeId && !isMasterPage(activeId)) onSlideUrlRef.current?.(activeId);
   };
 
   // The address names the slide. A reload, the back button, or a thumbnail link follows it.
   useEffect(() => {
+    if (masterViewRef.current) return;
     const order = deckRef.current.slideOrder;
     const fromUrl = slideId && order.includes(slideId) ? slideId : "";
     if (fromUrl && fromUrl !== activeRef.current) {
@@ -125,27 +265,28 @@ export function useDeckHistory(
 
   // Commit changes and push to undo history. In a MARP deck the markdown is the
   // source of truth, so a canvas edit is written into it first.
-  const commit = (next: SlideFile["content"], key?: string) => {
+  const commit = (next: SlideFile["content"], key?: string, editing = typingOnCanvas()) => {
     if (readOnlyRef.current) return;
+    let stored = materializeMasterView(next, editingMasterRef.current);
     if (key === "marp-fit") {
-      historyRef.current!.amend(next);
-      applyDeck(next);
+      historyRef.current!.amend(stored);
+      showStored(stored);
       return;
     }
     const tip = historyRef.current!.tip;
-    if (next.marp && tip.marp && tip.marpSource !== undefined && next.marpSource === tip.marpSource) {
-      const synced = syncMarpSource(tip, next, { editing: typingOnCanvas() });
+    if (stored.marp && tip.marp && tip.marpSource !== undefined && stored.marpSource === tip.marpSource) {
+      const synced = syncMarpSource(tip, stored, { editing });
       if ("error" in synced) {
         onError(synced.error);
         liveDirty.current = false;
-        applyDeck(historyRef.current!.snapshot());
+        showStored(historyRef.current!.snapshot());
         return;
       }
-      next = synced.deck;
+      stored = synced.deck;
       if (synced.relayout === "later") marpStale.current = true;
     }
-    historyRef.current!.commit(next, key);
-    applyDeck(next);
+    historyRef.current!.commit(stored, key);
+    showStored(stored);
     setNotice(null);
     refreshMarks();
     liveDirty.current = false;
@@ -170,6 +311,15 @@ export function useDeckHistory(
       oldOrder[previousIndex - 1] || oldOrder[previousIndex + 1] || "";
     const elementId = selectedElementRef.current;
     applyDeck(next);
+    if (masterViewRef.current && isMasterPage(previousActive)) {
+      const slide = deckRef.current.slides[previousActive];
+      const keep = !!elementId && !!slide?.elements.some((el) => el.id === elementId);
+      applySelection(previousActive, [previousActive], keep ? elementId : null);
+      setNotice(null);
+      refreshMarks();
+      liveDirty.current = false;
+      return;
+    }
     const appeared = next.slideOrder.filter((id) => !oldOrder.includes(id));
     if (appeared.length) {
       applySelection(appeared[0], appeared, null);
@@ -206,7 +356,80 @@ export function useDeckHistory(
   const marpDraft = useRef<MarpDraft | null>(null);
   const flushMarpDraft = () => marpDraft.current?.flush();
 
+  const openMasterView = () => {
+    if (deckRef.current.marp) return;
+    finishText();
+    if (masterViewRef.current) {
+      closeMasterView();
+      return;
+    }
+    if (!isMasterPage(activeRef.current)) returnSlideRef.current = activeRef.current;
+    const current = deckRef.current.slides[activeRef.current];
+    const known = deckMasters(deckRef.current);
+    const id = known.some((master) => master.id === current?.masterId) ? current!.masterId! : DEFAULT_MASTER_ID;
+    editingMasterRef.current = id;
+    setEditingMasterId(id);
+    masterViewRef.current = true;
+    setMasterView(true);
+    const stored = materializeMasterView(deckRef.current, id);
+    storedRef.current = stored;
+    const shown = attachMasterPages(stored, id);
+    deckRef.current = shown;
+    setDeck(shown);
+    applySelection(MASTER_PAGE_ID, [MASTER_PAGE_ID], null);
+  };
+  const closeMasterView = () => {
+    if (!masterViewRef.current) return;
+    finishText();
+    const stored = materializeMasterView(deckRef.current, editingMasterRef.current);
+    masterViewRef.current = false;
+    setMasterView(false);
+    if (JSON.stringify(stored) !== JSON.stringify(historyRef.current!.tip)) commit(stored);
+    else {
+      storedRef.current = stored;
+      deckRef.current = stored;
+      setDeck(stored);
+    }
+    const order = deckRef.current.slideOrder;
+    const back = returnSlideRef.current && order.includes(returnSlideRef.current)
+      ? returnSlideRef.current
+      : order[0] ?? "";
+    if (back) applySelection(back, [back], null);
+  };
+  const showMaster = (id: string, stored: SlideFile["content"]) => {
+    editingMasterRef.current = id;
+    setEditingMasterId(id);
+    if (JSON.stringify(stored) !== JSON.stringify(historyRef.current!.tip)) commit(stored);
+    else {
+      storedRef.current = stored;
+      const shown = attachMasterPages(stored, id);
+      deckRef.current = shown;
+      setDeck(shown);
+    }
+    applySelection(MASTER_PAGE_ID, [MASTER_PAGE_ID], null);
+  };
+  const switchMaster = (id: string) => {
+    if (!masterViewRef.current || id === editingMasterRef.current) return;
+    if (!deckMasters(deckRef.current).some((master) => master.id === id)) return;
+    finishText();
+    showMaster(id, materializeMasterView(deckRef.current, editingMasterRef.current));
+  };
+  const addMaster = () => {
+    if (!masterViewRef.current || readOnlyRef.current) return;
+    finishText();
+    const stored = materializeMasterView(deckRef.current, editingMasterRef.current);
+    const list = deckMasters(stored);
+    if (list.length >= 8) return;
+    const id = crypto.randomUUID();
+    showMaster(id, writeMasters(stored, [...list, { id, name: `Master ${list.length + 1}`, elements: [] }]));
+  };
+  openMasterRef.current = openMasterView;
+  closeMasterRef.current = closeMasterView;
+  switchMasterRef.current = switchMaster;
+  addMasterRef.current = addMaster;
+
   const undo = () => {
+    if (readOnlyRef.current || stepText(-1)) return;
     if (collabDoc) {
       const result = undoLocalSlide(collabDoc);
       if (result) {
@@ -219,6 +442,7 @@ export function useDeckHistory(
     restore(historyRef.current!.undo());
   };
   const redo = () => {
+    if (readOnlyRef.current || stepText(1)) return;
     if (collabDoc) {
       const result = redoLocalSlide(collabDoc);
       if (result) {
@@ -231,7 +455,21 @@ export function useDeckHistory(
     restore(historyRef.current!.redo());
   };
 
+  let displayDeck = withTextDraft(state.deck, draft);
+  if (displayDeck !== state.deck && state.marpOpen && state.deck.marp) {
+    const preview = syncMarpSource(state.deck, displayDeck, { editing: true });
+    if ("deck" in preview) displayDeck = preview.deck;
+  }
+
   return {
+    displayDeck,
+    displaySlide: (slide: Slide) => withTextOnSlide(slide, draft),
+    textDeck: () => withTextDraft(deckRef.current, draftRef.current),
+    historyMarks: draft || state.editingId || state.focusedBox ? {
+      undo: !!draft && draft.index > 0,
+      redo: !!draft && draft.index < draft.steps.length - 1,
+    } : state.historyMarks,
+    editText,
     refreshMarks,
     applyDeck,
     applySelection,
@@ -243,6 +481,10 @@ export function useDeckHistory(
     flushMarpDraft,
     undo,
     redo,
+    publishLive,
+    materialize: (deck: SlideFile["content"]) => materializeMasterView(deck, editingMasterRef.current),
+    openMasterView,
+    closeMasterView,
   };
 }
 

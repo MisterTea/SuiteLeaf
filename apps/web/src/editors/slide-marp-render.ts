@@ -88,7 +88,7 @@ export function sanitizeMarpHtml(html: string): string {
 
 /** Only scripts carrying this nonce run: MARP's scaling and the editor's diagram renderer. */
 export function marpPolicy(nonce: string) {
-  return `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline' data: blob: https: http:; img-src data: blob: https: http:; font-src data: blob: https: http:; connect-src 'none'; base-uri 'none'; form-action 'none'`;
+  return `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline' data: blob: https: http:; img-src data: blob: https: http:; media-src data: blob: https: http:; font-src data: blob: https: http:; connect-src 'none'; base-uri 'none'; form-action 'none'`;
 }
 
 function mermaidThemeOf(source: string) {
@@ -138,7 +138,7 @@ export function marpDocument(options: {
   const nonce = crypto.randomUUID().replaceAll("-", "");
   const css = options.css.replace(/<\/style/gi, "\\3c /style");
   const charts = chartPayload(options.scripts, options.themedCharts);
-  return `<!doctype html><html data-mermaid-theme="${mermaidThemeOf(options.source)}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${marpPolicy(nonce)}"><style>${css}</style><style>html,body{margin:0;padding:0}svg[data-marpit-svg]{display:block;width:${options.width}px;height:${options.height}px}</style></head><body>${sanitizeMarpHtml(options.html)}<script type="application/json" data-suiteleaf-charts>${charts.data}</script><script type="application/json" data-suiteleaf-chart-error>${charts.error}</script><script nonce="${nonce}" data-suiteleaf-runtime>${trustedScalingRuntime()}</script></body></html>`;
+  return `<!doctype html><html data-mermaid-theme="${mermaidThemeOf(options.source)}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${marpPolicy(nonce)}"><style>${css}</style><style>html,body{margin:0;padding:0}svg[data-marpit-svg]{display:block;width:${options.width}px;height:${options.height}px}.columns,.three-columns{display:flex;gap:1rem}.columns>div{flex:0 0 50%;max-width:50%}.three-columns>div{flex:0 0 calc((100% - 2rem) / 3);max-width:calc((100% - 2rem) / 3)}</style></head><body>${sanitizeMarpHtml(options.html)}<script type="application/json" data-suiteleaf-charts>${charts.data}</script><script type="application/json" data-suiteleaf-chart-error>${charts.error}</script><script nonce="${nonce}" data-suiteleaf-runtime>${trustedScalingRuntime()}</script></body></html>`;
 }
 
 /**

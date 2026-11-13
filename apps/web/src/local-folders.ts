@@ -59,7 +59,7 @@ export function existingFolder(folder: string, folders: string[]): string {
  */
 export function moveTargets(
   folders: string[],
-  from: string,
+  from: string | undefined,
   moving?: string,
 ): { folder: string; label: string }[] {
   return ["", ...[...folders].sort(byName)]

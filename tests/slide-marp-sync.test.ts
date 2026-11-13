@@ -243,7 +243,7 @@ describe("writing canvas edits into MARP markdown", () => {
       slideOrder: [...deck.slideOrder, twoColumns.id],
       slides: { ...deck.slides, [twoColumns.id]: twoColumns },
     }).deck;
-    expect(columns.marpSource).toMatch(/# New slide\n\n<div style="display: grid;[^\n]*>\n<div>\n\nLeft column/);
+    expect(columns.marpSource).toMatch(/# New slide\n\n<div class="columns">\n<div>\n\nLeft column/);
 
     const copy = duplicateSlides(deck, [deck.slideOrder[1]], () => "copy").deck;
     const duplicated = synced(deck, copy).deck.marpSource!;

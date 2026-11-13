@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom";
 import { Search, FolderOpen, FolderPlus, ArrowDown, ArrowUp } from "lucide-react";
 import {
   createFile,
@@ -42,6 +42,8 @@ import { homeSnapshot, homeTools, type HomeAgentContext } from "../ai/tools/file
 import { connectTools } from "../ai/tools/cluster";
 import { TemplateHome } from "../templates/gallery";
 import { message } from "../error-message";
+import { useLibrarySelection } from "./use-library-selection";
+import { driveFileDrop } from "./drive-file-drop";
 import { ImportButton } from "./ImportButton";
 import { ErrorBanner, LeftServerNotice, LocalSidebar, NewCards } from "./home-parts";
 
@@ -71,6 +73,9 @@ async function ensureDesktopFolder(parent: string, directory: string) {
  * computer when the desktop app is running. */
 export function LocalHome() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const navigationType = useNavigationType();
+  const [searchParams] = useSearchParams();
   const { locked, demo } = useMode();
   const [connecting, setConnecting] = useState(false);
   const [records, setRecords] = useState<FileRecord[]>([]),
@@ -85,7 +90,7 @@ export function LocalHome() {
     [renaming, setRenaming] = useState<FileRecord | null>(null),
     [forever, setForever] = useState<FileRecord | null>(null),
     [emptying, setEmptying] = useState(false),
-    [undo, setUndo] = useState<{ id: string; title: string } | null>(null),
+    [undo, setUndo] = useState<FileRecord[] | null>(null),
     [sameFile, setSameFile] = useState<{
       name: string;
       existing: FileRecord;
@@ -94,17 +99,30 @@ export function LocalHome() {
   // Desktop only: "All files" browses the folders of the documents folder.
   const [folders, setFolders] = useState<string[] | null>(null),
     [root, setRoot] = useState(""),
-    [folder, setFolderState] = useState(lastLocalFolder),
     [folderDialog, setFolderDialog] = useState<
       | { kind: "new" }
       | { kind: "rename" | "move-folder"; folder: string }
       | { kind: "move-file"; record: FileRecord }
       | null
     >(null);
-  const setFolder = (next: string) => {
-    lastLocalFolder = next;
-    setFolderState(next);
+  const routeFolder = searchParams.get("localFolder");
+  const folder = routeFolder ?? (navigationType === "POP" ? "" : lastLocalFolder);
+  const setFolder = (next: string, replace = false) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("localFolder", next);
+    navigate({ pathname: "/", search: params.toString() }, { replace });
   };
+  useEffect(() => {
+    if (!folders || pathname !== "/") return;
+    const next = existingFolder(folder, folders);
+    lastLocalFolder = next;
+    // Home links from editors omit the folder. Publish it again on return.
+    if (routeFolder === null && next) {
+      const params = new URLSearchParams(searchParams);
+      params.set("localFolder", next);
+      navigate({ pathname: "/", search: params.toString() }, { replace: true });
+    }
+  }, [folder, folders, navigate, pathname, routeFolder, searchParams]);
   /** The folder new and imported files are written into, when one is open. */
   const placeIn = useRef("");
   const undoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -248,38 +266,80 @@ export function LocalHome() {
     await refresh();
   };
   const desktop = !!window.suiteleaf;
-  const rememberUndo = (record: FileRecord) => {
+  const rememberUndo = (moved: FileRecord[]) => {
     clearTimeout(undoTimer.current);
-    setUndo({ id: record.file.id, title: record.file.title });
+    setUndo(moved);
     undoTimer.current = setTimeout(() => setUndo(null), TRASH_TOAST_MS);
   };
-  const moveToTrash = (record: FileRecord) => {
-    void (async () => {
-      const latest = (await storage.get(record.file.id)) ?? record;
-      await storage.save(trashRecord(latest));
-      rememberUndo(latest);
-      await refresh();
-    })().catch((e) => setError(message(e)));
+  const changeFiles = async (
+    items: FileRecord[],
+    change: (record: FileRecord) => Promise<unknown>,
+    onProgress?: (completed: number) => void,
+  ) => {
+    const changed: FileRecord[] = [];
+    const errors: string[] = [];
+    for (const [index, record] of items.entries()) {
+      try {
+        await change(record);
+        changed.push(record);
+      } catch (error) {
+        errors.push(`${record.file.title}: ${message(error)}`);
+      }
+      onProgress?.(index + 1);
+    }
+    if (errors.length) setError(errors.join("\n"));
+    await refresh();
+    return changed;
   };
+  const changeTrash = async (
+    items: FileRecord[],
+    trashed: boolean,
+    onProgress?: (completed: number) => void,
+  ) => {
+    if (window.suiteleaf?.setTrashed) {
+      const ids = new Set(await window.suiteleaf.setTrashed(items.map(({ file }) => file.id), trashed));
+      onProgress?.(items.length);
+      await refresh();
+      return items.filter(({ file }) => ids.has(file.id));
+    }
+    return changeFiles(items, async ({ file }) => {
+      const latest = await storage.get(file.id);
+      if (trashed) {
+        if (!latest || latest.trashedAt) throw new Error("File is no longer available.");
+        await storage.save(trashRecord(latest));
+      } else if (latest?.trashedAt) {
+        await storage.save(restoreRecord(latest));
+      }
+    }, onProgress);
+  };
+  const trashFiles = async (items: FileRecord[], onProgress?: (completed: number) => void) => {
+    const moved = await changeTrash(items, true, onProgress);
+    if (moved.length) rememberUndo(moved);
+    return moved;
+  };
+  const moveToTrash = (record: FileRecord) =>
+    void trashFiles([record]).catch((e) => setError(message(e)));
   const undoTrash = () => {
     if (!undo) return;
-    const id = undo.id;
     clearTimeout(undoTimer.current);
     setUndo(null);
-    void (async () => {
-      const latest = await storage.get(id);
-      if (latest?.trashedAt) await storage.save(restoreRecord(latest));
-      await refresh();
-    })().catch((e) => setError(message(e)));
+    void changeTrash(undo, false).catch((e) => setError(message(e)));
+  };
+  const forgetUndo = (ids: string[]) => {
+    setUndo((current) => {
+      const remaining = current?.filter(({ file }) => !ids.includes(file.id));
+      return remaining?.length ? remaining : null;
+    });
   };
   const restore = (record: FileRecord) => {
     void (async () => {
-      const latest = (await storage.get(record.file.id)) ?? record;
-      await storage.save(restoreRecord(latest));
-      if (undo?.id === record.file.id) {
-        clearTimeout(undoTimer.current);
-        setUndo(null);
+      if (window.suiteleaf?.setTrashed) {
+        await window.suiteleaf.setTrashed([record.file.id], false);
+      } else {
+        const latest = (await storage.get(record.file.id)) ?? record;
+        await storage.save(restoreRecord(latest));
       }
+      forgetUndo([record.file.id]);
       setFilter("all");
       setQuery("");
       await refresh();
@@ -293,10 +353,7 @@ export function LocalHome() {
     })().catch((e) => setError(message(e)));
   };
   const removeForever = async (ids: string[]) => {
-    if (undo && ids.includes(undo.id)) {
-      clearTimeout(undoTimer.current);
-      setUndo(null);
-    }
+    forgetUndo(ids);
     await Promise.all(ids.map((id) => storage.remove(id)));
     await refresh();
   };
@@ -312,7 +369,7 @@ export function LocalHome() {
     focused = searching || filter === "recent" || filter === "trash" || filter === "starred";
   const browsing = !!folders && filter === "all" && !searching;
   /** The open folder, or the nearest one left if it moved or was deleted outside SuiteLeaf. */
-  const here = browsing ? existingFolder(folder, folders) : "";
+  const here = folders ? existingFolder(folder, folders) : "";
   placeIn.current = here;
   const subfolders = browsing ? childFolders(folders, here) : [];
   const folderOf = (r: FileRecord) => folderOfPath(r.path, root);
@@ -346,6 +403,10 @@ export function LocalHome() {
       return sort.desc ? -order : order;
     });
   const listed = browsing ? shown.filter(({ r }) => folderOf(r) === here) : shown;
+  const selection = useLibrarySelection({
+    files: listed.map(({ r }) => r), visibleFolders: subfolders, folders, root,
+    scope: JSON.stringify([here, filter, query]), refresh, onError: setError, trashFiles,
+  });
   const sortBy = (by: "name" | "edited", label: string) => (
     <button
       className={`sort-head ${sort.by === by ? "active" : ""}`}
@@ -369,6 +430,7 @@ export function LocalHome() {
       ) : null}
     </button>
   );
+  const dropImporter = useRef<((data: DataTransfer) => Promise<void>) | null>(null);
   const importer = useRef<((f: File) => Promise<void>) | null>(null);
   useAgentHost("home", () => {
     const ctx: HomeAgentContext = {
@@ -403,7 +465,7 @@ export function LocalHome() {
       remove: async (r) => {
         const latest = (await storage.get(r.file.id)) ?? r;
         await storage.save(trashRecord(latest));
-        rememberUndo(latest);
+        rememberUndo([latest]);
         await refresh();
       },
       star: async (record, starred) => {
@@ -414,10 +476,7 @@ export function LocalHome() {
       restore: async (record) => {
         const latest = (await storage.get(record.file.id)) ?? record;
         if (latest.trashedAt) await storage.save(restoreRecord(latest));
-        if (undo?.id === record.file.id) {
-          clearTimeout(undoTimer.current);
-          setUndo(null);
-        }
+        forgetUndo([record.file.id]);
         setFilter("all");
         setQuery("");
         await refresh();
@@ -467,7 +526,7 @@ export function LocalHome() {
     </button>
   ));
   return (
-    <div className="home">
+    <div className="home" {...driveFileDrop(dropImporter)}>
       <LocalSidebar
         filter={filter}
         setFilter={setFilter}
@@ -527,11 +586,13 @@ export function LocalHome() {
             ) : null}
             {searching ? (
               <button onClick={() => setQuery("")}>Clear search</button>
-            ) : (
+            ) : null}
               <ImportButton
                 onImport={importRecord}
                 onError={setError}
                 importer={importer}
+                dropImporter={dropImporter}
+                openDroppedFile={false}
                 placeInFolder={
                   window.suiteleaf?.createFolder && window.suiteleaf.moveFile
                     ? async (file, folder) => {
@@ -548,7 +609,6 @@ export function LocalHome() {
                 }}
                 onBatchDone={() => refresh()}
               />
-            )}
           </header>
           {browsing ? (
             <LocalFolderCrumbs folder={here} onOpen={setFolder} onDrop={moveInto} />
@@ -583,6 +643,7 @@ export function LocalHome() {
               }}
             />
           ) : null}
+          {selection.controls}
           {filter === "all" && !searching && kept.length === 0 && subfolders.length === 0 && !here ? (
             <div className="empty">
               <FolderOpen size={34} />
@@ -611,7 +672,7 @@ export function LocalHome() {
               </h3>
               <p>
                 {browsing
-                  ? "Create a file or a folder here, or drag files onto this folder's name above."
+                  ? "Create a file or a folder here, or drop files anywhere on this page to import them."
                   : searching
                   ? "Search looks at file names and the words inside them, including Trash."
                   : filter === "trash"
@@ -624,46 +685,53 @@ export function LocalHome() {
               </p>
             </div>
           ) : (
-            <div className="file-list">
-              <div className="file-list-head">
-                {sortBy("name", "Name")}
-                {sortBy("edited", "Last edited")}
-                <span />
+            <>
+              <div className="file-list">
+                <div className="file-list-head">
+                  <div className="file-name-heading">
+                    {selection.heading}
+                    {sortBy("name", "Name")}
+                  </div>
+                  {sortBy("edited", "Last edited")}
+                  <span />
+                </div>
+                {subfolders.map((f) => (
+                  <LocalFolderRow
+                    key={f}
+                    folder={f}
+                    selection={selection.folder(f)}
+                    count={itemsIn(f)}
+                    onOpen={() => setFolder(f)}
+                    onRename={() => setFolderDialog({ kind: "rename", folder: f })}
+                    onMove={() => setFolderDialog({ kind: "move-folder", folder: f })}
+                    onDrop={moveInto}
+                  />
+                ))}
+                {listed.map(({ r, snippet }) => (
+                  <FileLibraryRow
+                    key={r.file.id}
+                    record={r}
+                    selection={selection.file(r)}
+                    snippet={snippet}
+                    view={filter}
+                    desktop={desktop}
+                    onMove={folders ? () => setFolderDialog({ kind: "move-file", record: r }) : undefined}
+                    onDragStart={browsing ? (event) => dragFile(event, r.file.id) : undefined}
+                    onRename={() => setRenaming(r)}
+                    onDuplicate={() =>
+                      void storage
+                        .save({ file: duplicateFile(r.file) })
+                        .then(refresh)
+                        .catch((e) => setError(message(e)))
+                    }
+                    onMoveToTrash={() => moveToTrash(r)}
+                    onRestore={() => restore(r)}
+                    onDeleteForever={() => setForever(r)}
+                    onToggleStar={() => toggleStarred(r)}
+                  />
+                ))}
               </div>
-              {subfolders.map((f) => (
-                <LocalFolderRow
-                  key={f}
-                  folder={f}
-                  count={itemsIn(f)}
-                  onOpen={() => setFolder(f)}
-                  onRename={() => setFolderDialog({ kind: "rename", folder: f })}
-                  onMove={() => setFolderDialog({ kind: "move-folder", folder: f })}
-                  onDrop={moveInto}
-                />
-              ))}
-              {listed.map(({ r, snippet }) => (
-                <FileLibraryRow
-                  key={r.file.id}
-                  record={r}
-                  snippet={snippet}
-                  view={filter}
-                  desktop={desktop}
-                  onMove={folders ? () => setFolderDialog({ kind: "move-file", record: r }) : undefined}
-                  onDragStart={browsing ? (event) => dragFile(event, r.file.id) : undefined}
-                  onRename={() => setRenaming(r)}
-                  onDuplicate={() =>
-                    void storage
-                      .save({ file: duplicateFile(r.file) })
-                      .then(refresh)
-                      .catch((e) => setError(message(e)))
-                  }
-                  onMoveToTrash={() => moveToTrash(r)}
-                  onRestore={() => restore(r)}
-                  onDeleteForever={() => setForever(r)}
-                  onToggleStar={() => toggleStarred(r)}
-                />
-              ))}
-            </div>
+            </>
           )}
           {kept.length > 0 && !focused ? (
             <p className="sample-strip">Explore a sample: {samples}</p>
@@ -710,7 +778,7 @@ export function LocalHome() {
                 void (async () => {
                   const next = await window.suiteleaf?.renameFolder?.(renamed, name);
                   if (next !== undefined && isWithinFolder(folder, renamed))
-                    setFolder(next + folder.slice(renamed.length));
+                    setFolder(next + folder.slice(renamed.length), true);
                   await refresh();
                 })().catch((e) => setError(message(e)));
               }}
@@ -803,7 +871,9 @@ export function LocalHome() {
       </main>
       {undo ? (
         <TrashToast
-          text={movedToTrashText(undo.title, desktop)}
+          text={undo.length === 1
+            ? movedToTrashText(undo[0].file.title, desktop)
+            : `${undo.length} files moved to Trash`}
           onUndo={undoTrash}
           onDismiss={() => {
             clearTimeout(undoTimer.current);

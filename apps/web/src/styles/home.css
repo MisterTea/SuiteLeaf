@@ -259,6 +259,8 @@
 }
 .folder-open {
   display: flex;
+  justify-self: start;
+  justify-content: flex-start;
   align-items: center;
   gap: 14px;
   min-width: 0;
@@ -613,4 +615,57 @@
 }
 .import-progress > button {
   align-self: flex-end;
+}
+
+.file-name-heading,
+.library-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.file-main-selectable {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.library-selection-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+  cursor: pointer;
+}
+.file-row.file-row-selected {
+  background: var(--surface-hover);
+}
+.library-selection-bar {
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  border-radius: 22px;
+  background: var(--surface-muted);
+}
+.library-selection-bar button {
+  display: inline-grid;
+  place-items: center;
+  padding: 7px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+}
+.library-selection-bar button:hover {
+  background: var(--surface-hover);
+}
+
+.library-selection-progress {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.library-selection-progress progress {
+  width: 100%;
+  height: 10px;
 }

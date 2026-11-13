@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { Slide } from "@suiteleaf/core";
-import { applyLayout, newSlide, type Layout } from "../../editors/slide-layouts";
+import { applyLayout, masterLayout, newSlide, slideFromSavedLayout, type Layout } from "../../editors/slide-layouts";
 import { ToolError, tool, type SuiteTool } from "../host";
 import { deckToMarp } from "../../editors/slide-marp";
 import { deckFromMarkdown } from "../../editors/slide-marp-sync";
@@ -147,7 +147,7 @@ export function slideContentTools(ctx: SlidesAgentContext): SuiteTool[] {
       async execute({ layout, title, body, subtitle, column1, column2, after }) {
         const deck = ctx.deck();
         const l = LAYOUTS[layout] ?? "title-body";
-        const { slide, notes } = fillSlide(newSlide(l), { title, body, subtitle, column1, column2 });
+        const { slide, notes } = fillSlide(slideFromSavedLayout(l, masterLayout(deck, l)), { title, body, subtitle, column1, column2 });
         const at = after !== undefined ? Math.max(0, Math.min(deck.slideOrder.length, after)) : deck.slideOrder.indexOf(ctx.activeSlideId) + 1;
         const order = [...deck.slideOrder];
         order.splice(at, 0, slide.id);
@@ -206,7 +206,10 @@ export function slideContentTools(ctx: SlidesAgentContext): SuiteTool[] {
         const { id, index } = findSlide(ctx.deck(), slide, ctx.activeSlideId);
         ctx.select(id, null);
         await wait(250);
-        const deck = update(id, (s) => applyLayout(s, LAYOUTS[layout] ?? "title-body"));
+        const deck = update(id, (s) => {
+          const chosen = LAYOUTS[layout] ?? "title-body";
+          return applyLayout(s, chosen, masterLayout(ctx.deck(), chosen)?.elements);
+        });
         return `Slide ${index + 1}: ${describeSlide(deck.slides[id], index)}`;
       },
     }),

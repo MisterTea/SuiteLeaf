@@ -1,0 +1,392 @@
+{
+  "id": "clipping-body",
+  "sourceShapeId": "3",
+  "type": "text",
+  "x": 32,
+  "y": 110.00023622047244,
+  "width": 896,
+  "height": 372.3751181102362,
+  "content": "\u00a7 The reality is we can\u2019t stop you from using LLMs to code\n\u00a7 UT Spark, ChatGPT, Cursor, etc. permitted to be used in programming projects\n\u00a7 HOWEVER, you must cite specifically how you used these tools in any work you submit as your own\n\u00a7 Failure to cite GenAI usage will be treated as academic dishonesty\n\u00a7 LLMs can be powerful learning tools if used well\n\u00a7 Generating practice exam problems is a great way to study material\n\u00a7 When used irresponsibly, you\u2019re only hurting yourself\n\u00a7 You won\u2019t have access to the AI tools during in-person exams",
+  "runs": [
+    {
+      "text": "\u00a7 ",
+      "color": "#333399",
+      "font": "SuiteLeaf Sprig",
+      "listDepth": 0,
+      "listColors": [
+        "#333399",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000"
+      ],
+      "listFontSizes": [
+        64,
+        56,
+        48,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "paraHang": 26.99669291338583
+    },
+    {
+      "text": "The reality is we can\u2019t stop you from using LLMs to code",
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "color": "#333399",
+      "fontSize": 64,
+      "font": "SuiteLeaf Willow"
+    },
+    {
+      "text": "\n",
+      "fontSize": 56,
+      "paragraphBreak": true,
+      "listDepth": 1,
+      "listColors": [
+        "#333399",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000"
+      ],
+      "listFontSizes": [
+        64,
+        56,
+        48,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "paraMargin": 35.99527559055118,
+      "paraHang": 22.49740157480315,
+      "spaceBefore": 6.719999999999999
+    },
+    {
+      "text": "\u00a7 ",
+      "color": "#000000",
+      "font": "SuiteLeaf Sprig"
+    },
+    {
+      "text": "UT Spark, ChatGPT, Cursor, etc. permitted to be used in programming projects",
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "color": "#000000",
+      "fontSize": 56,
+      "font": "SuiteLeaf Willow"
+    },
+    {
+      "text": "\n",
+      "fontSize": 56,
+      "paragraphBreak": true,
+      "listDepth": 1,
+      "listColors": [
+        "#333399",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000"
+      ],
+      "listFontSizes": [
+        64,
+        56,
+        48,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "paraMargin": 35.99527559055118,
+      "paraHang": 22.49740157480315,
+      "spaceBefore": 6.719999999999999
+    },
+    {
+      "text": "\u00a7 ",
+      "color": "#000000",
+      "font": "SuiteLeaf Sprig"
+    },
+    {
+      "text": "HOWEVER, ",
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "color": "#000000",
+      "fontSize": 56,
+      "font": "SuiteLeaf Willow"
+    },
+    {
+      "text": "you must cite ",
+      "bold": true,
+      "italic": false,
+      "underline": false,
+      "color": "#000000",
+      "fontSize": 56,
+      "font": "SuiteLeaf Willow"
+    },
+    {
+      "text": "specifically how you used these tools in any work you submit as your own",
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "color": "#000000",
+      "fontSize": 56,
+      "font": "SuiteLeaf Willow"
+    },
+    {
+      "text": "\n",
+      "fontSize": 56,
+      "paragraphBreak": true,
+      "listDepth": 1,
+      "listColors": [
+        "#333399",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000"
+      ],
+      "listFontSizes": [
+        64,
+        56,
+        48,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "paraMargin": 35.99527559055118,
+      "paraHang": 22.49740157480315,
+      "spaceBefore": 6.719999999999999
+    },
+    {
+      "text": "\u00a7 ",
+      "color": "#000000",
+      "font": "SuiteLeaf Sprig"
+    },
+    {
+      "text": "Failure to cite GenAI usage will be treated as academic dishonesty",
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "color": "#000000",
+      "fontSize": 56,
+      "font": "SuiteLeaf Willow"
+    },
+    {
+      "text": "\n",
+      "fontSize": 64,
+      "paragraphBreak": true,
+      "listDepth": 0,
+      "listColors": [
+        "#333399",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000"
+      ],
+      "listFontSizes": [
+        64,
+        56,
+        48,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "paraHang": 26.99669291338583,
+      "spaceBefore": 7.68
+    },
+    {
+      "text": "\u00a7 ",
+      "color": "#333399",
+      "font": "SuiteLeaf Sprig"
+    },
+    {
+      "text": "LLMs can be powerful learning tools if used well",
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "color": "#333399",
+      "fontSize": 64,
+      "font": "SuiteLeaf Willow"
+    },
+    {
+      "text": "\n",
+      "fontSize": 56,
+      "paragraphBreak": true,
+      "listDepth": 1,
+      "listColors": [
+        "#333399",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000"
+      ],
+      "listFontSizes": [
+        64,
+        56,
+        48,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "paraMargin": 35.99527559055118,
+      "paraHang": 22.49740157480315,
+      "spaceBefore": 6.719999999999999
+    },
+    {
+      "text": "\u00a7 ",
+      "color": "#000000",
+      "font": "SuiteLeaf Sprig"
+    },
+    {
+      "text": "Generating practice exam problems is a great way to study material",
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "color": "#000000",
+      "fontSize": 56,
+      "font": "SuiteLeaf Willow"
+    },
+    {
+      "text": "\n",
+      "fontSize": 64,
+      "paragraphBreak": true,
+      "listDepth": 0,
+      "listColors": [
+        "#333399",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000"
+      ],
+      "listFontSizes": [
+        64,
+        56,
+        48,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "paraHang": 26.99669291338583,
+      "spaceBefore": 7.68
+    },
+    {
+      "text": "\u00a7 ",
+      "color": "#333399",
+      "font": "SuiteLeaf Sprig"
+    },
+    {
+      "text": "When used irresponsibly, you\u2019re only hurting yourself",
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "color": "#333399",
+      "fontSize": 64,
+      "font": "SuiteLeaf Willow"
+    },
+    {
+      "text": "\n",
+      "fontSize": 56,
+      "paragraphBreak": true,
+      "listDepth": 1,
+      "listColors": [
+        "#333399",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000",
+        "#000000"
+      ],
+      "listFontSizes": [
+        64,
+        56,
+        48,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "paraMargin": 35.99527559055118,
+      "paraHang": 22.49740157480315,
+      "spaceBefore": 6.719999999999999
+    },
+    {
+      "text": "\u00a7 ",
+      "color": "#000000",
+      "font": "SuiteLeaf Sprig"
+    },
+    {
+      "text": "You won\u2019t have access to the AI tools during in-person exams",
+      "bold": false,
+      "italic": false,
+      "underline": false,
+      "color": "#000000",
+      "fontSize": 56,
+      "font": "SuiteLeaf Willow"
+    }
+  ],
+  "fontSize": 64,
+  "kern": 12,
+  "fontFamily": "SuiteLeaf Willow",
+  "bold": false,
+  "italic": false,
+  "color": "#333399",
+  "align": "left",
+  "lineHeight": 1.08,
+  "padLeft": 3.5996062992125983,
+  "bullet": true,
+  "inset": 1.7999212598425196
+}

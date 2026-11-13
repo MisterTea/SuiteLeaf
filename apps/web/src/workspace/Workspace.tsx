@@ -7,7 +7,6 @@ import {
   Clock,
   MessageSquare,
   Download,
-  MoreVertical,
   Share2,
 } from "lucide-react";
 import { extensionFor, nativeFilename } from "@suiteleaf/core";
@@ -61,8 +60,8 @@ export function Workspace() {
     syncRemedy, setSyncRemedy, locked, templateDraft, setTemplateDraft,
     actionsReady, current, version, savedVersion, timer, actions, driveTimer,
     driveParentId, historyOpen, setHistoryOpen, importNotesClosed,
-    setImportNotesClosed, setSidePaneSlot, menusOpen, setMenusOpen, menuButton,
-    menuBar, setEditorEpoch, historyPreview, setHistoryPreview, restoreParagraph,
+    setImportNotesClosed, setSidePaneSlot, setEditorEpoch, historyPreview,
+    setHistoryPreview, restoreParagraph,
     driveConflict, driveDialog, setDriveDialog, shareOpen, setShareOpen,
     signUpOpen, setSignUpOpen, driveRole, othersHere, mode, cluster, canEdit,
     describeRef, roomNotice,
@@ -197,50 +196,6 @@ export function Workspace() {
                 <span className="view-only-badge">Can respond</span>
               ) : null}
               </ToolbarActions>
-              <ToolbarActions target={navigationTarget}>
-              <button
-                ref={menuButton}
-                type="button"
-                className="doc-icon-btn file-menu-more"
-                aria-label="Main menu"
-                aria-expanded={menusOpen}
-                aria-controls="file-menu"
-                onClick={() => setMenusOpen((open) => !open)}
-              >
-                <MoreVertical size={18} />
-              </button>
-              </ToolbarActions>
-            </div>
-            <div
-              ref={menuBar}
-              id="file-menu"
-              className={`file-menu${menusOpen ? " open" : ""}`}
-              role="menubar"
-            >
-              <FileMenu
-                ws={ws}
-                file={f}
-                doAction={doAction}
-                download={download}
-                save={save}
-                exportNative={exportNative}
-                makeCopy={makeCopy}
-                canMove={!!record.drive && canEdit && !!driveFolder.place}
-                onMove={() => driveFolder.setOpen(true)}
-                onRename={changeTitle}
-              />
-              {f.kind === "doc" ? (
-                <DocMenus actions={actions} doAction={doAction} />
-              ) : null}
-              {f.kind === "sheet" ? (
-                <SheetMenus
-                  actions={actions}
-                  doAction={doAction}
-                  canEdit={canEdit}
-                  mode={mode}
-                />
-              ) : null}
-              {f.kind === "slide" ? <SlideMenus actions={actions} /> : null}
             </div>
           </div>
           <ToolbarActions target={toolbarTarget}>
@@ -330,6 +285,32 @@ export function Workspace() {
           </div>
           </ToolbarActions>
         </header>
+        <div id="file-menu" className="file-menu" role="menubar" aria-label="Main menu">
+          <FileMenu
+            ws={ws}
+            file={f}
+            doAction={doAction}
+            download={download}
+            save={save}
+            exportNative={exportNative}
+            makeCopy={makeCopy}
+            canMove={!!record.drive && canEdit && !!driveFolder.place}
+            onMove={() => driveFolder.setOpen(true)}
+            onRename={changeTitle}
+          />
+          {f.kind === "doc" ? (
+            <DocMenus actions={actions} doAction={doAction} />
+          ) : null}
+          {f.kind === "sheet" ? (
+            <SheetMenus
+              actions={actions}
+              doAction={doAction}
+              canEdit={canEdit}
+              mode={mode}
+            />
+          ) : null}
+          {f.kind === "slide" ? <SlideMenus actions={actions} /> : null}
+        </div>
         <WorkspaceStatusToast
           key={f.id}
           status={status}

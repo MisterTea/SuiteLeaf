@@ -34,6 +34,9 @@ export function cleanRun(run: TextRun): TextRun {
   if (run.scriptStrut) next.scriptStrut = run.scriptStrut;
   if (run.font) next.font = run.font;
   if (run.paragraphBreak) next.paragraphBreak = true;
+  if (run.listDepth !== undefined) next.listDepth = run.listDepth;
+  if (run.listColors) next.listColors = run.listColors;
+  if (run.listFontSizes) next.listFontSizes = run.listFontSizes;
   if (run.paraMargin) next.paraMargin = run.paraMargin;
   if (run.paraHang) next.paraHang = run.paraHang;
   if (run.paraFirst) next.paraFirst = run.paraFirst;
@@ -45,6 +48,7 @@ export function cleanRun(run: TextRun): TextRun {
   if (run.paraLine) next.paraLine = run.paraLine;
   if (run.paraLinePt) next.paraLinePt = run.paraLinePt;
   if (run.listMarker) next.listMarker = true;
+  if (run.autoNumber) next.autoNumber = run.autoNumber;
   if (run.unbroken) next.unbroken = true;
   if (run.tracking) next.tracking = run.tracking;
   if (run.fraction) next.fraction = run.fraction;
@@ -79,14 +83,22 @@ function sameStyle(a: TextRun, b: TextRun): boolean {
     a.baseline === b.baseline &&
     !!a.scriptScale === !!b.scriptScale &&
     (a.font ?? "") === (b.font ?? "") &&
+    a.listDepth === b.listDepth &&
+    JSON.stringify(a.listFontSizes) === JSON.stringify(b.listFontSizes) &&
     (a.paraMargin ?? 0) === (b.paraMargin ?? 0) &&
     (a.paraHang ?? 0) === (b.paraHang ?? 0) &&
+    // Paragraph metadata may be stamped on the first fragment of a run.
+    (b.paraFirst == null || a.paraFirst === b.paraFirst) &&
+    (b.paraTab == null || a.paraTab === b.paraTab) &&
+    (!b.paraTabs || JSON.stringify(a.paraTabs) === JSON.stringify(b.paraTabs)) &&
+    a.scriptStrut === b.scriptStrut &&
     (a.spaceBefore ?? 0) === (b.spaceBefore ?? 0) &&
     (a.paraAlign ?? "") === (b.paraAlign ?? "") &&
     !!a.paraDistributed === !!b.paraDistributed &&
     (a.paraLine ?? 0) === (b.paraLine ?? 0) &&
     (a.paraLinePt ?? 0) === (b.paraLinePt ?? 0) &&
     !!a.listMarker === !!b.listMarker &&
+    JSON.stringify(a.autoNumber) === JSON.stringify(b.autoNumber) &&
     !!a.unbroken === !!b.unbroken &&
     (a.tracking ?? 0) === (b.tracking ?? 0) &&
     !a.paragraphBreak &&
@@ -176,13 +188,21 @@ export function hasTextRuns(el: { runs?: TextRun[] }): boolean {
       run.stroke ||
       run.strokeWidth ||
       run.shadow ||
+      run.gradient ||
+      run.reflection ||
       run.fontSize ||
       run.caps ||
       run.baseline ||
+      run.scriptScale ||
+      run.scriptStrut ||
       run.paragraphBreak ||
       run.href ||
+      run.listDepth !== undefined ||
       run.paraMargin ||
       run.paraHang ||
+      run.paraFirst ||
+      run.paraTab ||
+      run.paraTabs?.length ||
       run.spaceBefore ||
       run.paraAlign ||
       run.paraDistributed ||
@@ -225,7 +245,7 @@ export function normalizeColor(value: string): string | undefined {
  * A trailing break still has to occupy a line, or bottom-aligned text sits
  * one line too low.
  */
-function lineBreakHtml(run: TextRun, trailing: boolean): string {
+function lineBreakHtml(run: TextRun, trailing: boolean, editing?: boolean): string {
   const data: string[] = [];
   const rules: string[] = [];
   if (run.fontSize) {
@@ -233,9 +253,10 @@ function lineBreakHtml(run: TextRun, trailing: boolean): string {
     data.push(`data-font-size="${run.fontSize}"`);
   }
   if (run.paragraphBreak) data.push('data-paragraph-break="1"');
-  if (trailing) rules.unshift("display:block", "min-height:1lh");
+  if (trailing && !editing) rules.unshift("display:block", "min-height:1lh");
   const attrs = data.length ? ` ${data.join(" ")}` : "";
   const style = rules.length ? ` style="${rules.join(";")}"` : "";
+  if (editing) return `<br data-slide-break="1"${attrs}${style}>`;
   return trailing
     ? `<span${attrs} style="${rules.join(";")}"></span>`
     : `<span${attrs}${style}><br></span>`;
@@ -304,6 +325,7 @@ function bulletSlotHtml(
   kern: number | undefined,
   slot: number,
   fixed = false,
+  bodySize?: number,
 ): string {
   const picture = pictureBulletHtml(run);
   // The slot is an inline block, so it would inherit the paragraph's negative
@@ -322,9 +344,15 @@ function bulletSlotHtml(
   let glyph = runSpan({ ...run, text: run.text.slice(0, -1) }, kern);
   // The marker glyph is drawn without its trailing space, so it is no longer
   // recognized as a bullet. A zero line box keeps a larger square off the strut.
+  // U+25AA sits in the upper half of the em. StarSymbol's square is that glyph
+  // at about 1.85×, which leaves it above the cap. 0.05em of the enlarged size
+  // brings the square down onto the cap, where PowerPoint draws it.
+  const enlargedSquare =
+    !!bodySize && !!run.fontSize && run.fontSize > bodySize * 1.2 && run.text.startsWith("▪");
+  const seated = enlargedSquare ? "vertical-align:-0.05em;" : "";
   glyph = glyph.includes('style="')
-    ? glyph.replace('style="', 'style="line-height:0;')
-    : glyph.replace("<span", '<span style="line-height:0"');
+    ? glyph.replace('style="', `style="line-height:0;${seated}`)
+    : glyph.replace("<span", `<span style="line-height:0;${seated}"`);
   let space = runSpan({ ...run, text: " " }, kern);
   space = space.includes('style="')
     ? space.replace(/style="([^"]*)"/, 'style="$1;font-size:0;line-height:0"')
@@ -337,6 +365,7 @@ function htmlForRuns(
   kern: number | undefined,
   slot: number,
   hanging = false,
+  bodySize?: number,
 ): string {
   let source = runs;
   if (slot > 0 && runs[0] && !isBulletMarker(runs[0])) {
@@ -359,7 +388,7 @@ function htmlForRuns(
         // Floating the marker as well paints it on top of the words, or clips it.
         // A box-level hang (MARP) has no paragraph indent, so the marker sits in the gutter.
         const fixed = !hanging && !runs.some((item) => item.paraHang);
-        return bulletSlotHtml(painted, kern, slot, fixed);
+        return bulletSlotHtml(painted, kern, slot, fixed, bodySize);
       }
       return runSpan(painted, kern);
     })
@@ -372,6 +401,7 @@ function lineBoxHtml(
   slot: number,
   hanging = false,
   lineFactor?: number,
+  bodySize?: number,
 ): string {
   const rules = ["display:block", "margin:0"];
   const data = ['data-slide-line="1"'];
@@ -380,12 +410,13 @@ function lineBoxHtml(
     data.push(`data-font-size="${line.font}"`);
     if (lineFactor) rules.push(`line-height:${lineHeightCss(line.font, lineFactor)}`);
   }
-  const inner = htmlForRuns(line.runs, kern, slot, hanging);
+  const inner = htmlForRuns(line.runs, kern, slot, hanging, bodySize || line.font);
   if (!inner) rules.push("min-height:1lh");
   return `<span ${data.join(" ")} style="${rules.join(";")}">${inner}</span>`;
 }
 
 type TabMetrics = {
+  editing?: boolean;
   widthPt?: number;
   unitPt?: number;
   align?: "left" | "center" | "right" | "justify";
@@ -512,6 +543,16 @@ function tabbedParagraphHtml(
     .join("<br>");
 }
 
+/** Word size the paragraph inherits. An enlarged marker is not the body size. */
+function paragraphBodySize(paragraph: readonly TextRun[], metrics?: TabMetrics): number | undefined {
+  let size = 0;
+  for (const run of paragraph) {
+    if (!run.fontSize || isBulletMarker(run) || run.text === "\n" || !run.text.trim()) continue;
+    if (run.fontSize > size) size = run.fontSize;
+  }
+  return size || metrics?.fontSize;
+}
+
 function renderParagraphInner(
   paragraph: readonly TextRun[],
   kern: number | undefined,
@@ -520,14 +561,15 @@ function renderParagraphInner(
   hanging = false,
   mark?: TextRun,
 ): string {
-  if (paragraph.some((run) => run.text.includes("\t")))
+  const bodySize = paragraphBodySize(paragraph, metrics);
+  if (!metrics?.editing && paragraph.some((run) => run.text.includes("\t")))
     return tabbedParagraphHtml(paragraph, kern, metrics, mark);
   const lines = lineBoxes(paragraph);
   // The box strut is the first run. A smaller line after a hard break would
   // otherwise stay as tall as the title and clip the lines below it.
   if (lines.length > 1 && mixedLineSizes(lines))
     return lines
-      .map((line, index) => lineBoxHtml(line, kern, index === 0 ? slot : 0, hanging, mark?.paraLine || metrics?.lineHeight))
+      .map((line, index) => lineBoxHtml(line, kern, index === 0 ? slot : 0, hanging, mark?.paraLine || metrics?.lineHeight, bodySize))
       .join("");
   let lastContent = -1;
   for (let i = 0; i < paragraph.length; i++) {
@@ -535,7 +577,7 @@ function renderParagraphInner(
   }
   return paragraph
     .map((run, index) => {
-      if (run.text === "\n") return lineBreakHtml(run, index > lastContent);
+      if (run.text === "\n") return lineBreakHtml(run, index > lastContent, metrics?.editing);
       // DrawingML hangs ordinary spaces at a hard line end. CSS `pre`
       // includes them in centered/right alignment; keep them in the DOM for
       // editing while excluding their width from the painted line.
@@ -543,12 +585,20 @@ function renderParagraphInner(
       const tail = atLineEnd ? / +$/.exec(run.text)?.[0] : undefined;
       if (tail) {
         const visible = { ...run, text: run.text.slice(0, -tail.length) };
-        return htmlForRuns([visible], kern, index === 0 ? slot : 0, hanging) +
-          `<span data-slide-hanging-space="1" style="display:inline-block;width:0;overflow:hidden;font-size:0;line-height:0">${tail}</span>`;
+        const body = htmlForRuns([visible], kern, index === 0 ? slot : 0, hanging, bodySize);
+        // Keep an inline text position at the end of a newly inserted bullet.
+        const space = metrics?.editing
+          ? runSpan({ ...run, text: tail }, kern)
+          : `<span data-slide-hanging-space="1" style="display:inline-block;width:0;overflow:hidden;font-size:0;line-height:0">${tail}</span>`;
+        return body + space;
       }
-      return htmlForRuns([run], kern, index === 0 ? slot : 0, hanging);
+      return htmlForRuns([run], kern, index === 0 ? slot : 0, hanging, bodySize);
     })
-    .join("");
+    .join("") + (metrics?.editing && paragraph.at(-1)?.text.endsWith("\n") ? '<br data-slide-caret="1">' : "");
+}
+
+function runMetadata(name: string, value: unknown): string {
+  return `data-${name}="${escapeHtml(JSON.stringify(value)).replace(/"/g, "&quot;")}"`;
 }
 
 function runSpan(run: TextRun, kern?: number): string {
@@ -595,7 +645,7 @@ function runSpan(run: TextRun, kern?: number): string {
         styles.push(
           `text-shadow:${shift(run.shadow.x)} ${shift(run.shadow.y)} ${shift(run.shadow.blur)} ${run.shadow.color}`,
         );
-        data.push('data-shadow="1"');
+        data.push('data-shadow="1"', runMetadata("shadow-value", run.shadow));
       }
       if (run.gradient) {
         styles.push(
@@ -605,13 +655,17 @@ function runSpan(run: TextRun, kern?: number): string {
           "color:transparent",
           "-webkit-text-fill-color:transparent",
         );
-        data.push('data-gradient="1"');
+        data.push('data-gradient="1"', runMetadata("gradient-value", run.gradient));
       }
       if (run.fontSize) {
         styles.push(`font-size:calc(${run.fontSize} * var(--slide-pt, 1) * 1px)`);
         if (kern) styles.push(`font-kerning:${fontKerning(kern, run.fontSize)}`, `font-feature-settings:${kernFeature(kern, run.fontSize)}`);
         data.push(`data-font-size="${run.fontSize}"`);
       }
+      if (run.color && run.gradient) data.push(runMetadata("fill-color", run.color));
+      if (run.reflection) data.push(runMetadata("run-reflection", run.reflection));
+      if (run.caps) data.push(`data-caps="${run.caps}"`);
+      if (run.unbroken) data.push('data-unbroken="1"');
       if (run.caps === "all") styles.push("text-transform:uppercase");
       // The app turns font synthesis off. Small caps still have to be drawn.
       if (run.caps === "small")
@@ -851,10 +905,14 @@ function reflectionCss(reflection: NonNullable<TextRun["reflection"]>): string {
 function paragraphAttrs(run: TextRun | undefined): string {
   if (!run) return "";
   const data = ["data-slide-para=\"1\""];
+  if (run.listDepth !== undefined) data.push(`data-list-depth="${run.listDepth}"`);
+  if (run.listColors) data.push(runMetadata("list-colors", run.listColors));
+  if (run.listFontSizes) data.push(runMetadata("list-font-sizes", run.listFontSizes));
   if (run.paraMargin) data.push(`data-para-margin="${run.paraMargin}"`);
   if (run.paraHang) data.push(`data-para-hang="${run.paraHang}"`);
   if (run.paraFirst) data.push(`data-para-first="${run.paraFirst}"`);
   if (run.paraTab) data.push(`data-para-tab="${run.paraTab}"`);
+  if (run.paraTabs?.length) data.push(runMetadata("para-tabs", run.paraTabs));
   if (run.spaceBefore) data.push(`data-space-before="${run.spaceBefore}"`);
   if (run.paraAlign) data.push(`data-para-align="${run.paraAlign}"`);
   if (run.paraDistributed) data.push('data-para-distributed="1"');

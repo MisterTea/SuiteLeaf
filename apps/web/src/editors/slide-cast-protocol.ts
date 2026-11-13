@@ -1,4 +1,5 @@
 import type { Presentation } from "@suiteleaf/core";
+import { masterForSlide } from "./slide-master";
 import type { ShowCursor } from "./slide-fade-in";
 import type { MarpPage, MarpPages } from "./slide-marp-render";
 
@@ -19,13 +20,15 @@ export type CastFrame = {
 export function castFrame(deck: Presentation, index: number, cursor: ShowCursor, blank: string | null, pages?: MarpPages | null): CastFrame {
   const slide = deck.slides[deck.slideOrder[index]];
   const page = pages?.pages[index];
-  const sources = new Set([...(slide?.elements ?? []), ...(deck.master?.elements ?? [])].map((el) => el.src));
+  const slideMaster = masterForSlide(deck, slide);
+  const sources = new Set([...(slide?.elements ?? []), ...slideMaster.elements].map((el) => el.src));
   return {
     version: 1, index, cursor, blank,
     deck: {
       id: "cast",
       width: deck.width, height: deck.height, pointWidth: deck.pointWidth,
-      master: deck.master, fonts: deck.fonts, slideNumbers: deck.slideNumbers,
+      master: { background: slideMaster.background, elements: slideMaster.elements, layouts: slideMaster.layouts },
+      fonts: deck.fonts, slideNumbers: deck.slideNumbers,
       marp: deck.marp, marpFit: deck.marpFit || (!!deck.marp && deck.marpSource !== undefined),
       marpAssets: Object.fromEntries(Object.entries(deck.marpAssets ?? {}).filter(([path]) => sources.has(path))),
       slideOrder: deck.slideOrder.map((id, n) => n === index ? id : ""),

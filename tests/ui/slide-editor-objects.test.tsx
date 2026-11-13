@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DECK_THEMES } from "../../apps/web/src/editors/slide-theme";
-import { box, choose, openSlides, pick, press, setupSlidesDom, words } from "./slide-editor-harness";
+import { box, choose, mockImageDimensions, openSlides, pick, press, setupSlidesDom, words } from "./slide-editor-harness";
 
 vi.mock("../../apps/web/src/editors/themes/beam_ut.css?raw", () => ({ default: "/* @theme beam_ut */" }));
 
 setupSlidesDom();
+
+beforeEach(() => history.replaceState(null, "", "/?slideText=legacy"));
+afterEach(() => history.replaceState(null, "", "/"));
 
 const shape = (id: string, x: number, extra = {}) => ({
   id,
@@ -46,8 +49,10 @@ describe("inserting objects", () => {
     expect(added).toMatchObject({ type: "text" });
     expect(box(added.id).className).toContain("selected");
     expect(document.activeElement).toBe(box(added.id).querySelector("textarea"));
+    expect(screen.getByRole("toolbar", { name: "Slide text formatting" })).toBeTruthy();
 
     act(() => editor.slide().insertShape("ellipse"));
+    expect(screen.queryByRole("toolbar", { name: "Slide text formatting" })).toBeNull();
     expect(editor.elements("a").at(-1)).toMatchObject({ type: "shape", shapeType: "ellipse" });
     fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
     expect(editor.elements("a").at(-1)).toMatchObject({ shapeType: "roundRect" });
@@ -70,6 +75,7 @@ describe("inserting objects", () => {
   });
 
   it("puts a chosen picture on the slide and turns away one that is too large", async () => {
+    mockImageDimensions(300, 600);
     const editor = openSlides();
     const input = document.querySelector<HTMLInputElement>('input[type="file"][accept^="image"]')!;
     const click = vi.spyOn(input, "click").mockImplementation(() => {});
@@ -81,8 +87,25 @@ describe("inserting objects", () => {
     fireEvent.change(input, { target: { files: [] } });
 
     upload(input, new File(["png"], "logo.png", { type: "image/png" }));
-    await waitFor(() => expect(editor.elements("a").at(-1)).toMatchObject({ type: "image", alt: "logo.png" }));
+    await waitFor(() => expect(editor.elements("a").at(-1)).toMatchObject({ type: "image", alt: "logo.png", width: 48, height: 96 }));
     expect(editor.elements("a").at(-1)?.src).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("inserts a dropped image on the slide and ignores non-image files", async () => {
+    mockImageDimensions(600, 300);
+    const editor = openSlides();
+    const canvas = document.querySelector(".slide-canvas")!;
+    const notes = new File(["text"], "notes.txt", { type: "text/plain" });
+    const image = new File(["png"], "dropped.png", { type: "image/png" });
+    const dataTransfer = { types: ["Files"], files: [notes, image], dropEffect: "none" };
+
+    expect(fireEvent.dragOver(canvas, { dataTransfer })).toBe(false);
+    expect(dataTransfer.dropEffect).toBe("copy");
+    expect(fireEvent.drop(canvas, { dataTransfer })).toBe(false);
+    await waitFor(() => expect(editor.elements("a")).toHaveLength(2));
+    const added = editor.elements("a").at(-1)!;
+    expect(added).toMatchObject({ type: "image", alt: "dropped.png", width: expect.closeTo(168), height: expect.closeTo(84) });
+    expect(box(added.id).classList.contains("selected")).toBe(true);
   });
 
   it("adds sound and video, and explains files it cannot use", async () => {
@@ -191,6 +214,18 @@ describe("arranging objects", () => {
     expect(editor.elements("a")[0]).toMatchObject({ x: 100, y: 100 });
   });
 
+  it("resizes image corners proportionally around the opposite corner", () => {
+    stageAtDeckSize();
+    const editor = openSlides({
+      slides: { a: [{ id: "photo", type: "image", src: "data:image/png;base64,AA==", x: 100, y: 100, width: 120, height: 60 }] },
+    });
+    pick("photo");
+    fireEvent.mouseDown(document.querySelector(".handle-nw")!, { clientX: 100, clientY: 100 });
+    fireEvent.mouseMove(window, { clientX: 50, clientY: 100 });
+    fireEvent.mouseUp(window);
+    expect(editor.elements("a")[0]).toMatchObject({ x: 60, y: 80, width: 160, height: 80 });
+  });
+
   it("resizes from each handle without going below the smallest size", () => {
     stageAtDeckSize();
     const editor = openSlides({ slides: { a: [shape("one", 100)] } });
@@ -251,7 +286,11 @@ describe("formatting the selection", () => {
 
   it("sets the font, size, autofit, emphasis, accent, alignment, and bullets of a text box", () => {
     const editor = openSlides({ slides: { a: [words("t", "Hello", { fontFamily: "Comic Sans" })] } });
+    expect(screen.queryByRole("toolbar", { name: "Slide text formatting" })).toBeNull();
     pick("t");
+    const formatting = screen.getByRole("toolbar", { name: "Slide text formatting" });
+    expect(formatting.previousElementSibling).toBe(screen.getByRole("toolbar", { name: "Slides toolbar" }));
+    expect(formatting.contains(screen.getByRole("button", { name: "Bold" }))).toBe(true);
     const text = () => editor.elements("a")[0];
     const family = screen.getByLabelText("Font family") as HTMLSelectElement;
     expect(family.value).toBe("Comic Sans");
@@ -427,6 +466,58 @@ describe("the canvas", () => {
 });
 
 describe("typing in a box", () => {
+  it.each([false, true])("undoes individual inputs and saves once when editing ends (rich: %s)", (rich) => {
+    const editor = openSlides({ slides: { a: [words("t", "A")] } });
+    const element = box("t");
+    if (rich) fireEvent.doubleClick(element);
+    const field = element.querySelector<HTMLElement>(rich ? "[contenteditable=true]" : "textarea")!;
+    fireEvent.focus(field);
+    const type = (value: string) => {
+      if (rich) {
+        field.textContent = value;
+        fireEvent.input(field);
+      } else {
+        fireEvent.change(field, { target: { value } });
+      }
+    };
+    type("AB");
+    type("ABC");
+    expect(editor.onChange).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(field, { key: "z", ctrlKey: true });
+    expect(editor.elements("a")[0].content).toBe("AB");
+    fireEvent.click(screen.getByRole("button", { name: "Undo (Cmd+Z)" }));
+    expect(editor.elements("a")[0].content).toBe("A");
+    fireEvent.keyDown(field, { key: "z", ctrlKey: true, shiftKey: true });
+    expect(editor.elements("a")[0].content).toBe("AB");
+    type("AB!");
+    expect((screen.getByRole("button", { name: "Redo (Cmd+Y)" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(editor.onChange).not.toHaveBeenCalled();
+
+    if (rich) fireEvent.keyDown(field, { key: "Escape" });
+    else fireEvent.blur(field);
+    expect(editor.onChange).toHaveBeenCalledTimes(1);
+    expect(editor.onChange.mock.calls[0][0].slides.a.elements[0].content).toBe("AB!");
+  });
+
+  it("restores the formatting of an intermediate text edit on undo", () => {
+    const gradient = "linear-gradient(90deg, #112233, #445566)";
+    const editor = openSlides({
+      slides: { a: [{ ...words("t", "Label"), runs: [{ text: "Label", gradient }] }] },
+    });
+    const element = box("t");
+    fireEvent.doubleClick(element);
+    const field = element.querySelector<HTMLElement>("[contenteditable=true]")!;
+    for (const text of ["Label A", "Label AB"]) {
+      field.querySelector("[data-gradient]")!.textContent = text;
+      fireEvent.input(field);
+    }
+
+    fireEvent.keyDown(field, { key: "z", ctrlKey: true });
+    expect(editor.elements("a")[0].runs).toEqual([{ text: "Label A", gradient }]);
+    expect(field.querySelector("[data-gradient]")?.textContent).toBe("Label A");
+  });
+
   it("writes the words, starts a list from a dash, and continues it on Enter", async () => {
     const editor = openSlides({ slides: { a: [words("t", "")] } });
     const area = box("t").querySelector("textarea")!;

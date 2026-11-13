@@ -5,7 +5,6 @@ import {
   groupSlideObjects,
   orderSlideObjects,
   placeSlideObject,
-  slideOp,
   ungroupSlideObjects,
   type AlignEdge,
   type Slide,
@@ -29,12 +28,13 @@ import { reflowMarp } from "./slide-marp";
 import type { SlidesEditorState } from "./slide-editor-state";
 import type { DeckHistoryApi } from "./slide-editor-history";
 
-/** Writes to the active slide and its objects, folding typing into one undo step. */
+/** Writes to the active slide and its objects, with local drafts for text edits. */
 export function useSlideUpdates(
   state: SlidesEditorState,
   onChange: (content: SlideFile["content"], op?: unknown) => void,
+  editText: DeckHistoryApi["editText"],
 ) {
-  const { deckRef, activeRef, commitRef, readOnlyRef, liveDirty, setDeck } = state;
+  const { deckRef, activeRef, commitRef, readOnlyRef, focusedBox } = state;
 
   // Update active slide properties. `coalesce` folds repeated edits (typing) into one undo.
   const updateSlide = useCallback((partial: Partial<Slide>, coalesce?: string) => {
@@ -57,13 +57,18 @@ export function useSlideUpdates(
     (
       elementId: string,
       partial: Partial<SlideElement>,
-      mode?: { live?: boolean; coalesce?: string },
+      mode?: { live?: boolean; typing?: boolean; coalesce?: string },
     ) => {
       if (readOnlyRef.current) return;
       const prev = deckRef.current;
       const active =
         prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
       if (!active) return;
+      if (mode?.typing || (!mode?.live && (state.editingRef.current === elementId ||
+        (focusedBox === elementId && active.elements.some((el) => el.id === elementId && el.type === "text"))))) {
+        editText(active.id, elementId, partial);
+        return;
+      }
       const next = {
         ...prev,
         slides: {
@@ -77,22 +82,21 @@ export function useSlideUpdates(
         },
       };
       if (mode?.live) {
-        deckRef.current = next;
-        liveDirty.current = true;
-        setDeck(next);
-        onChange(next, slideOp(prev, next));
+        onChange(next);
         return;
       }
       commitRef.current(next, mode?.coalesce);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable
-    [onChange],
+    [onChange, editText, focusedBox],
   );
 
   return { updateSlide, updateElement };
 }
 
 export type SlideUpdates = ReturnType<typeof useSlideUpdates>;
+
+export const SLIDE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"];
 
 /** Selecting, arranging, inserting, and deleting objects on the active slide. */
 export function slideElementActions(
@@ -106,7 +110,7 @@ export function slideElementActions(
 ) {
   const {
     deckRef, activeDeckSlide, commitRef, selectedIdsRef, selectedElementRef, setSelectedElementId,
-    editingRef, setEditingId, textRange, pendingFocus,
+    editingRef, setEditingId, textRange, pendingFocus, readOnlyRef,
   } = state;
 
   const groupSelected = () => {
@@ -256,28 +260,44 @@ export function slideElementActions(
     insertOnActive([art]);
   };
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    const picked = e.target.files?.[0];
-    e.target.value = "";
-    if (!picked) return;
+  const insertImageFile = (picked: File) => {
+    const slideId = activeDeckSlide(deckRef.current)?.id;
+    if (readOnlyRef.current || !slideId) return;
     if (picked.size > 5 * 1024 * 1024) {
       onError("Please choose an image smaller than 5 MB.");
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onerror = () => onError("This image could not be read.");
+    reader.onload = async () => {
+      const src = String(reader.result);
+      const picture = new Image();
+      picture.src = src;
+      try {
+        await picture.decode();
+      } catch {
+        onError("This image could not be read.");
+        return;
+      }
+      const { naturalWidth, naturalHeight } = picture;
+      if (!naturalWidth || !naturalHeight) {
+        onError("This image has no usable dimensions.");
+        return;
+      }
       const prev = deckRef.current;
+      const slide = prev.slides[slideId];
+      if (readOnlyRef.current || !slide) return;
       const image = logoImage(
-        String(reader.result),
+        src,
         picked.name,
         () => crypto.randomUUID(),
         prev.width,
+        naturalWidth,
+        naturalHeight,
       );
-      const slide = activeDeckSlide(prev);
-      if (!slide) return;
       if (!prev.marp || prev.marpFit) {
         commitRef.current(withElements(prev, slide.id, [image]));
-        selectElement(image.id);
+        if (activeDeckSlide(prev)?.id === slideId) selectElement(image.id);
         return;
       }
       image.y = 10000;
@@ -289,9 +309,15 @@ export function slideElementActions(
         ...prev,
         slides: { ...prev.slides, [slide.id]: nextSlide },
       });
-      selectElement(image.id);
+      if (activeDeckSlide(prev)?.id === slideId) selectElement(image.id);
     };
     reader.readAsDataURL(picked);
+  };
+
+  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const picked = e.target.files?.[0];
+    e.target.value = "";
+    if (picked) insertImageFile(picked);
   };
 
   const handleMediaUpload =
@@ -385,6 +411,7 @@ export function slideElementActions(
     addTextBox,
     addShape,
     addWordArt,
+    insertImageFile,
     handleImageUpload,
     handleMediaUpload,
     deleteSelectedElement,

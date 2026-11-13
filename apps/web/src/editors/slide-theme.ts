@@ -5,7 +5,8 @@ import type {
   SlideTheme,
   SlideTransition,
 } from "@suiteleaf/core";
-import { applyLayout, newSlide, type Layout } from "./slide-layouts";
+import { applyLayout, masterLayout, slideFromSavedLayout, type Layout } from "./slide-layouts";
+import { deckMasters, writeMasters } from "./slide-master";
 
 /**
  * Built-in looks. A theme is one background, two fonts, and an accent, stored
@@ -136,17 +137,21 @@ export function brandMaster(
   theme: SlideTheme,
 ): Presentation["master"] {
   if (!master) return undefined;
+  const paint = (el: (typeof master.elements)[number]) => {
+    if (el.themeOverride || el.type !== "text") return el;
+    const role = textRole(el);
+    if (role === "heading")
+      return { ...el, fontFamily: theme.headingFont, color: theme.headingColor };
+    if (role === "body")
+      return { ...el, fontFamily: theme.bodyFont, color: theme.bodyColor };
+    return el;
+  };
   return {
     background: { color: theme.background },
-    elements: master.elements.map((el) => {
-      if (el.themeOverride || el.type !== "text") return el;
-      const role = textRole(el);
-      if (role === "heading")
-        return { ...el, fontFamily: theme.headingFont, color: theme.headingColor };
-      if (role === "body")
-        return { ...el, fontFamily: theme.bodyFont, color: theme.bodyColor };
-      return el;
-    }),
+    elements: master.elements.map(paint),
+    ...(master.layouts
+      ? { layouts: master.layouts.map((layout) => ({ ...layout, elements: layout.elements.map(paint) })) }
+      : {}),
   };
 }
 
@@ -154,10 +159,20 @@ export function applyDeckTheme(
   deck: Presentation,
   theme: SlideTheme,
 ): Presentation {
+  const masters = deck.master || deck.masters?.length
+    ? deckMasters(deck).map((master) => {
+        const branded = brandMaster(master, theme);
+        return {
+          ...master,
+          background: branded?.background,
+          elements: branded?.elements ?? [],
+          layouts: branded?.layouts,
+        };
+      })
+    : [];
   return {
-    ...deck,
+    ...writeMasters(deck, masters.length ? masters : deckMasters(deck)),
     theme,
-    master: brandMaster(deck.master, theme),
     slides: Object.fromEntries(
       Object.entries(deck.slides).map(([id, slide]) => [
         id,
@@ -214,8 +229,11 @@ export function slideFromTheme(
   layout: Layout,
   theme?: SlideTheme,
   transition?: SlideTransition,
+  deck?: Presentation,
 ): Slide {
-  const painted = theme ? paintSlide(newSlide(layout), theme) : newSlide(layout);
+  const painted = theme
+    ? paintSlide(slideFromSavedLayout(layout, masterLayout(deck, layout)), theme)
+    : slideFromSavedLayout(layout, masterLayout(deck, layout));
   return transition ? { ...painted, transition: { ...transition } } : painted;
 }
 
@@ -224,11 +242,12 @@ export function layoutWithTheme(
   slide: Slide,
   layout: Layout,
   theme: SlideTheme,
+  custom?: Parameters<typeof applyLayout>[2],
 ): Slide {
   const kept = new Map(
     slide.elements.filter((el) => el.themeOverride).map((el) => [el.id, el]),
   );
-  const laid = paintSlide(applyLayout(slide, layout), theme);
+  const laid = paintSlide(applyLayout(slide, layout, custom), theme);
   return {
     ...laid,
     elements: laid.elements.map((el) => {

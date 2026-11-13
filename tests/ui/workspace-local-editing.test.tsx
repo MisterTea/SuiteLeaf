@@ -172,28 +172,17 @@ describe("Workspace on this device", () => {
     expect(paths.at(-1)).toBe("/");
   });
 
-  it("opens and closes the main menu", async () => {
-    await open(store());
-    const button = screen.getByRole("button", { name: "Main menu" });
-    fireEvent.click(button);
-    expect(button.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.pointerDown(screen.getByRole("menubar"));
-    fireEvent.pointerDown(button);
-    fireEvent.keyDown(document, { key: "a" });
-    expect(button.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.pointerDown(document.body);
-    expect(button.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(button);
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(button.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(button);
-    const content = document.createElement("div");
-    content.className = "menu-content";
-    document.body.append(content);
-    fireEvent.pointerDown(content);
-    expect(button.getAttribute("aria-expanded")).toBe("true");
-    content.remove();
-    fireEvent.click(button);
+  it.each(["doc", "sheet", "slide"] as const)("exposes the %s menu bar directly and closes a dropdown with Escape", async (kind) => {
+    await open(store(kind));
+    const bar = screen.getByRole("menubar", { name: "Main menu" });
+    expect(screen.queryByRole("button", { name: "Main menu" })).toBeNull();
+    const file = within(bar).getByRole("button", { name: "File", exact: true });
+    expect(within(bar).getByRole("button", { name: "Edit", exact: true })).toBeTruthy();
+    fireEvent.keyDown(file, { key: "Enter" });
+    expect(await screen.findByRole("menu")).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(screen.getByRole("menubar")).toBe(bar);
   });
 
   it("selects the title of a file that was just made", async () => {

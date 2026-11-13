@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import type { FileRecord, RegionTouch, SuiteFile } from "@suiteleaf/core";
 import type * as Y from "yjs";
@@ -56,9 +56,6 @@ export function useWorkspaceState() {
   /** The file whose import notes were closed. Opening another file brings them back. */
   const [importNotesClosed, setImportNotesClosed] = useState<string | null>(null);
   const [sidePaneSlot, setSidePaneSlot] = useState<HTMLElement | null>(null);
-  const [menusOpen, setMenusOpen] = useState(false);
-  const menuButton = useRef<HTMLButtonElement>(null);
-  const menuBar = useRef<HTMLDivElement>(null);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const [historyPreview, setHistoryPreview] = useState<HistoryPreview | null>(
     null,
@@ -74,46 +71,6 @@ export function useWorkspaceState() {
     [othersHere, setOthersHere] = useState<FilePresence[]>([]),
     { mode } = useMode(),
     cluster = mode.kind === "cluster";
-  useEffect(() => {
-    if (!menusOpen) return;
-    const position = () => {
-      const button = menuButton.current;
-      const menu = menuBar.current;
-      if (!button?.closest(".editor-toolbar-navigation") || !menu) return;
-      const bounds = button.getBoundingClientRect();
-      const top = Math.min(bounds.bottom + 4, Math.max(8, window.innerHeight - 120));
-      menu.style.top = `${top}px`;
-      menu.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - menu.offsetWidth - 8))}px`;
-      menu.style.maxHeight = `${Math.min(520, window.innerHeight * 0.7, window.innerHeight - top - 8)}px`;
-    };
-    position();
-    const positionedMenu = menuBar.current;
-    window.addEventListener("resize", position);
-    window.addEventListener("scroll", position, true);
-    const close = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (event instanceof KeyboardEvent) {
-        if (event.key === "Escape") setMenusOpen(false);
-        return;
-      }
-      if (menuButton.current?.contains(target) || menuBar.current?.contains(target))
-        return;
-      if (target instanceof Element && target.closest(".menu-content")) return;
-      setMenusOpen(false);
-    };
-    document.addEventListener("pointerdown", close, true);
-    document.addEventListener("keydown", close);
-    return () => {
-      window.removeEventListener("resize", position);
-      window.removeEventListener("scroll", position, true);
-      positionedMenu?.style.removeProperty("top");
-      positionedMenu?.style.removeProperty("left");
-      positionedMenu?.style.removeProperty("max-height");
-      document.removeEventListener("pointerdown", close, true);
-      document.removeEventListener("keydown", close);
-    };
-  }, [menusOpen]);
   const canEditRef = useRef(true);
   const canSaveRef = useRef(true);
   const canEdit =
@@ -156,7 +113,7 @@ export function useWorkspaceState() {
     driveQueue, driveTimer, driveConflictRef, agreedContent, driveSyncing,
     driveGeneration, snapshotExplicit, driveParentId, historyOpen, setHistoryOpen,
     importNotesClosed, setImportNotesClosed, sidePaneSlot, setSidePaneSlot,
-    menusOpen, setMenusOpen, menuButton, menuBar, editorEpoch, setEditorEpoch,
+    editorEpoch, setEditorEpoch,
     historyPreview, setHistoryPreview, restoreParagraph, driveConflict,
     driveDialog, setDriveDialog, shareOpen, setShareOpen, signUpOpen,
     setSignUpOpen, driveRole, setDriveRole, othersHere, setOthersHere, mode,

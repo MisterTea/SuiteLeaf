@@ -1,3 +1,4 @@
+import { isCaretBreak, startsTextBlock } from "./slide-text-breaks";
 import { readSlideMath } from "./slide-math";
 
 function mathLength(node: Node): number | undefined {
@@ -7,37 +8,88 @@ function mathLength(node: Node): number | undefined {
   }
 }
 
-/** Visual MathML omits linear separators such as '/'; offsets use authored text. */
-export function semanticTextLength(node: Node): number {
-  const math = mathLength(node);
-  if (math != null) return math;
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent?.length ?? 0;
-  return Array.from(node.childNodes).reduce((sum, child) => sum + semanticTextLength(child), 0);
-}
 
-export function semanticPoint(root: Node, wanted: number): { node: Node; offset: number } | undefined {
-  let seen = 0;
-  const visit = (node: Node): { node: Node; offset: number } | undefined => {
+type Point = { node: Node; offset: number };
+
+/** Map DOM positions to authored text, including implicit paragraph breaks. */
+function positions(root: Node) {
+  const offsets = new Map<Node, number | number[]>();
+  const textRanges: { node: Node; start: number; end: number }[] = [];
+  const carets = new Map<number, Point>();
+  let length = 0;
+  let newline = false;
+  const visit = (node: Node, editable: boolean) => {
+    const element = node instanceof HTMLElement ? node : null;
     const math = mathLength(node);
-    if (math != null) {
-      const end = seen + math;
-      if (wanted <= end && node.parentNode) {
-        const index = Array.from(node.parentNode.childNodes).indexOf(node as ChildNode);
-        return { node: node.parentNode, offset: index + (wanted - seen > math / 2 ? 1 : 0) };
-      }
-      seen = end;
-      return;
+    const block = startsTextBlock(node);
+    if (node !== root && block && ((length && !newline) || startsTextBlock(node.previousSibling))) {
+      length++;
+      newline = true;
     }
+    if (element?.getAttribute("contenteditable") === "false" && node !== root) editable = false;
+    const start = length;
+    const points: number[] = [];
+    offsets.set(node, points);
     if (node.nodeType === Node.TEXT_NODE) {
-      const length = node.textContent?.length ?? 0;
-      if (wanted <= seen + length) return { node, offset: Math.max(0, wanted - seen) };
-      seen += length;
-      return;
-    }
-    for (const child of node.childNodes) {
-      const point = visit(child);
-      if (point) return point;
+      const value = node.textContent ?? "";
+      offsets.set(node, start);
+      length += value.length;
+      if (editable) textRanges.push({ node, start, end: length });
+      if (value) newline = value.endsWith("\n");
+    } else if (math != null || element?.tagName === "BR") {
+      points.push(start);
+      if (!element || !isCaretBreak(element)) {
+        length += math ?? 1;
+        newline = math == null;
+      }
+    } else {
+      points.push(length);
+      for (const child of node.childNodes) {
+        visit(child, editable);
+        points.push(length);
+      }
+      if (editable) points.forEach((at, offset) => {
+        if (!carets.has(at)) carets.set(at, { node, offset });
+      });
     }
   };
-  return visit(root);
+  visit(root, true);
+  return { offsets, carets, textRanges, length };
+}
+
+export function semanticOffset(root: Node, node: Node, offset: number): number | undefined {
+  const { offsets } = positions(root);
+  const position = offsets.get(node);
+  return typeof position === "number" ? position + offset : position?.[offset];
+}
+
+export function semanticPoint(root: Node, wanted: number, clamp = false): Point | undefined {
+  const { carets, textRanges, length } = positions(root);
+  if (wanted > length && !clamp) return;
+  wanted = Math.min(wanted, length);
+  // A fixed bullet or equation has no editable positions inside it.
+  const text = textRanges.find(({ start, end }) => wanted >= start && wanted <= end);
+  if (text) return { node: text.node, offset: wanted - text.start };
+  let next = Infinity;
+  for (const at of carets.keys()) {
+    if (at >= wanted && at < next) next = at;
+  }
+  const following = textRanges.find(({ start }) => start === next);
+  return following ? { node: following.node, offset: 0 } : carets.get(next);
+}
+
+
+/** Use the words' caret at a bullet boundary, outside its zero-size spacer. */
+export function normalizeBulletCaret(root: HTMLElement): void {
+  const selection = root.ownerDocument.getSelection();
+  if (!selection?.isCollapsed || !selection.anchorNode || !root.contains(selection.anchorNode)) return;
+  const anchor = selection.anchorNode;
+  const slot = anchor.parentElement?.closest(".slide-bullet-slot");
+  if (!slot || anchor.nodeType !== Node.TEXT_NODE ||
+      anchor.textContent !== " " || selection.anchorOffset !== 1) return;
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  walker.currentNode = slot;
+  let next = walker.nextNode();
+  while (next && slot.contains(next)) next = walker.nextNode();
+  if (next && slot.parentElement?.contains(next)) selection.collapse(next, 0);
 }

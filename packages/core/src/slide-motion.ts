@@ -30,6 +30,7 @@ export type OrderedAnimation = {
 };
 
 export type ParagraphBuild = {
+  kind?: SlideAnimationKind;
   start: number;
   end: number;
   order: number;
@@ -76,7 +77,7 @@ export function animationSequence(
         items.push({
           id: el.id,
           index,
-          kind: "appear-on-click",
+          kind: build.kind ?? "appear-on-click",
           order: build.order,
           trigger: build.trigger === "with" || build.trigger === "after" ? build.trigger : "click",
           paragraphs: { start: build.start, end: build.end },
@@ -126,6 +127,7 @@ export function animationClicks(
 
 export type ClickAnimation = {
   spid: string;
+  duration?: number;
   kind: SlideAnimationKind;
   order: number;
   trigger?: AnimationTrigger;
@@ -182,8 +184,9 @@ export function readClickAnimations(xml: string): ClickAnimation[] {
       start != null && end != null
         ? { start: Number(start), end: Number(end) }
         : undefined;
+    const duration = /<p:cBhvr\b[^>]*>\s*<p:cTn\b[^>]*\bdur="(\d+)"/.exec(chunk)?.[1];
     const leaving =
-      /presetClass="exit"/.test(chunk) || /<p:strVal\b[^>]*\bval="hidden"/.test(chunk);
+      /transition="out"/.test(chunk) || /presetClass="exit"/.test(chunk) || /<p:strVal\b[^>]*\bval="hidden"/.test(chunk);
     const identity = paragraph ? `${spid}:${paragraph.start}:${paragraph.end}` : leaving ? `${spid}:exit` : spid;
     if (out.some((item) => {
       const key = item.paragraph
@@ -205,6 +208,7 @@ export function readClickAnimations(xml: string): ClickAnimation[] {
       trigger: afterPrevious ? "after" : withPrevious ? "with" : "click",
       ...(paragraph ? { paragraph } : {}),
       ...(leaving ? { exit: true } : {}),
+      ...(duration !== undefined ? { duration: Math.min(5000, Number(duration)) } : {}),
     });
   }
   return out;
@@ -251,6 +255,7 @@ export function assignClickAnimations(
     animation?: string;
     animationOrder?: number;
     animationTrigger?: string;
+    animationDuration?: number;
     paragraphBuilds?: ParagraphBuild[];
     animationExit?: ExitBuild;
   }[],
@@ -291,6 +296,7 @@ export function assignClickAnimations(
         {
           start: click.paragraph.start,
           end: click.paragraph.end,
+          ...(click.kind !== "appear-on-click" ? { kind: click.kind } : {}),
           order: click.order,
           ...(click.trigger === "with" || click.trigger === "after"
             ? { trigger: click.trigger }
@@ -302,6 +308,7 @@ export function assignClickAnimations(
     }
     if (el.animation) return;
     el.animation = click.kind;
+    if (click.duration !== undefined) el.animationDuration = click.duration;
     el.animationOrder = click.order;
     if (click.trigger === "with" || click.trigger === "after") el.animationTrigger = click.trigger;
     mapped += 1;
@@ -343,7 +350,10 @@ function buildTiming(items: ClickAnimation[]): string {
           : item.trigger === "with" || (index > 0 && item.order === items[index - 1]?.order)
             ? "withEffect"
             : "clickEffect";
-      return `<p:par><p:cTn id="${id}" fill="hold" nodeType="${nodeType}"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:animEffect transition="in" filter="${FILTER[item.kind]}"><p:cBhvr><p:cTn id="${id + 1}" dur="500"/><p:tgtEl><p:spTgt spid="${item.spid}"/></p:tgtEl></p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par>`;
+      const duration = typeof item.duration === "number" && Number.isFinite(item.duration)
+        ? Math.min(5000, Math.max(0, Math.round(item.duration))) : 600;
+      const target = `<p:spTgt spid="${item.spid}">${item.paragraph ? `<p:txEl><p:pRg st="${item.paragraph.start}" end="${item.paragraph.end}"/></p:txEl>` : ""}</p:spTgt>`;
+      return `<p:par><p:cTn id="${id}" fill="hold" nodeType="${nodeType}"${item.exit ? ' presetClass="exit"' : ""}><p:stCondLst><p:cond delay="${nodeType === "clickEffect" ? "indefinite" : "0"}"/></p:stCondLst><p:childTnLst><p:animEffect transition="${item.exit ? "out" : "in"}" filter="${FILTER[item.kind]}"><p:cBhvr><p:cTn id="${id + 1}" dur="${duration}"/><p:tgtEl>${target}</p:tgtEl></p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par>`;
     })
     .join("");
   return `<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>${clicks}</p:childTnLst></p:cTn><p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst><p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>`;
@@ -450,7 +460,7 @@ function timingMarkup(slide: Slide, xml: string): string {
   if (sequence.length) {
     const pairs = sequence.flatMap((item) => {
       const targets = elementIds.get(item.id) ?? (elementIds.size === 0 && ids[item.index] ? [ids[item.index]] : []);
-      return targets.map((spid) => ({ spid, kind: item.kind, order: item.order, trigger: item.trigger, paragraphs: item.paragraphs, exit: item.exit }));
+      return targets.map((spid) => ({ spid, kind: item.kind, order: item.order, trigger: item.trigger, paragraph: item.paragraphs, exit: item.exit, duration: slide.elements[item.index]?.animationDuration }));
     });
     return pairs.length ? buildTiming(pairs) : "";
   }

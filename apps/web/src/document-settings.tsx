@@ -1,9 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Settings } from "lucide-react";
 import { Navigate, useNavigate } from "react-router-dom";
+import type { DocumentScanProgress } from "@suiteleaf/core";
 import { AssistantOptIn } from "./ai/assistant-settings";
 import { useMode } from "./mode";
 import { ExpansionNotice, FeatureMatrix } from "./packaging-view";
+
+function countLabel(count: number, noun: string) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function scanStatus(scan: DocumentScanProgress) {
+  if (scan.total == null) {
+    const where =
+      scan.folders > 0
+        ? `Looking through ${countLabel(scan.folders, "folder")}`
+        : "Looking through folders";
+    return `${where}… ${countLabel(scan.files, "file")} found`;
+  }
+  if (scan.total === 0) return "No documents to read";
+  return `Reading ${scan.files} of ${countLabel(scan.total, "file")}`;
+}
 
 export function SettingsButton() {
   const { mode } = useMode();
@@ -45,7 +62,15 @@ export function SettingsPage() {
   const [directory, setDirectory] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [scan, setScan] = useState<DocumentScanProgress | null>(null);
+  const [action, setAction] = useState<"choose" | "rescan" | null>(null);
+  const scanning = useRef(false);
   const available = !!window.suiteleaf?.chooseDocumentsDirectory;
+  useEffect(() => {
+    return window.suiteleaf?.onDocumentScan?.((progress) => {
+      if (scanning.current) setScan(progress);
+    });
+  }, []);
   useEffect(() => {
     if (mode.kind !== "single") return;
     let cancelled = false;
@@ -98,26 +123,79 @@ export function SettingsPage() {
             </p>
             <p className="settings-directory">{directory || "Loading…"}</p>
             {error && <p role="alert">{error}</p>}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                setError("");
-                void window.suiteleaf!.chooseDocumentsDirectory!()
-                  .then((path) => {
-                    if (path) setDirectory(path);
-                  })
-                  .catch((e) => setError(String(e)))
-                  .finally(() => setBusy(false));
-              }}
-            >
-              {busy ? "Scanning…" : "Choose folder…"}
-            </button>
+            {scan && (
+              <label className="settings-scan">
+                <span>{scanStatus(scan)}</span>
+                <progress
+                  {...(scan.total == null
+                    ? {}
+                    : {
+                        max: Math.max(scan.total, 1),
+                        value: scan.total === 0 ? 1 : scan.files,
+                      })}
+                />
+              </label>
+            )}
+            <div className="settings-actions">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  scanning.current = true;
+                  setAction("choose");
+                  setBusy(true);
+                  setScan(null);
+                  setError("");
+                  void window.suiteleaf!.chooseDocumentsDirectory!()
+                    .then((path) => {
+                      if (path) setDirectory(path);
+                    })
+                    .catch((e) => setError(String(e)))
+                    .finally(() => {
+                      scanning.current = false;
+                      setAction(null);
+                      setBusy(false);
+                      setScan(null);
+                    });
+                }}
+              >
+                {action === "choose" ? "Scanning…" : "Choose folder…"}
+              </button>
+              {window.suiteleaf?.rescanDocumentsDirectory && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    scanning.current = true;
+                    setAction("rescan");
+                    setBusy(true);
+                    setScan(null);
+                    setError("");
+                    void window.suiteleaf!.rescanDocumentsDirectory!()
+                      .catch((e) => setError(String(e)))
+                      .finally(() => {
+                        scanning.current = false;
+                        setAction(null);
+                        setBusy(false);
+                        setScan(null);
+                      });
+                  }}
+                >
+                  {action === "rescan" ? "Scanning…" : "Rescan everything"}
+                </button>
+              )}
+            </div>
             <p>
               Changing the directory leaves your existing files in place. Use
               Save As to save a document in the selected folder.
             </p>
+            {window.suiteleaf?.rescanDocumentsDirectory && (
+              <p>
+                Rescan reads every document in this folder again and removes
+                library entries from other folders. Recovery drafts stay in the
+                library.
+              </p>
+            )}
           </>
         ) : (
           <p>

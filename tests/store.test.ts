@@ -1,3 +1,5 @@
+import JSZip from "jszip";
+import { folderSelectionArchive } from "../apps/desktop/src/folder-selection";
 import { it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, readFile, readdir, rename, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,7 +27,7 @@ it("keeps an on-disk document body out of the catalog", async () => {
   await store.save({ file: draft });
   expect(
     (await store.list()).find((record) => record.file.id === draft.id)?.file.content,
-  ).toEqual(draft.content);
+  ).toBeUndefined();
   const reopened = new FileStore(join(dir, "data"));
   await reopened.init();
   expect(
@@ -34,6 +36,29 @@ it("keeps an on-disk document body out of the catalog", async () => {
   expect((await reopened.get(file.id))?.file.content).toEqual(file.content);
   expect(JSON.parse(await readFile(path, "utf8")).content).toEqual(file.content);
 });
+it("trashes and restores a batch using only the catalog", async () => {
+  const saved = createFile("doc", "Saved");
+  const draft = createFile("doc", "Draft");
+  const path = join(dir, "saved.sldoc");
+  await store.saveAs({ file: saved, starred: true }, path);
+  await store.save({ file: draft });
+  // Leave the catalog entry in place while making its document inaccessible.
+  const movedPath = join(dir, "unavailable.sldoc");
+  await rename(path, movedPath);
+
+  const ids = [saved.id, draft.id];
+  expect(await store.setTrashed([...ids, saved.id, "missing"], true)).toEqual(ids);
+  expect(await store.setTrashed(ids, true)).toEqual([]);
+  const reopened = new FileStore(join(dir, "data"));
+  await reopened.init();
+  const trashed = await reopened.list();
+  expect(trashed.map((record) => Boolean(record.trashedAt))).toEqual([true, true]);
+  expect(trashed.find((record) => record.file.id === saved.id)?.starred).toBe(true);
+  expect(await reopened.setTrashed(ids, false)).toEqual(ids);
+  expect((await reopened.list()).every((record) => !record.trashedAt)).toBe(true);
+  expect(await readFile(movedPath, "utf8")).toBe(serializeFile(saved));
+});
+
 it("autosaves regular files and reopens from a new store", async () => {
   const f = createFile("doc");
   const path = join(dir, "document.suiteleaf");
@@ -375,6 +400,54 @@ it("moves and renames a folder on disk with the library's files inside it", asyn
   await expect(store.createFolder(docs, "Yard")).rejects.toThrow("already something");
   expect(store.folderPaths(docs)).toContain("Yard");
 });
+it("rebuilds one folder and drops library entries left in another", async () => {
+  const current = join(dir, "current");
+  const other = join(dir, "other");
+  await mkdir(current);
+  await mkdir(other);
+  const kept = createFile("doc", "Kept");
+  const stale = createFile("doc", "Stale");
+  const hidden = createFile("doc", "Hidden");
+  const draft = createFile("doc", "Draft");
+  await writeFile(join(current, "kept.sldoc"), serializeFile(kept));
+  await writeFile(join(current, "hidden.sldoc"), serializeFile(hidden));
+  await writeFile(join(other, "stale.sldoc"), serializeFile(stale));
+  await store.syncFolder(other);
+  await store.syncFolder(current);
+  await store.remove(hidden.id);
+  await store.save({ file: draft });
+  kept.title = "Kept, rewritten";
+  await writeFile(join(current, "kept.sldoc"), serializeFile(kept));
+  expect((await store.list()).map((record) => record.file.id)).toContain(stale.id);
+  expect(
+    await store.syncFolder(current, undefined, undefined, { rebuild: true }),
+  ).toBe(true);
+  const listed = await store.list();
+  expect(listed.map((record) => record.file.id).sort()).toEqual([draft.id, kept.id].sort());
+  expect(listed.find((record) => record.file.id === kept.id)?.file.title).toBe(
+    "Kept, rewritten",
+  );
+  expect(listed.find((record) => record.file.id === draft.id)?.recovery).toBe(true);
+  expect(store.folderPaths(current)).toEqual([]);
+});
+it("reports listing progress, then read progress, while scanning a folder", async () => {
+  const docs = join(dir, "docs");
+  const nested = join(docs, "nested");
+  await mkdir(join(nested, ".hidden"), { recursive: true });
+  await writeFile(join(docs, "a.sldoc"), serializeFile(createFile("doc", "A")));
+  await writeFile(join(nested, "b.sldoc"), serializeFile(createFile("doc", "B")));
+  await writeFile(join(docs, "notes.txt"), "skip");
+  await writeFile(join(nested, ".hidden", "c.sldoc"), serializeFile(createFile("doc", "C")));
+  const progress: { files: number; folders: number; total?: number }[] = [];
+  expect(
+    await store.syncFolder(docs, undefined, (update) => progress.push({ ...update })),
+  ).toBe(true);
+  expect(progress[0]).toEqual({ files: 0, folders: 0 });
+  expect(progress.some((update) => update.total == null && update.files === 2)).toBe(true);
+  expect(progress.some((update) => update.total === 2 && update.files === 0)).toBe(true);
+  expect(progress.at(-1)).toEqual({ files: 2, folders: 2, total: 2 });
+  expect(await store.syncFolder(docs)).toBe(false);
+});
 it("follows a folder renamed outside SuiteLeaf", async () => {
   const docs = join(dir, "SuiteLeaf");
   await mkdir(join(docs, "Garden"), { recursive: true });
@@ -385,4 +458,40 @@ it("follows a folder renamed outside SuiteLeaf", async () => {
   expect(await store.syncFolder(docs)).toBe(true);
   expect((await store.get(plan.id))?.path).toBe(join(docs, "Yard", "Plan.sldoc"));
   expect(store.folderPaths(docs)).toEqual(["Yard"]);
+});
+
+
+it("archives complete folder trees and trashes folder records without affecting siblings", async () => {
+  const folder = await store.createFolder(dir, "Lessons");
+  await store.createFolder(folder, "Empty");
+  const pptx = new Uint8Array([0, 1, 255, 4]);
+  await writeFile(join(folder, "Original.pptx"), pptx);
+  const file = createFile("doc", "Notes");
+  await store.saveAs({ file }, join(folder, "Notes.sldoc"));
+  const sibling = createFile("doc", "Sibling");
+  await store.saveAs({ file: sibling }, join(dir, "Sibling.sldoc"));
+
+  const zip = await JSZip.loadAsync(await folderSelectionArchive(store, [folder], [sibling.id]));
+  expect(zip.files["Lessons/Empty/"].dir).toBe(true);
+  expect(await zip.file("Lessons/Original.pptx")!.async("uint8array")).toEqual(pptx);
+  expect(await zip.file("Lessons/Notes.sldoc")!.async("string")).toBe(serializeFile(file));
+  expect(zip.file("Sibling.sldoc")).toBeTruthy();
+
+  const trash = join(dir, "system-trash");
+  await store.trashFolder(folder, async (path) => { await rename(path, trash); });
+  expect((await store.list()).map((record) => record.file.id)).toEqual([sibling.id]);
+  expect(store.folderPaths(dir)).not.toContain("Lessons");
+  expect(await readFile(join(trash, "Original.pptx"))).toEqual(Buffer.from(pptx));
+  const reopened = new FileStore(join(dir, "data"));
+  await reopened.init();
+  expect((await reopened.list()).map((record) => record.file.id)).toEqual([sibling.id]);
+});
+
+it("keeps the catalog intact when the system cannot trash a folder", async () => {
+  const folder = await store.createFolder(dir, "Locked");
+  const file = createFile("doc", "Kept");
+  await store.saveAs({ file }, join(folder, "Kept.sldoc"));
+  await expect(store.trashFolder(folder, async () => { throw new Error("Permission denied"); })).rejects.toThrow("Permission denied");
+  expect((await store.list())[0].file.id).toBe(file.id);
+  expect(store.folderPaths(dir)).toContain("Locked");
 });

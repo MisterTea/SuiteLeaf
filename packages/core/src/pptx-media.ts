@@ -7,13 +7,13 @@ export async function playableClip(
   bytes: Uint8Array,
   mime: string,
 ): Promise<{ bytes: Uint8Array; mime: string }> {
-  if (mime !== "video/mpeg" || typeof process === "undefined" || !process.versions?.node)
+  if (mime !== "video/mpeg" || typeof process === "undefined" || !process.getBuiltinModule)
     return { bytes, mime };
   try {
-    const { spawn } = await import("node:child_process");
-    const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
+    const { spawn } = process.getBuiltinModule("node:child_process");
+    const { mkdtemp, readFile, rm, writeFile } = process.getBuiltinModule("node:fs/promises");
+    const { tmpdir } = process.getBuiltinModule("node:os");
+    const { join } = process.getBuiltinModule("node:path");
     const dir = await mkdtemp(join(tmpdir(), "suiteleaf-mpg-"));
     const input = join(dir, "clip.mpg");
     const output = join(dir, "clip.mp4");

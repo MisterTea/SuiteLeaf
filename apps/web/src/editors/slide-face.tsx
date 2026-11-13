@@ -4,7 +4,8 @@ import { AutofitBox, autofitSignature } from "./slide-autofit";
 import { marpMediaSrc } from "./slide-marp-import";
 import { drawnTextKind } from "./slide-drawn-text";
 import { MarpCode, MarpMath, MarpRichText } from "./slide-marp-math";
-import { inheritedText } from "./slide-master";
+import { inheritedText, masterForSlide } from "./slide-master";
+import { isMasterPage, MASTER_PAGE_ID } from "./slide-master-view";
 import { SlideMasterLayer } from "./slide-master-ui";
 import { SlideMediaControls } from "./slide-media";
 import { ClippedSlidePicture } from "./slide-clipped-picture";
@@ -15,6 +16,7 @@ import { RotatedSlideShape, rotatedShapePrintable, shapeDropShadow } from "./sli
 import { SlideMediaStill } from "./slide-media-still";
 import { slideCellPaint, tableCellFlow, tableCellLayout, tableRowHeightCss } from "./slide-table-format";
 import { boxFont, SlideTextBody } from "./slide-text";
+import { slideTextTrialEnabled } from "./slide-text-trial";
 import { proofingLanguage, proofingTextDirection } from "./proofing-language";
 import { wordArtProps } from "./slide-word-art";
 import { StretchedWordArt } from "./slide-stretch-text";
@@ -73,7 +75,7 @@ function DrawnWords({ el }: { el: SlideElement }) {
   if (kind === "code") return <MarpCode source={el.content || ""} language={el.codeLanguage} />;
   if (kind === "math") return <MarpMath source={el.content || ""} />;
   if (kind === "marp" || kind === "rich") return <MarpRichText source={el.content || ""} />;
-  if (kind === "runs")
+  if (kind === "runs" || kind === "plain" && slideTextTrialEnabled())
     return (
       <SlideTextBody
         content={el.content}
@@ -94,7 +96,15 @@ function DrawnWords({ el }: { el: SlideElement }) {
         onCaret={noop}
       />
     );
-  return <div className="element-textarea slide-text-face">{el.content}</div>;
+  return (
+    <div
+      className="element-textarea slide-text-face"
+      data-placeholder={el.placeholder || undefined}
+      data-empty={el.content?.trim() ? undefined : "true"}
+    >
+      {el.content}
+    </div>
+  );
 }
 
 /** The slide's master, elements, and number, as the editor draws them. */
@@ -118,7 +128,11 @@ export function SlideFace({
   const units = (n: number) => `calc(${n} / ${w} * 100cqw)`;
   return (
     <>
-      <SlideMasterLayer deck={deck} font={(size) => `calc(${size} * var(--slide-pt, 1) * 1px)`} />
+      <SlideMasterLayer
+        deck={deck}
+        slide={slide}
+        font={(size) => `calc(${size} * var(--slide-pt, 1) * 1px)`}
+      />
       {slide?.elements.filter((el) => intersectsSlide(el, w, h)).map((raw) => {
         // Print clips a picture, or a text box, that starts off the page.
         // The words keep their origin so a section numeral is not dropped.
@@ -141,6 +155,7 @@ export function SlideFace({
               width: `${el.width}px`,
               height: `${el.height}px`,
               ...placedPose(el),
+              ...view.props?.style,
             }
           : {
               position: "absolute",
@@ -149,11 +164,17 @@ export function SlideFace({
               width: `${(el.width / w) * 100}%`,
               height: `${(el.height / h) * 100}%`,
               ...placedPose(el),
+              ...view.props?.style,
             };
 
         if (el.type === "text") {
           const art = wordArtProps(el);
-          const inherited = inheritedText(el, deck.master?.elements ?? []);
+          const inherited = inheritedText(
+            el,
+            isMasterPage(slide?.id)
+              ? deck.slides[MASTER_PAGE_ID]?.elements ?? []
+              : masterForSlide(deck, slide).elements,
+          );
           const face = el.content?.trim() ? el : { ...el, content: inherited.content ?? "" };
           const typeSize = inherited.fontSize ?? 20;
           const normalPx = typeSize * slidePointScale(deck.width, deck.pointWidth);
@@ -676,11 +697,19 @@ export function SlideFace({
         }
 
         if ((el.type === "audio" || el.type === "video") && (el.src || el.poster)) {
-          if (still && (el.type === "video" || el.poster)) {
+          const mediaEl =
+            el.src || el.poster
+              ? {
+                  ...el,
+                  ...(el.src ? { src: marpMediaSrc(el.src, deck.marpAssets) } : {}),
+                  ...(el.poster ? { poster: marpMediaSrc(el.poster, deck.marpAssets) } : {}),
+                }
+              : el;
+          if (still && (mediaEl.type === "video" || mediaEl.poster)) {
             return (
               <SlideMediaStill
                 key={el.id}
-                el={el}
+                el={mediaEl}
                 posStyle={posStyle}
                 slideWidth={w}
                 slideHeight={h}
@@ -698,7 +727,7 @@ export function SlideFace({
               style={posStyle}
             >
               {hooks.before?.(el)}
-              <SlideMediaControls element={el} />
+              <SlideMediaControls element={mediaEl} />
               {hooks.after?.(el)}
             </div>
           );
@@ -706,7 +735,7 @@ export function SlideFace({
 
         return null;
       })}
-      {deck.slideNumbers ? <SlideNumber n={index + 1} /> : null}
+      {deck.slideNumbers && !isMasterPage(slide?.id) ? <SlideNumber n={index + 1} /> : null}
     </>
   );
 }

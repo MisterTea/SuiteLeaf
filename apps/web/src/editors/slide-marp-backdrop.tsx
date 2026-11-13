@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { INITIAL_FRAGMENT_STYLE, setMarpFragmentStep } from "./slide-marp-fragments";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Presentation } from "@suiteleaf/core";
 import { SOURCE_LINES } from "./slide-marp-engine";
 import { renderMarpPages, type MarpPages } from "./slide-marp-render";
@@ -151,6 +152,7 @@ export function MarpBackdrop({
   index,
   live,
   plain = false,
+  fragmentStep,
   onPainted,
 }: {
   pages: MarpPages | null;
@@ -158,19 +160,27 @@ export function MarpBackdrop({
   live: LineRange | null;
   /** Show the page without source lines, which nothing here hides. */
   plain?: boolean;
+  fragmentStep?: number;
   onPainted: (painted: boolean) => void;
 }) {
   const [doc, setDoc] = useState<Document | null>(null);
   const source = pages?.pages[index] ?? null;
+  const presenting = fragmentStep !== undefined;
   const page = useMemo(
     () =>
       source && {
         width: source.width,
         height: source.height,
-        document: plain ? source.plain : source.document,
+        document: presenting
+          ? (plain ? source.plain : source.document).replace("</head>", `${INITIAL_FRAGMENT_STYLE}</head>`)
+          : plain ? source.plain : source.document,
       },
-    [source, plain],
+    [source, plain, presenting],
   );
+  useLayoutEffect(() => {
+    if (!doc) return;
+    setMarpFragmentStep(doc, fragmentStep);
+  }, [doc, fragmentStep]);
   useEffect(() => {
     if (!doc) return onPainted(false);
     const hidden = hideRenderedLines(doc, live);

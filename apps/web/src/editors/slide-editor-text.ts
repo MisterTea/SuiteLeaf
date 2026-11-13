@@ -8,7 +8,7 @@ import type { SlideUpdates } from "./slide-editor-elements";
 /** Bold, italic, underline, colour, and alignment for the selected words or box. */
 export function slideTextFormat(
   state: SlidesEditorState,
-  { updateElement }: Pick<SlideUpdates, "updateElement">,
+  { updateElement, textDeck }: Pick<SlideUpdates, "updateElement"> & { textDeck: () => typeof state.deck },
 ) {
   const {
     deckRef, activeDeckSlide, textRange, setCaretMarks, selectedElementRef, editingRef,
@@ -21,7 +21,7 @@ export function slideTextFormat(
   ) => {
     if (!sel) return;
     textRange.current = { id, ...sel };
-    const slide = activeDeckSlide(deckRef.current);
+    const slide = activeDeckSlide(textDeck());
     const el = slide?.elements.find((item) => item.id === id);
     if (!el) return;
     const runs = runsOf(el);
@@ -45,7 +45,7 @@ export function slideTextFormat(
   };
 
   const selectedText = () => {
-    const slide = activeDeckSlide(deckRef.current);
+    const slide = activeDeckSlide(textDeck());
     const el = slide?.elements.find(
       (item) => item.id === selectedElementRef.current,
     );
@@ -68,7 +68,7 @@ export function slideTextFormat(
     return null;
   };
   const formatText = (kind: "bold" | "italic" | "underline") => {
-    const slide = activeDeckSlide(deckRef.current);
+    const slide = activeDeckSlide(textDeck());
     const selected = slide?.elements.find(
       (item) => item.id === selectedElementRef.current,
     );

@@ -119,8 +119,8 @@
 }
 /* Once it shows, the boxes become clear hit areas, except the one being typed in.
    The editor wraps those boxes in .slide-canvas-fit, so they are not direct children. */
-.slide-surface.marp-painted .slide-element:not(.marp-live):not(.marp-html),
-.slide-surface.marp-painted .slide-element:not(.marp-live):not(.marp-html) * {
+.slide-surface.marp-painted .slide-element:not(.marp-live):not(.marp-html):not(.slide-video):not(.slide-audio),
+.slide-surface.marp-painted .slide-element:not(.marp-live):not(.marp-html):not(.slide-video):not(.slide-audio) * {
   color: transparent !important;
   -webkit-text-fill-color: transparent;
   text-decoration-color: transparent !important;
@@ -128,7 +128,7 @@
   background: transparent !important;
   border-color: transparent !important;
 }
-.slide-surface.marp-painted .slide-element:not(.marp-live):not(.marp-html) :is(img, video, svg, canvas) {
+.slide-surface.marp-painted .slide-element:not(.marp-live):not(.marp-html):not(.slide-video):not(.slide-audio) :is(img, video, svg, canvas) {
   opacity: 0;
 }
 .slide-canvas.marp-painted .element-textarea {

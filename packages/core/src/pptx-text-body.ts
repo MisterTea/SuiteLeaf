@@ -73,6 +73,9 @@ export function textBodyParser({
       text: string;
       runs: TextRun[];
       bullet?: boolean;
+      listDepth?: number;
+      listColors?: (string | null)[];
+      listFontSizes?: (number | null)[];
       bold?: boolean;
       italic?: boolean;
       underline?: boolean;
@@ -101,6 +104,36 @@ export function textBodyParser({
     const pRx = /<a:p\b[^>]*?(?:\/>|>[\s\S]*?<\/a:p>)/g;
     let pMatch: RegExpExecArray | null;
 
+    const ownList = /<a:lstStyle\b[\s\S]*?<\/a:lstStyle>/.exec(txBodyXml)?.[0] || "";
+    const atLevel = (xml: string, level: number) =>
+      new RegExp(`<a:lvl${level}pPr\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/a:lvl${level}pPr>)`).exec(xml)?.[0] || "";
+
+    const colorOf = (xml: string) => {
+      const def =
+        /<a:defRPr\b[^>]*?(?:\/>|>[\s\S]*?<\/a:defRPr>)/.exec(xml)?.[0] ||
+        "";
+      // A glow, shadow, highlight, or outline is not the glyph fill.
+      // A list style that only adds an effect keeps the earlier solid fill.
+      const fill = def
+        .replace(/<a:effectLst\b[^>]*?(?:\/>|>[\s\S]*?<\/a:effectLst>)/g, "")
+        .replace(/<a:highlight\b[\s\S]*?<\/a:highlight>/g, "")
+        .replace(/<a:ln\b[^>]*?(?:\/>|>[\s\S]*?<\/a:ln>)/g, "");
+      return paintColor(fill, scheme);
+    };
+    const listColor = (depth: number) =>
+      colorOf(atLevel(ownList, depth)) ||
+      defaults?.color ||
+      inherited.map(xml => colorOf(atLevel(xml, depth))).filter(Boolean).at(-1) ||
+      colorOf(atLevel(defaults?.table ? "" : defaultTextStyle, depth));
+
+    const listColors = Array.from({ length: 9 }, (_, index) => listColor(index + 1) ?? null);
+    const listFontSizes = Array.from({ length: 9 }, (_, index) => {
+      const parts = [defaults?.table ? "" : defaultTextStyle, ...inherited, ownList].map(xml => atLevel(xml, index + 1));
+      const size = parts.flatMap(xml => [...xml.matchAll(/<a:defRPr\b([^>]*?)(?:\/>|>)/g)].map(match => parseXmlAttrs(match[1]).sz)).filter(Boolean).at(-1);
+      const points = Number(size) / 100;
+      return points > 0 && Number.isFinite(points) ? autofitPointSize(points, fit.font) : null;
+    });
+
     while ((pMatch = pRx.exec(txBodyXml)) !== null) {
       const pXml = pMatch[0];
       const pPrMatch = /<a:pPr\b([^>]*?)(?:\/>|>[\s\S]*?<\/a:pPr>)/.exec(
@@ -109,17 +142,11 @@ export function textBodyParser({
       const ownParagraphAttrs = pPrMatch ? parseXmlAttrs(pPrMatch[1]) : {};
       const level = Number(ownParagraphAttrs.lvl || 0) + 1;
       const styleParts = [
-        // A table cell does not inherit p:defaultTextStyle. That style is
-        // for shapes; applying it paints body cells at the title size.
+        // Table cells do not inherit the presentation's shape text defaults.
         defaults?.table ? "" : defaultTextStyle,
         ...inherited,
-        /<a:lstStyle\b[\s\S]*?<\/a:lstStyle>/.exec(txBodyXml)?.[0] || "",
-      ].map(
-        (xml) =>
-          new RegExp(
-            `<a:lvl${level}pPr\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/a:lvl${level}pPr>)`,
-          ).exec(xml)?.[0] || "",
-      );
+        ownList,
+      ].map(xml => atLevel(xml, level));
       styleParts.push(pPrMatch?.[0] || "");
       const pAttrs = Object.assign(
         {},
@@ -151,47 +178,7 @@ export function textBodyParser({
         if (!("b" in specificRunAttrs)) delete defaultRunAttrs.b;
         if (!("i" in specificRunAttrs)) delete defaultRunAttrs.i;
       }
-      const colorOf = (xml: string) => {
-        const def =
-          /<a:defRPr\b[^>]*?(?:\/>|>[\s\S]*?<\/a:defRPr>)/.exec(xml)?.[0] ||
-          "";
-        // A glow, shadow, highlight, or outline is not the glyph fill.
-        // A list style that only adds an effect keeps the earlier solid fill.
-        const fill = def
-          .replace(/<a:effectLst\b[^>]*?(?:\/>|>[\s\S]*?<\/a:effectLst>)/g, "")
-          .replace(/<a:highlight\b[\s\S]*?<\/a:highlight>/g, "")
-          .replace(/<a:ln\b[^>]*?(?:\/>|>[\s\S]*?<\/a:ln>)/g, "");
-        return paintColor(fill, scheme);
-      };
-      const inheritedColor = inherited
-        .map(
-          (xml) =>
-            colorOf(
-              new RegExp(
-                `<a:lvl${level}pPr\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/a:lvl${level}pPr>)`,
-              ).exec(xml)?.[0] || "",
-            ) || "",
-        )
-        .filter((color) => color)
-        .at(-1);
-      const ownList =
-        /<a:lstStyle\b[\s\S]*?<\/a:lstStyle>/.exec(txBodyXml)?.[0] || "";
-      const ownColor = [
-        colorOf(
-          new RegExp(
-            `<a:lvl${level}pPr\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/a:lvl${level}pPr>)`,
-          ).exec(ownList)?.[0] || "",
-        ),
-        colorOf(pPrMatch?.[0] || ""),
-      ]
-        .filter((color): color is string => Boolean(color))
-        .at(-1);
-      // The shape's own list colour, then its fontRef, then the master style,
-      // then the presentation default. otherStyle's tx1 must not cover a
-      // light fontRef on a coloured shape.
-      const presentationColor = colorOf(styleParts[0] || "");
-      const defaultColor =
-        ownColor || defaults?.color || inheritedColor || presentationColor;
+      const defaultColor = colorOf(pPrMatch?.[0] || "") || listColors[level - 1] || undefined;
       const defaultFont = defaultRunParts
         .flatMap((xml) =>
           [...xml.matchAll(/<a:latin\s+typeface="([^"]+)"/g)].map(
@@ -534,14 +521,12 @@ export function textBodyParser({
         const bulletSize =
           inheritedBulletPoints(styleParts, fontSize) ??
           (starSquare && fontSize ? Math.round(fontSize * 1.85 * 100) / 100 : undefined);
-        const bulletColor = starSquare
-          ? "#000000"
-          : paintColor(inheritedBulletColorXml(styleParts), scheme);
+        const bulletColor = paintColor(inheritedBulletColorXml(styleParts), scheme);
         const first = textRuns.find((run) => run.text && run.text !== "\n");
         if (symbol || bulletSize || bulletColor) {
           // Ordinary bullet fonts still use the words' paint when buClrTx is
           // stored. A separate marker must not inherit the box's theme color.
-          const markerColor = bulletColor || first?.color;
+          const markerColor = bulletColor || first?.color || (starSquare ? "#000000" : undefined);
           const bulletRun: TextRun = {
             text: marker,
             ...(symbol ? { font: symbol } : starSquare ? { font: suiteLeafFont("Calibri") } : {}),
@@ -641,6 +626,11 @@ export function textBodyParser({
         paragraphs.push({
           text: pText,
           runs: textRuns.filter((run) => run.text),
+          ...(hasBullet && level >= 1 && level <= 9 ? {
+            listDepth: level - 1,
+            listColors,
+            listFontSizes,
+          } : {}),
           bullet: hasBullet,
           bold: isBold,
           italic: isItalic,

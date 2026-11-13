@@ -9,7 +9,7 @@ import { buildMarpFile } from "../../apps/web/src/editors/slide-marp-import";
 import { fitMarpDeck, MARP_FIT_REVISION } from "../../apps/web/src/editors/slide-marp-fit";
 import { mirrorSlides } from "../../apps/web/src/collab/slide-room";
 import { noteSlideEdit } from "../../apps/web/src/collab/slide-undo";
-import { box, openSlides, setupSlidesDom, words, type OpenOptions } from "./slide-editor-harness";
+import { box, openSlides, setupSlidesDom, words, type OpenOptions, mockImageDimensions } from "./slide-editor-harness";
 
 vi.mock("../../apps/web/src/editors/themes/beam_ut.css?raw", () => ({ default: "/* @theme beam_ut */" }));
 vi.mock("../../apps/web/src/storage", async (importOriginal) => ({
@@ -60,6 +60,17 @@ const fitted = (editor: ReturnType<typeof openSlides>) =>
   waitFor(() => expect(editor.deck().marpFit).toBe(MARP_FIT_REVISION), { timeout: 5000 });
 
 describe("a MARP deck in the editor", () => {
+  it("adds a three-column slide from the New slide menu", async () => {
+    const editor = openMarp();
+    await fitted(editor);
+    fireEvent.click(screen.getByRole("button", { name: "+ New slide", exact: true }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Three columns", exact: true }));
+    await waitFor(() => expect(editor.deck().slideOrder).toHaveLength(3));
+    const deck = editor.deck();
+    expect(deck.slides[deck.slideOrder[1]].layout).toBe("three-column");
+    expect(deck.marpSource).toContain('<div class="three-columns">');
+  });
+
   it("switches mobile views and commits pending markdown before returning to the slide", async () => {
     const width = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
@@ -162,6 +173,7 @@ describe("a MARP deck in the editor", () => {
     const editor = openMarp();
     act(() => editor.slide().insertTextBox());
     expect(editor.elements().at(-1)).toMatchObject({ placeholder: "Click to add text", fontSize: 20 });
+    mockImageDimensions(600, 300);
     const image = document.querySelector<HTMLInputElement>('input[type="file"][accept^="image"]')!;
     fireEvent.change(image, { target: { files: [new File(["png"], "chart.png", { type: "image/png" })] } });
     await waitFor(() => expect(editor.elements().some((el) => el.type === "image")).toBe(true));

@@ -1,17 +1,13 @@
 .account-chip {
   margin-top: auto;
-  display: grid;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 10px;
   border-radius: 10px;
   background: var(--sidebar-selected);
   color: var(--sidebar-selected-text);
-}
-.account-who {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
 }
 .account-actions {
   display: flex;
@@ -33,22 +29,12 @@
   font-weight: 600;
   flex-shrink: 0;
 }
-.account-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.account-name small {
-  display: block;
-  font-weight: 400;
-  font-size: 11px;
-  opacity: 0.8;
-}
 .account-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 30px;
   flex: 1;
   gap: 5px;
   padding: 5px 6px;
@@ -208,11 +194,10 @@
   }
   .account-chip {
     margin-top: auto;
-    justify-items: center;
+    flex-direction: column;
     gap: 6px;
     padding: 6px 0;
   }
-  .account-name,
   .account-action-label {
     display: none;
   }
