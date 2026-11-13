@@ -1,16 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { Presentation } from "@suiteleaf/core";
-import {
-  INITIAL_FRAGMENT_STYLE,
-  marpAudienceDocument,
-  marpFragmentCounts,
-  marpFragmentStep,
-  setMarpFragmentStep,
-  showBuildIds,
-  showBuildSteps,
-} from "../apps/web/src/editors/slide-marp-fragments";
-import { moveShowCursor, nextCursor, prevCursor, startOfShow } from "../apps/web/src/editors/slide-fade-in";
+import { marpAudienceDocument, marpFragmentCounts, marpFragmentStep, setMarpFragmentStep, showBuildIds, showBuildSteps } from "../apps/web/src/editors/slide-marp-fragments";
+import { nextCursor, prevCursor, startOfShow } from "../apps/web/src/editors/slide-fade-in";
 
 describe("marpFragmentCounts", () => {
   it("counts fragmented bullet lists marked with * and ignores regular - lists", () => {
@@ -258,7 +250,7 @@ describe("setMarpFragmentStep", () => {
 
     // Step 1: Item 1 visible, 2 and 3 hidden
     setMarpFragmentStep(doc, 1);
-    let style = doc.querySelector("style[data-suiteleaf-fragments]");
+    const style = doc.querySelector("style[data-suiteleaf-fragments]");
     expect(style?.textContent).not.toContain('[data-marpit-fragment="1"]');
     expect(style?.textContent).toContain('[data-marpit-fragment="2"]');
     expect(style?.textContent).toContain('[data-marpit-fragment="3"]');

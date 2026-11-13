@@ -205,7 +205,6 @@ export function scanDocCompatibility(
     }
     if (node.type === "paragraph" || node.type === "heading") {
       paragraphIndex += 1;
-      const snippet = (node.content ?? []).map((c) => c.text ?? "").join("").slice(0, 100);
 
       // Check marks on child runs
       for (const child of node.content ?? []) {

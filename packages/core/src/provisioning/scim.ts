@@ -216,7 +216,6 @@ export class ScimProvisioner {
     const incomingExternals = new Set(incomingUsers.map((u) => u.externalId));
 
     for (const user of incomingUsers) {
-      const isExisting = this.externalIndex.has(user.externalId);
       const res = this.upsertUser(user);
       if (res.created) created += 1;
       if (res.updated) {

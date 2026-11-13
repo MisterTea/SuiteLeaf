@@ -1,34 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
-
-const cors = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-headers": "*",
-  "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
-};
-
-/** Answer for a SuiteLeaf server at `origin` without running one. */
-async function fakeServer(page: Page, origin: string) {
-  await page.route(`${origin}/**`, (route) => {
-    const { pathname } = new URL(route.request().url());
-    if (route.request().method() === "OPTIONS")
-      return route.fulfill({ status: 204, headers: cors });
-    const body =
-      pathname === "/api/node/info"
-        ? {
-            name: "SuiteLeaf node",
-            mode: "cluster",
-            auth: { enabled: true },
-          }
-        : pathname === "/api/auth/suiteleaf/providers"
-          ? { emailAndPassword: true, username: true, providers: [] }
-          : pathname === "/api/drive/items"
-            ? { items: [] }
-            : null;
-    return body
-      ? route.fulfill({ headers: cors, json: body })
-      : route.fulfill({ status: 404, headers: cors, json: {} });
-  });
-}
+import { test, expect } from "@playwright/test";
 
 test("single-node mode keeps files in the browser without accounts", async ({
   page,

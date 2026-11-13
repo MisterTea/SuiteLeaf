@@ -96,7 +96,7 @@ export interface RevocationExplanation {
 /**
  * Return an accurate explanation of access-revocation boundaries for previously downloaded content.
  */
-export function explainOfflineRevocation(record: FileRecord): RevocationExplanation {
+export function explainOfflineRevocation(_record: FileRecord): RevocationExplanation {
   return {
     serverScope: "Revoking sharing or permissions on SuiteDrive immediately denies future sync, locks server downloads, and disconnects live collaboration sessions.",
     localScope: "Unencrypted files previously exported to host disk or cached in browser storage cannot be remotely retracted or erased over the network.",

@@ -1,4 +1,4 @@
-import type { SuiteFile } from "../file-schema";
+
 
 export type MigrationSourceType = "google-drive" | "sharepoint" | "onedrive" | "local";
 

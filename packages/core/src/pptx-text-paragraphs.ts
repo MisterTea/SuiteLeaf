@@ -120,7 +120,7 @@ export async function stampTextParagraphs(
         };
         for (const run of runs) {
           const style = { ...previous, ...run };
-          for (const _ of run.text.matchAll(/\n/g)) breaks.push(style);
+          for (let index = 0; index < (run.text.match(/\n/g)?.length ?? 0); index++) breaks.push(style);
           previous = style;
         }
         let breakIndex = 0;
