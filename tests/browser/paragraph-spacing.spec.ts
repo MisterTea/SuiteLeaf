@@ -168,7 +168,7 @@ test("space before and after follow the caret, leave line spacing, and survive s
   await expect(control).toContainText("Double");
   await expect(control).toHaveAttribute("aria-label", /Space after 0 points/);
 
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Garden club minutes" }).click();
   await expect(paragraph(page, "greenhouse")).toHaveAttribute("data-space-after", "12");

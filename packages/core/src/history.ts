@@ -200,7 +200,9 @@ export function recordEdit<T extends TrackedFile>(
     file: {
       ...idle.file,
       title,
-      content: clone(change.content),
+      // A title edit keeps the existing immutable content instead of allocating
+      // another copy of an unchanged document (costly for large workbooks).
+      content: change.content === idle.file.content ? idle.file.content : clone(change.content),
       updatedAt: at,
       edits: [...(idle.file.edits ?? []), edit],
     },

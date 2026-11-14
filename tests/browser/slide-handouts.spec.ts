@@ -1,3 +1,4 @@
+import { fillSlideText } from "./slide-text-helpers";
 import { test, expect, type Page } from "@playwright/test";
 
 const titles = ["Intro", "Garden", "Budget", "Close"] as const;
@@ -16,14 +17,20 @@ async function fourSlideDeck(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "New presentation" }).click();
   await expect(page.locator(".slides-editor")).toBeVisible();
-  await page.locator(".slide-element textarea").first().fill(titles[0]);
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    titles[0],
+  );
   for (const title of titles.slice(1)) {
     await page.getByRole("button", { name: "+ New slide" }).click();
     await page.getByRole("menuitem", { name: "Title & body" }).click();
     await expect(page.locator(".thumbnail-row")).toHaveCount(
       titles.indexOf(title) + 1,
     );
-    await page.locator(".slide-element textarea").first().fill(title);
+    await fillSlideText(
+      page.locator(".slide-canvas .slide-text").first(),
+      title,
+    );
   }
   await expect(page.locator(".thumbnail-row")).toHaveCount(4);
   for (const [index, title] of titles.entries()) {
@@ -74,7 +81,9 @@ test("handouts lays the deck out by slides per page and close leaves it unchange
   await expect(first).not.toContainText("Budget");
   await expect(first).not.toContainText("Close");
   const firstText = await first.innerText();
-  expect(firstText.indexOf("Garden")).toBeGreaterThan(firstText.indexOf("Intro"));
+  expect(firstText.indexOf("Garden")).toBeGreaterThan(
+    firstText.indexOf("Intro"),
+  );
 
   await second.scrollIntoViewIfNeeded();
   await expect(second).toBeVisible();
@@ -83,7 +92,9 @@ test("handouts lays the deck out by slides per page and close leaves it unchange
   await expect(second).not.toContainText("Intro");
   await expect(second).not.toContainText("Garden");
   const secondText = await second.innerText();
-  expect(secondText.indexOf("Close")).toBeGreaterThan(secondText.indexOf("Budget"));
+  expect(secondText.indexOf("Close")).toBeGreaterThan(
+    secondText.indexOf("Budget"),
+  );
 
   await handouts.getByRole("button", { name: "Close", exact: true }).click();
   await expect(handouts).toHaveCount(0);
@@ -96,7 +107,9 @@ test("handouts lays the deck out by slides per page and close leaves it unchange
       new RegExp(`Slide ${index + 1}: ${title}`),
     );
   }
-  await expect(page.locator(".slide-canvas textarea").first()).toHaveValue("Close");
+  await expect(
+    page.locator(".slide-canvas .element-textarea").first(),
+  ).toHaveText("Close");
   expect(
     await page.locator(".slides-editor").getAttribute("data-deck-snapshot"),
   ).toBe(before);

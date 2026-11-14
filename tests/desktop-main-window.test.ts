@@ -29,7 +29,15 @@ const mocks = vi.hoisted(() => ({
   registerAppProtocol: vi.fn(),
   registerAi: vi.fn(),
   watcher: {
-    set: vi.fn<(directory: string) => Promise<void>>(async () => {}),
+    set: vi.fn<
+      (
+        directory: string,
+        onProgress?: (progress: { files: number; folders: number; total?: number }) => void,
+      ) => Promise<void>
+    >(async (_directory, onProgress) => {
+      onProgress?.({ files: 0, folders: 0 });
+      onProgress?.({ files: 1, folders: 1, total: 1 });
+    }),
     close: vi.fn(),
     onChange: () => {},
   },
@@ -349,7 +357,10 @@ describe("documents folder", () => {
     process.env.SUITELEAF_SETTINGS = join(root, "missing", "settings.json");
     await expect(invoke("documents:choose")).rejects.toThrow();
     process.env.SUITELEAF_SETTINGS = join(root, "settings.json");
-    expect(mocks.watcher.set.mock.calls.slice(-2)).toEqual([[elsewhere], [documents]]);
+    expect(mocks.watcher.set.mock.calls.slice(-2).map(([path]) => path)).toEqual([
+      elsewhere,
+      documents,
+    ]);
     expect(await invoke("documents:get")).toBe(documents);
   });
 
@@ -357,6 +368,16 @@ describe("documents folder", () => {
     const chosen = join(root, "Chosen");
     opens(chosen);
     expect(await invoke("documents:choose")).toBe(chosen);
+    mocks.watcher.set.mockClear();
+    await invoke("documents:rescan");
+    expect(mocks.watcher.set).toHaveBeenCalledWith(chosen, expect.any(Function), {
+      rebuild: true,
+    });
+    expect(win().webContents.sent).toContainEqual(["documents:scan", { files: 0, folders: 0 }]);
+    expect(win().webContents.sent).toContainEqual([
+      "documents:scan",
+      { files: 1, folders: 1, total: 1 },
+    ]);
     const settings = JSON.parse(await readFile(join(root, "settings.json"), "utf8"));
     expect(settings).toEqual({ mode: { kind: "single" }, documentsDirectory: chosen });
     documents = chosen;
@@ -658,6 +679,9 @@ describe("server mode", () => {
     );
 
     await expect(invoke("documents:choose")).rejects.toThrow(
+      "Document folders are available in single-user mode.",
+    );
+    await expect(invoke("documents:rescan")).rejects.toThrow(
       "Document folders are available in single-user mode.",
     );
     expect(await invoke("folders:list")).toEqual([]);

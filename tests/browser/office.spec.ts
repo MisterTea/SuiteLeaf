@@ -46,7 +46,7 @@ test("DOCX worker import → editing → native copy → reopen", async ({
   ).toHaveAttribute("aria-pressed", "true");
   await editor.press("Enter");
   await editor.pressSequentially("Reviewed in SuiteLeaf");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.getByRole("status", { includeHidden: true })).toContainText("Saved");
   const file = await nativeCopy(page);
   expect(file.kind).toBe("doc");
   expect(file.importInfo.sourceFormat).toBe("docx");
@@ -192,12 +192,12 @@ test("local corpus: large workbook remains editable in the browser", async ({
   await page
     .locator(".sheet-host input.univer-size-full")
     .waitFor({ timeout: 150000 });
-  await expect(page.getByRole("status")).toContainText("Saved", {
+  await expect(page.getByRole("status", { includeHidden: true })).toContainText("Saved", {
     timeout: 15000,
   });
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.getByLabel("File title").fill("Large imported workbook");
-  await expect(page.getByRole("status")).toContainText("Saved", {
+  await expect(page.getByRole("status", { includeHidden: true })).toContainText("Saved", {
     timeout: 60000,
   });
   expect(errors).toEqual([]);

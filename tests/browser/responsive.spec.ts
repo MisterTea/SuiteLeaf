@@ -1,3 +1,6 @@
+import { editSlideText } from "./slide-text-helpers";
+import type { Ace } from "ace-builds";
+import { fillSource, expectSourceValue } from "./source-editor-helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { createFile, serializeFile } from "../../packages/core/src/native-file";
 import { defaultPageSettings } from "../../packages/core/src/document-layout";
@@ -49,14 +52,13 @@ test("Mobile shared presentation keeps upload retries visible through rotation",
   const toolbar = page.getByRole("toolbar", { name: "Slides toolbar" });
   await expect(toolbar.getByRole("button", { name: "Download", exact: true })).toBeAttached();
   await expect(header.locator(".header-right-tools")).toHaveCount(0);
-  await expect(toolbar.locator(".editor-toolbar-navigation button")).toHaveCount(2);
+  await expect(toolbar.locator(".editor-toolbar-navigation button")).toHaveCount(1);
   await expect(toolbar.locator(".editor-toolbar-navigation button").nth(0)).toHaveAttribute("aria-label", "Back to files");
-  await expect(toolbar.locator(".editor-toolbar-navigation button").nth(1)).toHaveAttribute("aria-label", "Main menu");
   await expect(page.locator(".star-btn")).toHaveCount(0);
   const toast = page.locator(".workspace-status-toast");
   await expect(toast).toBeInViewport();
   expect((await toast.locator(".status-icon-label").boundingBox())!.width).toBeGreaterThan(80);
-  expect((await toolbar.boundingBox())!.y).toBeLessThanOrEqual(8);
+  expect((await page.getByRole("menubar").boundingBox())!.y).toBeLessThanOrEqual(8);
   await page.evaluate(({ itemId, revision }) => localStorage.setItem("suiteleaf.uploadQueue", JSON.stringify([{
     itemId, revision, bytes: 20, attempts: 1, nextAttemptAt: 0,
     failure: { kind: "network", message: "offline", remedy: "Retry when SuiteDrive is reachable. This copy stays on this device." },
@@ -71,18 +73,19 @@ test("Mobile shared presentation keeps upload retries visible through rotation",
     }
     await toolbar.evaluate((element) => { element.scrollLeft = 0; });
     const back = toolbar.getByRole("button", { name: "Back to files" });
-    const more = toolbar.getByRole("button", { name: "Main menu" });
+    const menu = page.locator("#file-menu");
+    const fileMenu = menu.getByRole("button", { name: "File", exact: true });
     await expect(back).toBeInViewport();
-    await expect(more).toBeInViewport();
-    expect((await back.boundingBox())!.x).toBeLessThan((await more.boundingBox())!.x);
-    await more.tap();
-    const menu = page.getByRole("menubar");
+    await expect(fileMenu).toBeInViewport();
+    await fileMenu.tap();
+    await expect(page.getByRole("menu")).toBeVisible();
     await expect(menu).toBeVisible();
     const menuBounds = (await menu.boundingBox())!;
     expect(menuBounds.x).toBeGreaterThanOrEqual(0);
     expect(menuBounds.x + menuBounds.width).toBeLessThanOrEqual(width);
     await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
+    await expect(page.getByRole("menu")).toBeHidden();
+    await expect(menu).toBeVisible();
     await expect(uploads.getByRole("button", { name: "Retry", exact: true })).toBeInViewport();
     const notice = (await uploads.boundingBox())!;
     const headerBounds = await header.boundingBox();
@@ -148,8 +151,9 @@ test("Mobile MARP typing pauses preserve the markdown caret and scroll position"
   await markdown.evaluate((element, caret) => {
     const area = element as HTMLTextAreaElement;
     area.focus();
-    area.setSelectionRange(caret, caret);
-    area.scrollTop = area.scrollHeight * 0.36;
+    const editor = (area as HTMLTextAreaElement & { __aceEditor: Ace.Editor }).__aceEditor;
+    editor.moveCursorToPosition(editor.session.doc.indexToPosition(caret, 0));
+    editor.scrollToLine(editor.getCursorPosition().row, true, false, () => {});
   }, position);
   await page.waitForTimeout(250);
   await page.keyboard.insertText(" scroll-regression");
@@ -158,7 +162,8 @@ test("Mobile MARP typing pauses preserve the markdown caret and scroll position"
     const parents = [];
     for (let parent = area.parentElement; parent; parent = parent.parentElement)
       parents.push({ className: parent.className, top: parent.scrollTop });
-    return { top: area.scrollTop, caret: area.selectionStart, focused: document.activeElement === area, parents,
+    const editor = (area as HTMLTextAreaElement & { __aceEditor: Ace.Editor }).__aceEditor;
+    return { top: editor.session.getScrollTop(), caret: editor.session.doc.positionToIndex(editor.getCursorPosition(), 0), focused: document.activeElement === area, parents,
       viewport: { top: window.visualViewport?.pageTop, offsetTop: window.visualViewport?.offsetTop },
     };
   });
@@ -192,14 +197,14 @@ test("Mobile MARP switches between a full slide editor and full markdown pane", 
   const pane = (await page.locator(".marp-pane").boundingBox())!;
   expect(pane.width).toBeGreaterThan(stage.width - 2);
   expect(pane.height).toBeGreaterThan(stage.height * 0.9);
-  await markdown.fill(source.replace("Edit either view.", "Changed on the phone."));
+  await fillSource(markdown, source.replace("Edit either view.", "Changed on the phone."));
   await page.getByRole("button", { name: "Show slide editor", exact: true }).tap();
   await expect(canvas).toBeVisible();
   await expect(canvas).not.toHaveAttribute("aria-busy", "true");
   await expect(markdown).toHaveCount(0);
   expect((await canvas.boundingBox())!.width).toBeGreaterThan(page.viewportSize()!.width * 0.8);
   await switchToCode.tap();
-  await expect(markdown).toHaveValue(/Changed on the phone/);
+  await expectSourceValue(markdown, /Changed on the phone/);
   await assertNoHorizontalScroll(page, "Mobile MARP editor");
 });
 
@@ -264,7 +269,7 @@ test("Mobile workspace combines navigation and actions without showing the title
       }
       else expect((await header.boundingBox())!.height).toBeLessThanOrEqual(48);
       const back = (await page.getByRole("button", { name: "Back to files" }).boundingBox())!;
-      for (const label of ["Back to files", "Main menu", "Version history", "Comments", "AI assistant", "Download"]) {
+      for (const label of ["Back to files", "Version history", "Comments", "AI assistant", "Download"]) {
         const inToolbar = kind === "presentation";
         const parent = inToolbar ? page.getByRole("toolbar", { name: "Slides toolbar" }) : header;
         const button = parent.getByRole("button", { name: label, exact: true });
@@ -280,8 +285,22 @@ test("Mobile workspace combines navigation and actions without showing the title
           expect(Math.abs(box.y + box.height / 2 - back.y - back.height / 2)).toBeLessThanOrEqual(2);
         }
       }
-      await page.getByRole("button", { name: "Main menu" }).click();
-      await expect(page.locator("#file-menu")).toBeVisible();
+      const menus = page.getByRole("menubar", { name: "Main menu" });
+      await expect(menus).toBeInViewport();
+      const buttons = menus.locator(".menu-trigger");
+      for (const button of await buttons.all()) {
+        await expect(button).toBeInViewport();
+        const box = (await button.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(width);
+      }
+      await menus.getByRole("button", { name: "File", exact: true }).click();
+      const dropdown = page.getByRole("menu");
+      await expect(dropdown).toBeVisible();
+      const bounds = (await dropdown.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+      await page.keyboard.press("Escape");
       await assertNoHorizontalScroll(page, `${kind} header at ${width}px`);
     }
   }
@@ -424,7 +443,7 @@ test("Mobile slide editing keeps the toolbar above the keyboard without blank sc
   await page.goto("/");
   await page.getByRole("button", { name: /^New presentation/ }).click();
   const text = page.locator(".slide-canvas .element-textarea").first();
-  await page.locator(".slide-canvas .slide-text").first().dblclick();
+  await editSlideText(page.locator(".slide-canvas .slide-text").first());
   await expect(text).toBeFocused();
   await page.keyboard.type("Keyboard viewport");
   await page.evaluate(() => {
@@ -434,9 +453,11 @@ test("Mobile slide editing keeps the toolbar above the keyboard without blank sc
   });
   const toolbar = page.getByRole("toolbar", { name: "Slides toolbar" });
   await expect.poll(async () => (await page.locator(".workspace").boundingBox())!.y).toBe(140);
-  expect((await toolbar.boundingBox())!.y).toBeLessThanOrEqual(148);
-  await expect(toolbar.getByRole("button", { name: "Main menu", exact: true })).toBeInViewport();
-  const bold = toolbar.getByRole("button", { name: "Bold", exact: true });
+  const menu = (await page.getByRole("menubar", { name: "Main menu" }).boundingBox())!;
+  expect(menu.y).toBeGreaterThanOrEqual(140);
+  expect((await toolbar.boundingBox())!.y).toBeLessThanOrEqual(menu.y + menu.height + 8);
+  await expect(toolbar.getByRole("button", { name: "Menus", exact: true })).toBeInViewport();
+  const bold = page.getByRole("toolbar", { name: "Slide text formatting", exact: true }).getByRole("button", { name: "Bold", exact: true });
   await bold.scrollIntoViewIfNeeded();
   await expect(bold).toBeInViewport();
   const workspace = page.locator(".workspace");
@@ -461,6 +482,10 @@ test("Mobile slides touch: text selection, editing, slide holds and notes", asyn
   const text = page.locator('.slide-canvas [data-element-id="a-text"]');
   await expect(text).toBeVisible();
   await expect(page.locator(".speaker-notes-pane")).toBeHidden();
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
   const bounds = (await text.boundingBox())!;
   const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
   await touchGesture(page, center);
@@ -468,7 +493,9 @@ test("Mobile slides touch: text selection, editing, slide holds and notes", asyn
   await expect(text.locator(".resize-handle")).toHaveCount(8);
   await expect(text.locator('[contenteditable="true"]')).toHaveCount(0);
   await page.waitForTimeout(400);
-  await touchGesture(page, center, { x: center.x + 25, y: center.y + 20 });
+  const selectedBounds = (await text.boundingBox())!;
+  const dragCenter = { x: selectedBounds.x + selectedBounds.width / 2, y: selectedBounds.y + selectedBounds.height / 2 };
+  await touchGesture(page, dragCenter, { x: dragCenter.x + 25, y: dragCenter.y + 20 });
   await expect.poll(async () => (await text.boundingBox())!.x).toBeGreaterThan(bounds.x + 10);
   const resize = (await text.locator(".handle-se").boundingBox())!;
   const beforeResize = (await text.boundingBox())!;
@@ -481,6 +508,8 @@ test("Mobile slides touch: text selection, editing, slide holds and notes", asyn
   await expect(text.locator('[contenteditable="true"]')).toBeFocused();
   await page.keyboard.type("Edited");
   await page.keyboard.press("Escape");
+  await expect(text.locator('[contenteditable="true"]')).toHaveCount(0);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const thumb = page.locator('.thumbnail-row[data-slide-id="a"]');
   const thumbBox = (await thumb.boundingBox())!;
   const thumbCenter = { x: thumbBox.x + thumbBox.width / 2, y: thumbBox.y + thumbBox.height / 2 };
@@ -643,7 +672,7 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     await boldBtn.click();
 
     await expect(editor.locator("strong")).toContainText("Responsive editing");
-    await expect(page.getByRole("status")).toContainText("Saved");
+    await expect(page.locator(".save-status")).toContainText("Saved");
   });
 
   test("Docs: modals center and fit within viewport without clipping", async ({
@@ -799,4 +828,44 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     await page.getByRole("button", { name: "Exit", exact: true }).click();
     await expect(presenterOverlay).toHaveCount(0);
   });
+});
+
+test("Editor menu bars stay above their toolbars without overlapping", async ({ page, isMobile }) => {
+  test.skip(isMobile);
+  for (const kind of ["document", "spreadsheet", "presentation"]) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(`^New ${kind}`) }).click();
+    const bar = page.getByRole("menubar", { name: "Main menu" });
+    await expect(bar).toBeInViewport();
+    const toolbar = page.getByRole("toolbar").first();
+    await expect(toolbar).toBeVisible();
+    for (const width of [1280, 760]) {
+      await page.setViewportSize({ width, height: 900 });
+      const buttons = await bar.locator(".menu-trigger").all();
+      for (const button of buttons) await expect(button).toBeInViewport();
+      const bounds = (await bar.boundingBox())!;
+      let previous = bounds.x;
+      for (const button of buttons) {
+        await expect(button).toBeInViewport();
+        const box = (await button.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(previous);
+        expect(box.x + box.width).toBeLessThanOrEqual(width);
+        expect(box.y).toBeGreaterThanOrEqual(bounds.y);
+        expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+        previous = box.x + box.width;
+      }
+      await expect(toolbar).toBeVisible();
+      expect((await toolbar.boundingBox())!.y).toBeGreaterThanOrEqual(bounds.y + bounds.height);
+      await bar.getByRole("button", { name: "File", exact: true }).click();
+      const menu = page.getByRole("menu");
+      await expect(menu).toBeInViewport();
+      const popup = (await menu.boundingBox())!;
+      expect(popup.y).toBeGreaterThanOrEqual(bounds.y + bounds.height - 4);
+      expect(popup.x + popup.width).toBeLessThanOrEqual(width);
+      await page.keyboard.press("Escape");
+      await expect(bar).toBeVisible();
+      await assertNoHorizontalScroll(page, `${kind} menu bar at ${width}px`);
+    }
+  }
 });

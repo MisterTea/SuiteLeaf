@@ -373,7 +373,12 @@ export function keepBothSlides(local: SuiteFile, remote: SuiteFile): CombinePlan
       elements.push(next);
     }
     const background = localMaster?.background?.color ? localMaster.background : remoteMaster.background;
-    deck.master = { ...(background ? { background } : {}), elements };
+    const layouts = localMaster?.layouts ?? remoteMaster.layouts;
+    deck.master = {
+      ...(background ? { background } : {}),
+      elements,
+      ...(layouts?.length ? { layouts } : {}),
+    };
   }
   return { localCopy, merged };
 }

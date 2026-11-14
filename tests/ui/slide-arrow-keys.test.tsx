@@ -87,7 +87,8 @@ it("leaves the slide alone while an object is selected or text is being typed", 
   fireEvent.mouseUp(window);
   press("ArrowRight");
   expect(active()).toBe("Slide 1: Intro");
-  press("ArrowRight", box.querySelector("textarea")!);
+  fireEvent.doubleClick(box);
+  press("ArrowRight", box.querySelector(".element-editor")!);
   expect(active()).toBe("Slide 1: Intro");
 
   fireEvent.click(screen.getByRole("button", { name: "Select tool" }));

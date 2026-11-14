@@ -14,6 +14,12 @@ import {
 
 afterEach(cleanup);
 
+it("retains list-level font sizes through the saved run and editor DOM formats", () => {
+  const node = document.createElement("div");
+  node.innerHTML = runsToHtml([{ text: "▪ Professor", listDepth: 0, listFontSizes: [59, 52], fontSize: 59 }]);
+  expect(runsFromDom(node)[0]).toMatchObject({ listFontSizes: [59, 52], fontSize: 59 });
+});
+
 it("roundtrips automatic soft lines without adding authored paragraph breaks", () => {
   const runs = [{ text: "• ", font: "SuiteLeaf Aspen", paraHang: 18 }, { text: "First second third", fontSize: 28, underline: true }];
   const html = runsToHtml(runs, 12, undefined, { fontSize: 28, widthPt: 100 });
@@ -167,6 +173,16 @@ describe("reading the editor back into runs", () => {
 });
 
 describe("the caret in the editor", () => {
+  it("counts empty editing lines without counting their browser filler", () => {
+    const root = dom("<div>First</div><div><br></div><div>Last</div><div><br></div>");
+    expect(runsFromDom(root).map((run) => run.text).join("")).toBe("First\n\nLast\n");
+    restoreSelection(root, 6, 6);
+    expect(selectionOffsets(root)).toEqual({ start: 6, end: 6 });
+    restoreSelection(root, 12, 12);
+    expect(selectionOffsets(root)).toEqual({ start: 12, end: 12 });
+    expect(root.lastChild?.contains(window.getSelection()?.anchorNode ?? null)).toBe(true);
+  });
+
   it("measures a selection in characters and puts it back", () => {
     const root = dom("<b>Hello</b> <i>world</i>");
     restoreSelection(root, 2, 8);
@@ -198,6 +214,31 @@ describe("the box being typed in", () => {
     return { ...view, node, onText, onCaret };
   }
 
+  it("keeps authored text effects and tab stops when reading an edit back", () => {
+    const runs: NonNullable<Parameters<typeof SlideTextBody>[0]["runs"]> = [{
+      text: "Styled",
+      caps: "all",
+      stroke: "#334455",
+      strokeWidth: 1,
+      shadow: { x: 1, y: 2, blur: 3, color: "#112233" },
+      gradient: "linear-gradient(90deg, #112233, #445566)",
+      reflection: { startAlpha: 0.5, endAlpha: 0, endPos: 1 },
+      paraTab: 36,
+      paraTabs: [{ pos: 50, align: "r" }],
+    }];
+    const { node, onText } = editor({ runs });
+    node.querySelector("[data-caps]")!.firstChild!.textContent = "Styled!";
+    fireEvent.input(node);
+    expect(onText).toHaveBeenLastCalledWith([{ ...runs[0], text: "Styled!" }]);
+  });
+
+  it("repaints the bullet gutter when undo restores an earlier box layout", () => {
+    const { node, rerender, onText, onCaret } = editor({ content: "• Word", hang: 24 });
+    expect(node.querySelector(".slide-bullet-slot")).not.toBeNull();
+    rerender(<SlideTextBody editing content="• Word" onText={onText} onCaret={onCaret} />);
+    expect(node.querySelector(".slide-bullet-slot")).toBeNull();
+  });
+
   it("shows the words without editing until it is being typed in", () => {
     const { node, rerender } = editor({ editing: false, content: "" });
     expect(node.getAttribute("contenteditable")).toBe("false");
@@ -225,6 +266,76 @@ describe("the box being typed in", () => {
     expect(stop).toHaveBeenCalled();
   });
 
+  it("changes the list theme color when Tab and Shift+Tab change the level", () => {
+    const { node, onText } = editor({
+      runs: [
+        { text: "▪ Research ", color: "#333399", listDepth: 0, listColors: ["#333399", "#000000"] },
+        { text: "link", color: "#ff0000" },
+      ],
+    });
+    restoreSelection(node, 5, 5);
+    fireEvent.keyDown(node, { key: "Tab" });
+    expect(onText.mock.lastCall?.[0]).toMatchObject([
+      { text: "▪ Research ", color: "#000000", listDepth: 1, paraMargin: 36 },
+      { text: "link", color: "#ff0000" },
+    ]);
+    expect(selectionOffsets(node)).toEqual({ start: 5, end: 5 });
+    fireEvent.keyDown(node, { key: "Tab", shiftKey: true });
+    expect(onText.mock.lastCall?.[0]).toMatchObject([
+      { text: "▪ Research ", color: "#333399", listDepth: 0 },
+      { text: "link", color: "#ff0000" },
+    ]);
+  });
+
+  it("uses consistent authored level colors when PowerPoint list defaults are all black", () => {
+    const colors = ["#000000", "#000000", "#000000"];
+    const { node, onText } = editor({
+      runs: [
+        { text: "▪ ", font: "StarSymbol", color: "#333399", listDepth: 0, listColors: colors, paraHang: 27 },
+        { text: "Welcome", color: "#333399", bold: true },
+        { text: "\n", paragraphBreak: true, listDepth: 1, listColors: colors, paraMargin: 36, paraHang: 27 },
+        { text: "▪ ", font: "StarSymbol", color: "#333399" },
+        { text: "Details", color: "#000000" },
+      ],
+    });
+    restoreSelection(node, 5, 5);
+    fireEvent.keyDown(node, { key: "Tab" });
+    let changed = onText.mock.lastCall![0];
+    expect(changed.find(run => run.text === "Welcome")).toMatchObject({ color: "#000000", bold: true });
+    expect(changed[0]).toMatchObject({ color: "#000000", listDepth: 1, listColors: ["#333399", "#000000", "#000000"] });
+    fireEvent.keyDown(node, { key: "Tab", shiftKey: true });
+    changed = onText.mock.lastCall![0];
+    expect(changed.find(run => run.text === "Welcome").color).toBe("#333399");
+    expect(changed[0]).toMatchObject({ color: "#333399", listDepth: 0 });
+    restoreSelection(node, 14, 14);
+    fireEvent.keyDown(node, { key: "Tab", shiftKey: true });
+    changed = onText.mock.lastCall![0];
+    expect(changed.find(run => run.text === "Details").color).toBe("#333399");
+  });
+
+  it("moves the caret out of the invisible bullet spacer without changing a selection", () => {
+    const { node } = editor({
+      runs: [
+        { text: "▪ ", font: "SuiteLeaf Sprig", paraHang: 27 },
+        { text: "Research" },
+      ],
+    });
+    const slot = node.querySelector(".slide-bullet-slot")!;
+    const spacer = slot.lastChild!.firstChild!;
+    const selection = document.getSelection()!;
+    selection.collapse(spacer, 1);
+    document.dispatchEvent(new Event("selectionchange"));
+    expect(selection.anchorNode?.textContent).toBe("Research");
+    expect(selection.anchorOffset).toBe(0);
+    const range = document.createRange();
+    range.setStart(spacer, 0);
+    range.setEnd(selection.anchorNode!, 3);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+    expect(selection.toString()).toBe(" Res");
+  });
+
   it("turns a typed dash into a bullet and continues the list on Enter", () => {
     const { node, onText } = editor({ content: "" });
     node.textContent = "- ";
@@ -239,6 +350,9 @@ describe("the box being typed in", () => {
     fireEvent.keyDown(node, { key: "Enter" });
     expect(onText).toHaveBeenLastCalledWith([{ text: "• one" }, { text: "\n• " }]);
     expect(selectionOffsets(node)).toEqual({ start: 8, end: 8 });
+    const caret = window.getSelection()!.anchorNode!;
+    expect(caret.textContent).toBe(" ");
+    expect(caret.parentElement?.closest("[data-slide-hanging-space]")).toBeNull();
     const calls = onText.mock.calls.length;
     fireEvent.keyDown(node, { key: "Enter", shiftKey: true });
     fireEvent.keyDown(node, { key: "a" });

@@ -1,3 +1,4 @@
+import { fillSlideText } from "./slide-text-helpers";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const SENTENCE =
@@ -16,9 +17,9 @@ async function textBox(page: Page, text: string) {
   const count = await boxes.count();
   for (let i = 0; i < count; i++) {
     const box = boxes.nth(i);
-    const area = box.locator("textarea");
+    const area = box.locator(".element-textarea");
     if ((await area.count()) === 0) continue;
-    if ((await area.inputValue()) === text) return box;
+    if ((await area.textContent()) === text) return box;
   }
   throw new Error("text box not found");
 }
@@ -26,8 +27,8 @@ async function textBox(page: Page, text: string) {
 /** The textarea fills the box; its scroll height is the text block. */
 async function metrics(box: Locator): Promise<Fit> {
   return box.evaluate((el) => {
-    const area = el.querySelector("textarea");
-    if (!(area instanceof HTMLTextAreaElement)) throw new Error("no textarea");
+    const area = el.querySelector<HTMLElement>(".element-textarea");
+    if (!area) throw new Error("no slide text");
     const boxRect = el.getBoundingClientRect();
     const areaRect = area.getBoundingClientRect();
     return {
@@ -71,7 +72,7 @@ test("autofit shrinks slide text into the box and keeps it after reopen", async 
 
   await page.getByRole("button", { name: "Insert text box" }).click();
   const box = page.locator(".slide-canvas .slide-text.selected");
-  await box.locator("textarea").fill(SENTENCE);
+  await fillSlideText(box, SENTENCE);
   await expect(box).not.toHaveAttribute("data-autofit");
 
   const autofit = page.getByRole("button", { name: "Autofit", exact: true });
@@ -128,7 +129,7 @@ test("autofit shrinks slide text into the box and keeps it after reopen", async 
   expect((await savedBox(page, SENTENCE)).autofit).toBe(true);
   expect((await savedBox(page, SENTENCE)).fontSize).toBe(storedSize);
 
-  await reopened.locator("textarea").click();
+  await reopened.locator(".element-textarea").click();
   await expect(page.getByRole("button", { name: "Autofit", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",

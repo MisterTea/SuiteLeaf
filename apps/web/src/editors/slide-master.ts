@@ -1,22 +1,100 @@
-import type { Presentation, SlideElement } from "@suiteleaf/core";
+import type { Presentation, Slide, SlideElement } from "@suiteleaf/core";
+import type { Layout } from "./slide-layouts";
+
+/** Slides that do not name a master use this one. */
+export const DEFAULT_MASTER_ID = "master";
+
+export const MAX_MASTERS = 8;
+
+export type MasterLayout = {
+  name: Layout;
+  elements: SlideElement[];
+  background?: { color?: string };
+};
 
 export type SlideMaster = {
+  id?: string;
+  name?: string;
   background?: { color?: string };
   elements: SlideElement[];
+  layouts?: MasterLayout[];
 };
+
+export type NamedMaster = SlideMaster & { id: string; name: string };
+
+function namedMaster(master: SlideMaster | undefined, index: number): NamedMaster {
+  return {
+    id: master?.id || (index === 0 ? DEFAULT_MASTER_ID : `master-${index + 1}`),
+    name: master?.name?.trim() || `Master ${index + 1}`,
+    background: master?.background,
+    elements: master?.elements ?? [],
+    layouts: master?.layouts,
+  };
+}
+
+/** The deck's masters. A deck that has never added one still has Master 1. */
+export function deckMasters(deck: Pick<Presentation, "master" | "masters">): NamedMaster[] {
+  if (deck.masters?.length) return deck.masters.slice(0, MAX_MASTERS).map((master, index) => namedMaster(master, index));
+  return [namedMaster(deck.master, 0)];
+}
+
+/** The master a slide draws. A missing id uses the first master. */
+export function masterForSlide(
+  deck: Pick<Presentation, "master" | "masters">,
+  slide: Pick<Slide, "masterId"> | undefined,
+): NamedMaster {
+  const masters = deckMasters(deck);
+  const id = slide?.masterId;
+  return masters.find((master) => master.id === id) ?? masters[0]!;
+}
 
 export function readMaster(deck: Presentation): SlideMaster {
   return {
     background: deck.master?.background,
     elements: deck.master?.elements ?? [],
+    layouts: deck.master?.layouts,
   };
+}
+
+/**
+ * Store the masters. One untouched master stays on `master` alone, so older
+ * decks keep their shape. `master` remains the first master either way.
+ */
+export function writeMasters(deck: Presentation, masters: readonly NamedMaster[]): Presentation {
+  const list = masters.slice(0, MAX_MASTERS);
+  const first = list[0] ?? namedMaster(undefined, 0);
+  const next = withMaster(deck, {
+    background: first.background,
+    elements: first.elements,
+    layouts: first.layouts,
+  });
+  const single = list.length <= 1 && first.name === "Master 1" && first.id === DEFAULT_MASTER_ID;
+  if (single) {
+    if (!next.masters) return next;
+    const copy = { ...next };
+    delete copy.masters;
+    return copy;
+  }
+  const stored = {
+    ...next,
+    master: next.master ?? { elements: [] },
+    masters: list.map((master) => ({
+      id: master.id,
+      name: master.name,
+      ...(master.background?.color ? { background: { color: master.background.color } } : {}),
+      elements: master.elements.slice(0, 30),
+      ...(master.layouts?.length ? { layouts: master.layouts } : {}),
+    })),
+  };
+  return stored;
 }
 
 /** Drop the master when it no longer changes any slide. */
 export function withMaster(deck: Presentation, master: SlideMaster): Presentation {
   const color = master.background?.color?.trim();
   const elements = master.elements.slice(0, 30);
-  if (!color && !elements.length) {
+  const layouts = master.layouts?.slice(0, 6).filter((layout) => layout.elements.length || layout.background?.color);
+  if (!color && !elements.length && !layouts?.length) {
     const next = { ...deck };
     delete next.master;
     return next;
@@ -26,6 +104,7 @@ export function withMaster(deck: Presentation, master: SlideMaster): Presentatio
     master: {
       ...(color ? { background: { color } } : {}),
       elements,
+      ...(layouts?.length ? { layouts } : {}),
     },
   };
 }

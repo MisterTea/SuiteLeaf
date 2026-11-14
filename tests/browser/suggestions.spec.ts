@@ -58,7 +58,7 @@ test("suggesting mode records, reviews, and restores changes", async ({ page }) 
   await page.getByRole("button", { name: /Accept Add/ }).click();
   await expect(page.locator(".suggestion-insert")).toHaveCount(0);
   await page.getByRole("button", { name: /Reject Format/ }).click();
-  await expect(page.locator("strong")).toHaveCount(0);
+  await expect(editor.locator("strong")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Accept all" }).hover();
   await expect(page.locator(".suggestion-preview-banner")).toContainText("accepted");

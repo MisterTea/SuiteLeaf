@@ -1,0 +1,226 @@
+.slide-animation-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: 12px 18px;
+  margin: 0 16px 8px;
+  border: 1px solid var(--border, #d7dce4);
+  border-radius: 12px;
+  background: var(--surface-muted, #f5f7fb);
+  color: var(--text-primary, #202124);
+  font-size: 12px;
+}
+.slide-animation-ribbon button,
+.slide-animation-pane button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.slide-animation-ribbon button:disabled,
+.slide-animation-ribbon fieldset:disabled button,
+.slide-animation-pane button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.slide-animation-ribbon button:focus-visible,
+.slide-animation-pane button:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+.animation-preview-button {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+}
+.animation-effect-gallery {
+  display: flex;
+  gap: 4px;
+  border: 0;
+  border-inline: 1px solid var(--border, #d7dce4);
+  padding: 0 12px;
+  margin: 0;
+  min-width: 0;
+}
+.animation-effect-gallery legend {
+  float: none;
+  font-size: 10px;
+  color: var(--text-muted, #656c78);
+  padding: 0 4px;
+}
+.animation-effect-gallery button {
+  min-width: 62px;
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  padding: 8px;
+}
+.animation-effect-gallery button:hover:enabled {
+  background: var(--surface-hover);
+}
+.animation-effect-gallery button[aria-pressed="true"] {
+  background: var(--surface-active);
+  border-color: #1a73e8;
+}
+.animation-effect-star {
+  color: #4c9853;
+}
+.animation-effect-star.fly-on-click {
+  transform: skewX(-12deg);
+}
+.animation-effect-star.wipe-on-click {
+  stroke-dasharray: 4 2;
+}
+.animation-timing {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  min-width: 210px;
+}
+.animation-timing label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.animation-timing select {
+  margin-left: auto;
+  max-width: 155px;
+}
+.animation-timing input {
+  margin-left: auto;
+  width: 64px;
+}
+.animation-timing input,
+.animation-timing select {
+  font: inherit;
+  padding: 5px;
+  border: 1px solid var(--border, #c9ced6);
+  border-radius: 4px;
+  background: var(--surface, white);
+  color: inherit;
+}
+.animation-reorder {
+  display: grid;
+  gap: 6px;
+}
+.animation-reorder button,
+.animation-exit-mode {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  padding: 5px;
+  background: transparent;
+}
+.animation-exit-mode {
+  margin-left: auto;
+}
+.animation-selection-hint {
+  width: 100%;
+  margin: 0;
+  color: var(--text-muted, #656c78);
+}
+.slide-animation-pane {
+  width: 310px;
+}
+.animation-play-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  margin-bottom: 16px;
+  padding: 6px 0;
+}
+.slide-animation-pane .animation-pane-list {
+  gap: 6px;
+}
+.slide-animation-pane .animation-pane-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border, #d7dce4);
+  border-radius: 6px;
+  min-width: 0;
+}
+.slide-animation-pane .animation-pane-list li.animation-row-selected {
+  border-color: #1a73e8;
+  background: #1a73e810;
+}
+.slide-animation-pane .animation-pane-list li > button:first-child {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+}
+.animation-pane-list li > button:first-child svg {
+  color: #4c9853;
+  flex-shrink: 0;
+}
+.animation-row-detail {
+  font-size: 11px;
+  color: var(--text-muted, #656c78);
+}
+.animation-row-actions {
+  display: flex;
+  gap: 5px;
+}
+.animation-row-actions button {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: transparent;
+  border: 1px solid var(--border, #d7dce4);
+  border-radius: 4px;
+  padding: 4px;
+}
+@media (max-width: 760px) {
+  .slide-animation-ribbon {
+    gap: 8px;
+    padding: 8px;
+    margin-inline: 8px;
+    max-height: 220px;
+    overflow: auto;
+  }
+  .animation-effect-gallery {
+    overflow-x: auto;
+    padding: 0;
+    flex: 1 1 100%;
+  }
+  .animation-effect-gallery button {
+    min-width: 53px;
+    padding: 6px;
+  }
+}
+
+.animation-row-number {
+  flex-shrink: 0;
+}
+.animation-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}

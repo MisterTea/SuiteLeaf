@@ -17,6 +17,8 @@ import type { DeckHistoryApi } from "./slide-editor-history";
 import type { SlideOrderActions } from "./slide-editor-commands";
 import { useSlideThumbnailTouch } from "./slide-thumbnail-touch";
 import { scrollThumbnailIntoView } from "./slide-thumbnail-scroll";
+import { masterPageLabel, masterPages } from "./slide-master-view";
+import { slideBackground } from "./slide-surface-paint";
 
 export type SlideDrag = {
   ids: string[];
@@ -177,6 +179,58 @@ export function SlideContextMenu({
   );
 }
 
+function MasterStrip({
+  state,
+  applySelection,
+}: {
+  state: SlidesEditorState;
+  applySelection: DeckHistoryApi["applySelection"];
+}) {
+  const pages = masterPages(state.deck);
+  return (
+    <aside className="slides-sidebar master-view" aria-label="Slide master">
+      <div className="slides-sidebar-header">
+        <span>Slide master</span>
+      </div>
+      <div className="thumbnails-list" role="listbox" aria-label="Master and layouts">
+        {pages.map((slide) => {
+          const meta = masterPageLabel(slide.id);
+          const active = slide.id === state.activeSlideId;
+          return (
+            <div
+              key={slide.id}
+              role="option"
+              data-slide-id={slide.id}
+              aria-selected={active}
+              aria-label={meta.label}
+              className={`thumbnail-row ${meta.layout ? "master-layout" : "master-root"} ${active ? "active selected" : ""}`}
+              onClick={() => {
+                state.anchorRef.current = slide.id;
+                applySelection(slide.id, [slide.id], null);
+              }}
+            >
+              <span className="thumbnail-num">{meta.short}</span>
+              <div
+                className="thumbnail-card"
+                style={{ backgroundColor: slideBackground(state.deck, slide) }}
+              >
+                <div className="thumbnail-preview">
+                  <SlideStill deck={state.deck} slide={slide} index={0} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="slides-sidebar-footer">
+        <button type="button" className="add-slide-sidebar-btn" onClick={() => state.closeMasterRef.current()}>
+          Close Master View
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 /** The list of slides beside the canvas. */
 export function SlideThumbnails({
   state,
@@ -211,6 +265,7 @@ export function SlideThumbnails({
     setTransitionScope, setContextMenu,
   } = state;
   const touch = useSlideThumbnailTouch(state, applySelection, dragRef, setSlideDrag);
+  if (state.masterView) return <MasterStrip state={state} applySelection={applySelection} />;
   return (
     <aside className={`slides-sidebar${touch.selectMode ? " selecting-slides" : ""}`} aria-label="Slide thumbnails">
       {touch.selectMode ? <div className="slide-selection-mode" role="status">

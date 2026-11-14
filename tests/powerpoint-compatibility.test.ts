@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
-import {
-  createFile,
-  parseFile,
-  serializeFile,
-  type SlideFile,
-} from "../packages/core/src";
+import { createFile, type SlideFile } from "../packages/core/src";
 import { exportPptx } from "../packages/core/src/pptx-export";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { roundTripOffice } from "../packages/core/src/roundtrip";

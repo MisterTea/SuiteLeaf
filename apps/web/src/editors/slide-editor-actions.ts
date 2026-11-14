@@ -18,6 +18,7 @@ export function useSlideEditorActions(
     undo,
     redo,
     flushMarpDraft,
+    materialize,
     chosenSlides,
     duplicateCurrentSlide,
     deleteCurrentSlide,
@@ -31,7 +32,7 @@ export function useSlideEditorActions(
     openSlideComment,
     toggleSlideCommentPanel,
     openSlideResolved,
-  }: Pick<DeckHistoryApi, "undo" | "redo" | "flushMarpDraft"> &
+  }: Pick<DeckHistoryApi, "undo" | "redo" | "flushMarpDraft" | "materialize"> &
     Pick<SlideOrderActions, "chosenSlides" | "duplicateCurrentSlide" | "deleteCurrentSlide"> &
     Pick<
       SlideExports,
@@ -51,7 +52,7 @@ export function useSlideEditorActions(
       openSlideResolved: () => void;
     },
 ) {
-  const { deckRef, historyRef, activeSlideId, apiRef, setPanel, setHandoutsOpen, commitRef, spellingRef } =
+  const { deckRef, historyMarks, activeSlideId, apiRef, setPanel, setHandoutsOpen, commitRef, spellingRef } =
     state;
 
   const slideApi = useRef({
@@ -60,15 +61,17 @@ export function useSlideEditorActions(
     duplicate: duplicateCurrentSlide,
     delete: deleteCurrentSlide,
     undoReason: (): string | undefined =>
-      historyRef.current?.canUndo ? undefined : "Nothing to undo",
+      historyMarks.undo ? undefined : "Nothing to undo",
     redoReason: (): string | undefined =>
-      historyRef.current?.canRedo ? undefined : "Nothing to redo",
+      historyMarks.redo ? undefined : "Nothing to redo",
     deleteReason: (): string | undefined =>
-      canDeleteSlides(deckRef.current.slideOrder, chosenSlides())
-        ? undefined
-        : deckRef.current.slideOrder.length <= 1
-          ? "Presentations must have at least one slide."
-          : "Select a slide to delete.",
+      state.masterViewRef.current
+        ? "Close the slide master to delete slides."
+        : canDeleteSlides(deckRef.current.slideOrder, chosenSlides())
+          ? undefined
+          : deckRef.current.slideOrder.length <= 1
+            ? "Presentations must have at least one slide."
+            : "Select a slide to delete.",
   });
   slideApi.current = {
     undo,
@@ -76,15 +79,17 @@ export function useSlideEditorActions(
     duplicate: duplicateCurrentSlide,
     delete: deleteCurrentSlide,
     undoReason: () =>
-      historyRef.current?.canUndo ? undefined : "Nothing to undo",
+      historyMarks.undo ? undefined : "Nothing to undo",
     redoReason: () =>
-      historyRef.current?.canRedo ? undefined : "Nothing to redo",
+      historyMarks.redo ? undefined : "Nothing to redo",
     deleteReason: () =>
-      canDeleteSlides(deckRef.current.slideOrder, chosenSlides())
-        ? undefined
-        : deckRef.current.slideOrder.length <= 1
-          ? "Presentations must have at least one slide."
-          : "Select a slide to delete.",
+      state.masterViewRef.current
+        ? "Close the slide master to delete slides."
+        : canDeleteSlides(deckRef.current.slideOrder, chosenSlides())
+          ? undefined
+          : deckRef.current.slideOrder.length <= 1
+            ? "Presentations must have at least one slide."
+            : "Select a slide to delete.",
   };
 
   // Wire editor actions for workspace header
@@ -92,7 +97,7 @@ export function useSlideEditorActions(
     onActions({
       flush: async () => {
         flushMarpDraft();
-        onChange(deckRef.current);
+        onChange(materialize(deckRef.current));
       },
       export: async (format: string) => {
         flushMarpDraft();
@@ -131,7 +136,7 @@ export function useSlideEditorActions(
         openTheme: () => apiRef.current.openTheme(),
         openTransition: () => apiRef.current.openTransition(),
         openAnimationPane: () => setPanel((open) => (open === "animation" ? null : "animation")),
-        openMaster: () => setPanel((open) => (open === "master" ? null : "master")),
+        openMaster: () => state.openMasterRef.current(),
         presenterView: () =>
           beginShow(Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)), true),
         handouts: () => setHandoutsOpen(true),
@@ -242,8 +247,8 @@ export function useSlideEditorKeys(
   useEffect(() => {
     const id = pendingFocus.current;
     if (!id) return;
-    const node = stageRef.current?.querySelector<HTMLTextAreaElement>(
-      `[data-element-id="${CSS.escape(id)}"] textarea`,
+    const node = stageRef.current?.querySelector<HTMLElement>(
+      `[data-element-id="${CSS.escape(id)}"] textarea, [data-element-id="${CSS.escape(id)}"] [contenteditable="true"]`,
     );
     if (!node) return;
     node.focus();

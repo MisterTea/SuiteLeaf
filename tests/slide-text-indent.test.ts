@@ -55,7 +55,7 @@ describe("slide text indentation", () => {
       textRange: { current: { id: "text", start: 4, end: 4 } },
     } as unknown as SlidesEditorState;
     const patches: Partial<SlideElement>[] = [];
-    const tools = slideTextFormat(state, { updateElement: (_id, patch) => { patches.push(patch); } });
+    const tools = slideTextFormat(state, { textDeck: () => state.deckRef.current, updateElement: (_id, patch) => { patches.push(patch); } });
     tools.changeIndent(1);
     expect(patches[0].runs?.filter((run) => run.paraMargin === 24).map((run) => run.text)).toEqual(["\n", "Two"]);
     state.editingRef.current = null;

@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
-import type { Presentation, SlideElement } from "@suiteleaf/core";
-import { readMaster } from "./slide-master";
+import type { Presentation, Slide, SlideElement } from "@suiteleaf/core";
+import { masterForSlide } from "./slide-master";
+import { MASTER_PAGE_ID, isMasterPage } from "./slide-master-view";
 
 function MasterElement({
   el,
@@ -44,17 +45,27 @@ function MasterElement({
 export function SlideMasterLayer({
   deck,
   font,
+  slide,
 }: {
   deck: Presentation;
   font: (size: number) => string;
+  /** The page being drawn. The master page draws its own objects, so the layer stays out of the way. */
+  slide?: Slide;
 }) {
-  const master = readMaster(deck);
-  if (!master.elements.length) return null;
+  if (slide?.id === MASTER_PAGE_ID) return null;
+  const source = isMasterPage(slide?.id)
+    ? deck.slides[MASTER_PAGE_ID]?.elements ?? []
+    : masterForSlide(deck, slide).elements;
+  // Empty placeholders are styles for the layouts, not a second copy on every slide.
+  const elements = source.filter(
+    (el) => !(el.type === "text" && el.placeholder && !el.content?.trim()),
+  );
+  if (!elements.length) return null;
   const deckW = deck.width || 960;
   const deckH = deck.height || 540;
   return (
     <div className="slide-master-layer" aria-hidden="true">
-      {master.elements.map((el) => (
+      {elements.map((el) => (
         <MasterElement key={el.id} el={el} deckW={deckW} deckH={deckH} font={font} />
       ))}
     </div>

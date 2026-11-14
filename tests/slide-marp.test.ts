@@ -81,6 +81,39 @@ describe("MARP markdown", () => {
     expect(JSON.stringify(bad)).not.toContain("secret-value");
   });
 
+  it("parses and round-trips embedded <video> elements in 1- and 2-column MARP slides", () => {
+    const md = [
+      "---",
+      "marp: true",
+      "---",
+      "",
+      "<!-- _class: two-column -->",
+      "",
+      "# Pac-Man Demo",
+      "",
+      ":::left",
+      "- Reflex agent",
+      ":::",
+      "",
+      ":::right",
+      '<video src="media/pacman.mp4" poster="media/pacman_poster.png" controls playsinline style="max-width: 100%; max-height: 15em;"></video>',
+      ":::",
+      "",
+    ].join("\n");
+    expect(marpAssetPaths(md)).toEqual(["media/pacman.mp4", "media/pacman_poster.png"]);
+    const base = deckOf([newSlide("two-column")]);
+    const parsed = marpToDeck(md, base, { marp: true });
+    expect(parsed).not.toHaveProperty("error");
+    if ("error" in parsed) return;
+    const slide = parsed.deck.slides[parsed.deck.slideOrder[0]];
+    const video = slide.elements.find((el) => el.type === "video");
+    expect(video).toMatchObject({
+      type: "video",
+      src: "media/pacman.mp4",
+      poster: "media/pacman_poster.png",
+    });
+  });
+
   it("round-trips layouts, bullets, notes, and a built-in theme", () => {
     const deck = deckOf(
       [

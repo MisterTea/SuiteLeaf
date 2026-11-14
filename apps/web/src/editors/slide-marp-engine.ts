@@ -23,6 +23,34 @@ function fontList(name: string) {
   return name.includes(",") || !/\s/.test(name) ? name : `"${name}"`;
 }
 
+const COLUMN_CLASSES_CSS = `
+.columns {
+  display: flex;
+  gap: 1rem;
+}
+.columns > div {
+  flex: 0 0 50%;
+  max-width: 50%;
+}
+.columns > div:nth-child(2) img {
+  max-height: 15em;
+  width: auto;
+}
+.three-columns {
+  display: flex;
+  gap: 1rem;
+}
+.three-columns > div {
+  flex: 0 0 calc((100% - 2rem) / 3);
+  max-width: calc((100% - 2rem) / 3);
+}
+.three-columns > div img {
+  max-height: 15em;
+  max-width: 100%;
+  width: auto;
+}
+`;
+
 /** A MARP theme with the colors and fonts of a SuiteLeaf theme. */
 export function marpThemeCss(theme: SlideTheme): string {
   return `/* @theme ${theme.id} */
@@ -42,7 +70,7 @@ section h1, section h2, section h3, section h4, section h5, section h6 {
 section a {
   color: ${theme.accent};
 }
-`;
+${COLUMN_CLASSES_CSS}`;
 }
 
 function tagSourceLines(marp: Marp) {

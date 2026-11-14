@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createFile } from "@suiteleaf/core";
 import { AnimationPane } from "../../apps/web/src/editors/slide-animation-pane";
 
@@ -59,11 +59,13 @@ it("shows one click number for an object that follows the previous entrance", as
       content: "secret-value",
     },
   ];
+  const preview = vi.fn();
   render(
     <AnimationPane
       deck={file.content}
       slideId={slideId}
       slide={slide}
+      onPreview={preview}
       onChange={() => {}}
       onClose={() => {}}
       onSelect={() => {}}
@@ -72,20 +74,17 @@ it("shows one click number for an object that follows the previous entrance", as
   const pane = screen.getByRole("complementary", { name: "Animation pane" });
   expect(pane.textContent).toContain("1. Welcome");
   expect(pane.textContent).toContain("1. Photo");
-  expect(pane.textContent).toContain("after previous");
-  expect(pane.textContent).toContain("1500 ms");
-  expect(pane.textContent).toContain("5000 ms");
-  expect(pane.textContent).toContain("600 ms");
+  expect(pane.textContent).toContain("After previous");
+  expect(pane.textContent).toContain("1.5 s");
+  expect(pane.textContent).toContain("5 s");
+  expect(pane.textContent).toContain("0.6 s");
   expect(pane.textContent).not.toContain("9000");
   expect(pane.textContent).not.toContain("secret-value");
-  await userEvent.click(screen.getByRole("button", { name: "Preview Welcome" }));
-  const welcome = pane.querySelector("[data-preview='title']");
-  expect(welcome?.className).toBe("show-object fade-on-click-enter");
-  expect(welcome?.getAttribute("style")).toContain("1500ms");
+  await userEvent.click(
+    screen.getByRole("button", { name: "Preview Welcome" }),
+  );
+  expect(preview).toHaveBeenLastCalledWith("title:entrance");
   await userEvent.click(screen.getByRole("button", { name: "Preview Photo" }));
-  const photo = pane.querySelector("[data-preview='photo']");
-  expect(photo?.className).toBe("show-object fly-on-click-enter animation-after-previous");
-  expect(photo?.getAttribute("style")).toContain("5000ms");
-  expect(photo?.getAttribute("style")).not.toContain("9000");
+  expect(preview).toHaveBeenLastCalledWith("photo:entrance");
   expect(pane.textContent).not.toContain("secret-value");
 });

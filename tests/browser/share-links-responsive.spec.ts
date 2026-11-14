@@ -109,7 +109,6 @@ for (const viewport of [
     });
     await page.goto("/#/shared/server-id");
     const share = page.getByRole("button", { name: "Share", exact: true });
-    await share.scrollIntoViewIfNeeded();
     await share.click();
     const pane = page.getByRole("dialog");
     const actions = pane.locator(".share-link-actions");

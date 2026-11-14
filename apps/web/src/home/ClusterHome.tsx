@@ -23,6 +23,7 @@ import {
   openFromDrive,
 } from "../drive/drive-files";
 import { message } from "../error-message";
+import { driveFileDrop } from "./drive-file-drop";
 import { ImportButton } from "./ImportButton";
 import { ErrorBanner, Logo, NewCards } from "./home-parts";
 
@@ -61,24 +62,13 @@ function AccountChip({
   if (!session) return null;
   const name =
     session.user.name || session.user.username || session.user.email || "";
-  const host = new URL(serverUrl).host;
   return (
     <div className="account-chip">
-      <div
-        className="account-who"
-        title={`${name}${session.user.email ? ` (${session.user.email})` : ""} on ${host}`}
-      >
-        <span className="account-avatar" aria-hidden="true">
-          {(name || "?").slice(0, 1).toUpperCase()}
-        </span>
-        <span className="account-name">
-          {name}
-          <small>{host}</small>
-        </span>
-      </div>
+      <span className="account-avatar" aria-hidden="true">
+        {(name || "?").slice(0, 1).toUpperCase()}
+      </span>
       <div className="account-actions">
         <button
-          title={`Sign out of ${host}`}
           aria-label="Sign out"
           disabled={busy}
           onClick={() =>
@@ -87,8 +77,7 @@ function AccountChip({
             })
           }
         >
-          <LogOut size={14} />
-          <span className="account-action-label">Sign out</span>
+          <LogOut size={14} aria-hidden="true" />
         </button>
         {locked ? null : (
           <button
@@ -114,6 +103,7 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
   const [error, setError] = useState("");
   const [listed, setListed] = useState(0);
   const folder = useRef<string | null>(null);
+  const dropImporter = useRef<((data: DataTransfer) => Promise<void>) | null>(null);
   const [folderName, setFolderName] = useState<string>();
   const onFolderChange = useCallback((id: string | null, name: string) => {
     folder.current = id;
@@ -173,7 +163,10 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
     };
   });
   return (
-    <div className="home">
+    <div
+      className="home"
+      {...driveFileDrop(dropImporter)}
+    >
       <aside className="sidebar">
         <Logo />
         <MailLink />
@@ -215,6 +208,8 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
             <ImportButton
               filePicker
               uploading
+              dropImporter={dropImporter}
+              openDroppedFile={false}
               onImport={async (r, _name, onProgress) => {
                 if (r.drive) navigate(`/file/${r.file.id}`);
                 else await createInDrive(r.file, folder.current, navigate, onProgress);

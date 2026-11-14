@@ -12,11 +12,16 @@ const KNOWN_THEMES = new Set(["default", "gaia", "uncover", ...DECK_THEMES.map((
 
 const pathsIn = (text: string): string[] => {
   const paths = new Set<string>();
-  const pattern =
-    /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?\s*\)|<img\b[^>]*\bsrc=["']([^"']+)["']|url\(\s*["']?([^"')\s]+)["']?\s*\)/gi;
-  for (const match of text.matchAll(pattern)) {
-    const raw = match[1] || match[2] || match[3];
+  const add = (raw?: string) => {
     if (raw && !/^(https?:|data:|blob:|mailto:|#)/i.test(raw)) paths.add(raw);
+  };
+  const pattern =
+    /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?\s*\)|<(?:img|video|audio|source)\b[^>]*\bsrc=["']([^"']+)["']|url\(\s*["']?([^"')\s]+)["']?\s*\)/gi;
+  for (const match of text.matchAll(pattern)) {
+    add(match[1] || match[2] || match[3]);
+  }
+  for (const match of text.matchAll(/<video\b[^>]*\bposter=["']([^"']+)["']/gi)) {
+    add(match[1]);
   }
   return [...paths];
 };
@@ -60,15 +65,20 @@ export async function loadMarpBundle(
   const assets: Record<string, string> = {};
   const loaded = new Map<string, string>();
   let total = 0;
+  let hasMedia = false;
   const read = async (path: string): Promise<string | null> => {
     if (loaded.has(path)) return loaded.get(path)!;
     const file = picked.get(path);
     if (!file) return null;
-    if (file.size > 25 * 1024 * 1024)
-      throw new Error(`"${path}" is larger than 25 MB.`);
+    const isMedia = /\.(?:mp4|m4v|webm|mov|mpg|mpeg|mp3|wav|ogg)$/i.test(path);
+    if (isMedia) hasMedia = true;
+    const fileLimit = isMedia ? 64 * 1024 * 1024 : 25 * 1024 * 1024;
+    if (file.size > fileLimit)
+      throw new Error(`"${path}" is larger than ${isMedia ? 64 : 25} MB.`);
     total += file.size;
-    if (total > 80 * 1024 * 1024)
-      throw new Error("The files for this deck are larger than 80 MB.");
+    const totalLimit = (hasMedia ? 300 : 80) * 1024 * 1024;
+    if (total > totalLimit)
+      throw new Error(`The files for this deck are larger than ${hasMedia ? 300 : 80} MB.`);
     const uri = dataUriFor(path, new Uint8Array(await file.arrayBuffer()));
     loaded.set(path, uri);
     return uri;
@@ -100,8 +110,8 @@ export async function loadMarpBundle(
     let css = await file.text();
     if (!/\/\*\s*@theme\s+[^\s*]+/.test(css)) continue;
     total += file.size;
-    if (total > 80 * 1024 * 1024)
-      throw new Error("The files for this deck are larger than 80 MB.");
+    if (total > (hasMedia ? 300 : 80) * 1024 * 1024)
+      throw new Error(`The files for this deck are larger than ${hasMedia ? 300 : 80} MB.`);
     for (const raw of pathsIn(css).sort((a, b) => b.length - a.length)) {
       const relativeToCSS = resolvePickedPath(path, raw);
       const relativeToDeck = resolvePickedPath(markdownPath, raw);

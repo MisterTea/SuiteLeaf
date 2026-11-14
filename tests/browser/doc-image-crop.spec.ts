@@ -127,7 +127,7 @@ test("crop hides an edge without scaling the photo, and reset and Word keep the 
 
   await drag(page, '[data-crop-edge="right"]', -Math.round(fullWidth * 0.42));
   await page.getByRole("button", { name: "Done", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));

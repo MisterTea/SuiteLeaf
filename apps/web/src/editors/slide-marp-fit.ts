@@ -196,7 +196,7 @@ function mathSource(el: HTMLElement): string | null {
 
 function plainEnough(el: HTMLElement) {
   const copy = el.cloneNode(true) as HTMLElement;
-  copy.querySelectorAll("img, .katex").forEach((child) => child.remove());
+  copy.querySelectorAll("img, video, .katex").forEach((child) => child.remove());
   return !!copy.textContent?.replace(/\s/g, "");
 }
 
@@ -237,7 +237,7 @@ function sourceLines(el: Element): [number, number] | undefined {
     ? el
     : isPre(el)
       ? el.querySelector(SOURCE)
-      : el.tagName === "IMG"
+      : el.tagName === "IMG" || el.tagName === "VIDEO"
         ? el.closest(SOURCE)
         : null;
   const lines = readLines(holder);
@@ -305,12 +305,49 @@ function measureSection(
     });
   };
 
+  const addVideo = (video: HTMLVideoElement) => {
+    const frame = box(video);
+    if (frame.width < 2 || frame.height < 2) {
+      frame.width = Math.max(frame.width, 320);
+      frame.height = Math.max(frame.height, 180);
+    }
+    const raw =
+      video.getAttribute("src") ||
+      video.querySelector("source")?.getAttribute("src") ||
+      video.currentSrc ||
+      video.src;
+    const path =
+      urls.get(raw) ??
+      [...urls.entries()].find(([url]) => raw.endsWith(url) || url.endsWith(raw))?.[1] ??
+      (raw && !raw.startsWith("blob:") ? raw : undefined);
+    if (!path) return;
+    const rawPoster = video.getAttribute("poster") || video.poster;
+    const posterPath = rawPoster
+      ? (urls.get(rawPoster) ??
+        [...urls.entries()].find(([url]) => rawPoster.endsWith(url) || url.endsWith(rawPoster))?.[1] ??
+        (!rawPoster.startsWith("blob:") ? rawPoster : undefined))
+      : undefined;
+    const lines = sourceLines(video);
+    placed.content.push({
+      id: crypto.randomUUID(),
+      type: "video",
+      ...frame,
+      src: path,
+      ...(posterPath ? { poster: posterPath } : {}),
+      alt: video.getAttribute("aria-label") || video.getAttribute("title") || path.split("/").pop() || "Video",
+      ...(lines ? { marpLines: lines } : {}),
+    });
+  };
+
   const addList = (list: HTMLElement) => {
     const ordered = list.tagName === "OL";
     const items = [...list.children].filter((child) => child.tagName === "LI") as HTMLElement[];
     items.forEach((item, index) => {
       for (const img of item.querySelectorAll("img")) {
         if (img.closest("li") === item) addImage(img);
+      }
+      for (const video of item.querySelectorAll("video")) {
+        if (video.closest("li") === item) addVideo(video);
       }
       const frame = box(item);
       if (frame.width < 2 || frame.height < 2) {
@@ -377,12 +414,13 @@ function measureSection(
       return;
     }
     const own = el.tagName === "P" ? sourceLines(el) : undefined;
-    if (own && isHtmlOnly(source.slice(own[0], own[1]).join("\n"))) {
+    if (own && isHtmlOnly(source.slice(own[0], own[1]).join("\n")) && !el.querySelector("video")) {
       const frame = box(el);
       if (frame.width >= 2 && frame.height >= 2) addHtml([frame], own);
       return;
     }
     for (const img of el.querySelectorAll("img")) addImage(img);
+    for (const video of el.querySelectorAll("video")) addVideo(video);
     const tex = mathSource(el);
     if (!tex && !plainEnough(el)) return;
     const frame = box(el);
@@ -501,6 +539,7 @@ function measureSection(
   const rawHtml: { node: Element; after: number; before: number }[] = [];
   const isRawHtml = (node: Element) => {
     if (node.matches(SOURCE) || node.querySelector(SOURCE)) return false;
+    if (node.tagName === "VIDEO" || node.querySelector("video")) return false;
     // MARP's header and footer directives, not authored HTML.
     if (node === section.firstElementChild && node.tagName === "HEADER") return false;
     if (node === section.lastElementChild && node.tagName === "FOOTER") return false;
@@ -531,7 +570,14 @@ function measureSection(
       addImage(node as HTMLImageElement);
       return;
     }
-    const wrapsMarkdown = !node.matches(SOURCE) && !isPre(node) && !!node.querySelector(SOURCE);
+    if (tag === "VIDEO") {
+      addVideo(node as HTMLVideoElement);
+      return;
+    }
+    const wrapsMarkdown =
+      !node.matches(SOURCE) &&
+      !isPre(node) &&
+      (!!node.querySelector(SOURCE) || !!node.querySelector("video"));
     if (wrapsMarkdown) {
       for (const child of node.children) walk(child);
       return;

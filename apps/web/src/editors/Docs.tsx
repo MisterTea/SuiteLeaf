@@ -12,7 +12,7 @@ import { docPictureChange, docPictureToEdit, type DocPictureEdit } from "./svg-p
 import { UndoRedo } from "@tiptap/extensions";
 import { prosemirrorJSONToYXmlFragment } from "y-prosemirror";
 import { paintRemoteCarets } from "../collab/caret-mark";
-import { docEditorUpdate, yCollabExtension } from "./doc-collab-editor";
+import { docEditorUpdate, documentRoomSeed, yCollabExtension } from "./doc-collab-editor";
 import { invertLocalParagraph, localParagraphRange, type LocalParagraphEdit } from "./doc-local-undo";
 import { shouldSeedDocument } from "../collab/session";
 import { ReviewAttr } from "./collab-review-sync";
@@ -25,7 +25,6 @@ import {
   kernFeature,
   paragraphTexts,
   paragraphsAsDocument,
-  roomAlreadyHasText,
   syncCommentThreads,
 } from "@suiteleaf/core";
 import { styledDocument, type DocFile, type JsonNode } from "@suiteleaf/core";
@@ -331,9 +330,7 @@ export default function Docs({
     if (!shouldSeedDocument(collabDoc)) return;
     const fragment = collabDoc.getXmlFragment("prosemirror");
     if (fragment.length > 0) return;
-    const source = roomAlreadyHasText(collabDoc)
-      ? paragraphsAsDocument(paragraphTexts(collabDoc))
-      : file.content;
+    const source = documentRoomSeed(collabDoc, file.content);
     prosemirrorJSONToYXmlFragment(editor.schema, source, fragment);
     const threads = (source as { attrs?: { commentThreads?: unknown } }).attrs?.commentThreads;
     if (Array.isArray(threads)) syncCommentThreads(collabDoc, threads);

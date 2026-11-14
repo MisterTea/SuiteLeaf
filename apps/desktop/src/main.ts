@@ -20,6 +20,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
+import { registerFolderSelection } from "./folder-selection";
 import { convertOffice } from "./office-converter";
 import { consumeFailedStart, restartWhileDirty, startReleasePoll } from "./updates";
 
@@ -68,6 +69,7 @@ import {
   NATIVE_EXTENSIONS,
   appModeSchema,
   type AppMode,
+  type DocumentScanProgress,
   type FileRecord,
 } from "@suiteleaf/core";
 import { FileStore, atomicWrite, driveLink } from "./store";
@@ -103,6 +105,36 @@ const settingsPath = () =>
   process.env.SUITELEAF_SETTINGS ?? join(localDirectory, "settings.json");
 let documentsDirectory: string;
 let documentsWatcher: DocumentsDirectory;
+/** Keep a long rescan visible without a message per file. */
+const reportDocumentScan = (() => {
+  let last = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pending: DocumentScanProgress | undefined;
+  const send = (progress: DocumentScanProgress) => {
+    last = Date.now();
+    pending = undefined;
+    window?.webContents.send("documents:scan", progress);
+  };
+  return (progress: DocumentScanProgress) => {
+    const immediate =
+      progress.total == null
+        ? progress.files === 0 && progress.folders === 0
+        : progress.files === 0 || progress.files === progress.total;
+    if (immediate || Date.now() - last >= 80) {
+      clearTimeout(timer);
+      timer = undefined;
+      send(progress);
+      return;
+    }
+    pending = progress;
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      if (pending) send(pending);
+    }, 80);
+    timer.unref?.();
+  };
+})();
 async function readSettings(): Promise<{
   mode?: unknown;
   documentsDirectory?: unknown;
@@ -491,6 +523,11 @@ function buildMenu() {
           { role: "cut" },
           { role: "copy" },
           { role: "paste" },
+          {
+            role: "pasteAndMatchStyle",
+            label: "Paste as Plain Text",
+            accelerator: "CommandOrControl+Shift+V",
+          },
           { role: "selectAll" },
         ],
       },
@@ -668,7 +705,7 @@ else {
       });
       if (result.canceled || !result.filePaths[0]) return null;
       const next = resolve(result.filePaths[0]);
-      await documentsWatcher.set(next);
+      await documentsWatcher.set(next, reportDocumentScan);
       try {
         await atomicWrite(
           settingsPath(),
@@ -678,11 +715,18 @@ else {
           }),
         );
       } catch (error) {
-        await documentsWatcher.set(documentsDirectory);
+        await documentsWatcher.set(documentsDirectory, reportDocumentScan);
         throw error;
       }
       documentsDirectory = next;
       return next;
+    });
+    register("documents:rescan", async () => {
+      if (mode.kind !== "single")
+        throw new Error("Document folders are available in single-user mode.");
+      await documentsWatcher.set(documentsDirectory, reportDocumentScan, {
+        rebuild: true,
+      });
     });
     /** A "/"-separated folder path from the app, resolved inside the documents folder. */
     const documentsFolder = (folder: unknown) => {
@@ -722,6 +766,7 @@ else {
     register("folders:list", () =>
       mode.kind === "single" ? store.folderPaths(documentsDirectory) : [],
     );
+    registerFolderSelection(register, store, documentsFolder, documentsDirectory, () => window!);
     register("folders:create", async (parent, name) =>
       relativeFolder(
         await store.createFolder(documentsFolder(parent), folderName(name)),
@@ -748,6 +793,11 @@ else {
       return store.moveFile(id, documentsFolder(folder));
     });
     register("files:list", () => store.list());
+    register("files:set-trashed", (ids, trashed) => {
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string") || typeof trashed !== "boolean")
+        throw new Error("Invalid Trash request.");
+      return store.setTrashed(ids, trashed);
+    });
     register("files:get", (id) => {
       if (typeof id !== "string") throw new Error("Invalid file ID.");
       return store.get(id);

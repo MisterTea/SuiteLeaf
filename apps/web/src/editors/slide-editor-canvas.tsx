@@ -1,13 +1,15 @@
+import type { SlideTextMenuTarget } from "./slide-text-menu";
 import type { ReactNode, RefObject } from "react";
 import { useSlideMobileTextZoom } from "./slide-mobile-text-zoom";
 import { slidePointScale, type Slide, type SlideElement, type SlideFile } from "@suiteleaf/core";
 import { slidePictureToEdit } from "./svg-picture-edit";
 import { hasTextRuns } from "./slide-runs";
 import { SlideTextBody } from "./slide-text";
+import { slideTextTrialEnabled } from "./slide-text-trial";
 import { SlideSpellMirror } from "./grid-spelling-ui";
 import { proofingLanguage } from "./proofing-language";
-import { animationSequenceMap, editorFadeAttrs, editorFadeClass } from "./slide-fade-in";
-import { FadeOnClickMark } from "./slide-fade-mark";
+import { editorFadeAttrs, editorFadeClass } from "./slide-fade-in";
+import { ParagraphAnimationMarks, animationMarks } from "./slide-paragraph-marks";
 import { deckToMarp } from "./slide-marp";
 import { MarpBackdrop, type MarpPages } from "./slide-marp-backdrop";
 import { SlideFace, type SlideBoxProps, type SlideFaceHooks } from "./slide-surface";
@@ -16,8 +18,11 @@ import { MarpTextarea, type MarpDraft } from "./slide-marp-textarea";
 import { continueList, listShortcut } from "./slide-list";
 import type { ResizeHandle, SlidesEditorState } from "./slide-editor-state";
 import type { DeckHistoryApi } from "./slide-editor-history";
-import type { SlideElementActions, SlideUpdates } from "./slide-editor-elements";
+import { SLIDE_IMAGE_TYPES, type SlideElementActions, type SlideUpdates } from "./slide-editor-elements";
 import type { SlideTextFormat } from "./slide-editor-text";
+import { masterPageLabel } from "./slide-master-view";
+import { deckMasters } from "./slide-master";
+import { slideBackground } from "./slide-surface-paint";
 
 /** The editor's part of the shared drawing: selection, editing, handles, and table cells. */
 export function editorCanvasHooks(
@@ -35,6 +40,7 @@ export function editorCanvasHooks(
     selectElement,
     revealMarkdown,
     editEquation,
+    setTextMenu,
   }: Pick<SlideUpdates, "updateElement"> &
     Pick<SlideTextFormat, "rememberCaret"> &
     Pick<SlideElementActions, "selectElement"> & {
@@ -45,6 +51,7 @@ export function editorCanvasHooks(
       onElementMouseDown: (e: React.MouseEvent, elementId: string, handle?: ResizeHandle) => void;
       onElementPointerDown: (e: React.PointerEvent, elementId: string, handle?: ResizeHandle) => void;
       onElementPointerUp: (e: React.PointerEvent) => void;
+      setTextMenu: (target: SlideTextMenuTarget) => void;
       editEquation?: (element: SlideElement) => boolean;
       revealMarkdown: (lines?: [number, number]) => void;
     },
@@ -100,9 +107,16 @@ export function editorCanvasHooks(
    * A textarea cannot hang each list item's marker, so list items never use one.
    */
   const editorText = (el: SlideElement) =>
-    editingId === el.id || hasTextRuns(el) || el.hang ? (
+    editingId === el.id || hasTextRuns(el) || el.hang || slideTextTrialEnabled() ? (
+        <>
+        {!hasTextRuns(el) && !el.hang && slideTextTrialEnabled() ? <SlideSpellMirror
+          text={el.content || ""} fileId={file.id}
+          language={proofingLanguage(deck.proofingLanguage)}
+          caret={spellCaret?.id === el.id ? spellCaret.at : null}
+        /> : null}
         <SlideTextBody
           content={el.content}
+          revision={state.textRevision}
           runs={el.runs}
           bold={el.bold}
           italic={el.italic}
@@ -128,11 +142,12 @@ export function editorCanvasHooks(
                 underline: false,
                 ...(opts?.bullet ? { bullet: true } : {}),
               },
-              { coalesce: `type:${el.id}` },
+              { typing: true },
             )
           }
-          onCaret={(sel) => rememberCaret(el.id, sel)}
+          onCaret={(sel) => { rememberCaret(el.id, sel); setSpellCaret(sel ? { id: el.id, at: sel.start } : null); }}
         />
+        </>
       ) : (
         <>
           <SlideSpellMirror
@@ -165,6 +180,13 @@ export function editorCanvasHooks(
               })
             }
             onKeyDown={(e) => {
+              if (!readOnly && e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+                e.preventDefault();
+                const node = e.currentTarget;
+                node.setRangeText("\t", node.selectionStart, node.selectionEnd, "end");
+                updateElement(el.id, { content: node.value }, { typing: true });
+                return;
+              }
               if (
                 e.key !== "Enter" ||
                 e.shiftKey ||
@@ -182,7 +204,7 @@ export function editorCanvasHooks(
               updateElement(
                 el.id,
                 { content: next.text },
-                { coalesce: `type:${el.id}` },
+                { typing: true },
               );
               const pos = next.caret;
               requestAnimationFrame(() =>
@@ -202,7 +224,7 @@ export function editorCanvasHooks(
                   content: next?.text ?? raw,
                   ...(next?.bullet ? { bullet: true } : {}),
                 },
-                { coalesce: `type:${el.id}` },
+                { typing: true },
               );
               setSpellCaret({ id: el.id, at: next?.caret ?? caret });
               if (!next) return;
@@ -219,7 +241,7 @@ export function editorCanvasHooks(
     deck.slides[state.activeSlideId] ??
     deck.slides[activeRef.current] ??
     deck.slides[deck.slideOrder[0]];
-  const sequenceMap = animationSequenceMap(activeSlide?.elements);
+  const marks = animationMarks(activeSlide?.elements ?? []);
   const canvasHooks: SlideFaceHooks = {
     box: (el) => {
       const isSelected = el.id === selectedElementId;
@@ -249,6 +271,13 @@ export function editorCanvasHooks(
         onPointerUp: onElementPointerUp,
       };
       if (el.type === "text") {
+        props.onContextMenu = (e) => {
+          const editor = (e.target as HTMLElement).closest<HTMLElement>(".element-textarea");
+          if (readOnlyRef.current || !editor || editor.ownerDocument.activeElement !== editor) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setTextMenu({ editor, x: e.clientX, y: e.clientY });
+        };
         props.onMouseDown = (e) => {
           if ((e.target as HTMLElement).closest?.("a[href]")) return;
           const inEditor = (e.target as HTMLElement).closest?.(".element-editor");
@@ -301,10 +330,7 @@ export function editorCanvasHooks(
         ? editorText(el)
         : undefined,
     before: (el) => (
-      <FadeOnClickMark
-        element={el}
-        sequence={sequenceMap.get(el.id) ?? el.animationOrder ?? 1}
-      />
+      <ParagraphAnimationMarks element={el} marks={marks.get(el.id) ?? []} />
     ),
     after: (el) =>
       el.type === "shape" && el.marpHtml ? (
@@ -345,14 +371,17 @@ export function SlideCanvasStage({
   showBackdrop,
   liveLines,
   marpDraft,
+  markdownSource,
   typingOnCanvas,
   relayoutMarp,
   selectElement,
   updateSlide,
   onMarpChange,
   followMarkdownCaret,
+  insertImageFile,
 }: Pick<DeckHistoryApi, "typingOnCanvas" | "relayoutMarp"> &
   Pick<SlideElementActions, "selectElement"> &
+  Pick<SlideElementActions, "insertImageFile"> &
   Pick<SlideUpdates, "updateSlide"> & {
     state: SlidesEditorState;
     readOnly: boolean;
@@ -370,16 +399,46 @@ export function SlideCanvasStage({
     showBackdrop: boolean;
     liveLines: [number, number] | null;
     marpDraft: RefObject<MarpDraft | null>;
+    markdownSource?: string;
     onMarpChange: (text: string) => void;
     followMarkdownCaret: (text: string, line: number) => void;
   }) {
   const {
     deck, marpOpen, setMarpOpen, stageRef, textPress, setFocusedBox, marpStale, painted, setPainted,
+    editingRef, setEditingId, textRange,
     canvasMotion, snapGuide, marpWarnings, marpAreaRef, showNotes, setShowNotes,
   } = state;
   useSlideMobileTextZoom(stageRef, shownSlide, state.focusedBox, deck.width || 960, readOnly);
   return (
     <div className="slides-canvas-stage">
+      {state.masterView ? (
+        <div className="master-view-bar" role="status">
+          <strong>{masterPageLabel(state.activeSlideId).label}</strong>
+          <label className="master-picker">
+            Master
+            <select
+              aria-label="Master"
+              value={state.editingMasterId}
+              onChange={(event) => state.switchMasterRef.current(event.target.value)}
+            >
+              {deckMasters(deck).map((master) => (
+                <option key={master.id} value={master.id}>{master.name}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => state.addMasterRef.current()}
+            disabled={readOnly || deckMasters(deck).length >= 8}
+          >
+            New master
+          </button>
+          <span>Objects on this master show on slides that use it. Layouts set their placeholders.</span>
+          <button type="button" onClick={() => state.closeMasterRef.current()}>
+            Close Master View
+          </button>
+        </div>
+      ) : null}
       {slideComments.notice}
       {deck.marp ? (
         <button
@@ -402,7 +461,17 @@ export function SlideCanvasStage({
       <div
         className="slide-stage-viewport"
         ref={stageRef}
+        onPointerDownCapture={(event) => {
+          if (!(event.target as HTMLElement).closest("[data-element-id]"))
+            state.ignoreCanvasClick.current = false;
+        }}
         onClick={() => {
+          // Selecting an object can move it below a newly opened toolbar before
+          // the browser synthesizes its touch click on the canvas background.
+          if (state.ignoreCanvasClick.current) {
+            state.ignoreCanvasClick.current = false;
+            return;
+          }
           if (textPress.current) return;
           selectElement(null);
         }}
@@ -412,8 +481,15 @@ export function SlideCanvasStage({
         }}
         onBlurCapture={(e) => {
           const box = (e.target as HTMLElement).closest?.("[data-element-id]");
-          const next = (e.relatedTarget as HTMLElement | null)?.closest?.("[data-element-id]");
+          const target = e.relatedTarget as HTMLElement | null;
+          const next = target?.closest?.("[data-element-id]");
           if (box && box === next) return;
+          if (editingRef.current && box?.getAttribute("data-element-id") === editingRef.current &&
+            !target?.closest?.(".slides-toolbar")) {
+            editingRef.current = null;
+            setEditingId(null);
+            textRange.current = null;
+          }
           setFocusedBox(null);
           if (!marpStale.current) return;
           window.setTimeout(() => {
@@ -430,12 +506,23 @@ export function SlideCanvasStage({
         ) : (
         <div
           className={`slide-canvas slide-surface print-slide${fittedView ? " marp-fit" : ""}${marpPending ? " marp-pending" : ""}${showBackdrop && painted ? " marp-painted" : ""}${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}
+          onDragOver={(event) => {
+            if (!event.dataTransfer.types.includes("Files")) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = readOnly ? "none" : "copy";
+          }}
+          onDrop={(event) => {
+            if (!event.dataTransfer.types.includes("Files")) return;
+            event.preventDefault();
+            if (readOnly) return;
+            const image = Array.from(event.dataTransfer.files).find((file) =>
+              SLIDE_IMAGE_TYPES.includes(file.type),
+            );
+            if (image) insertImageFile(image);
+          }}
           aria-busy={marpPending || undefined}
           style={{
-            backgroundColor:
-              shownSlide?.background?.color ||
-              deck.master?.background?.color ||
-              "#ffffff",
+            backgroundColor: slideBackground(deck, shownSlide),
             aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
             ["--deck-motion" as string]: `${canvasMotion?.ms ?? 0}ms`,
             ["--slide-pt-base" as string]: String(slidePointScale(deck.width, deck.pointWidth)),
@@ -487,7 +574,7 @@ export function SlideCanvasStage({
                 </p>
               ))}
           <MarpTextarea
-            source={deck.marpSource ?? deckToMarp(deck)}
+            source={markdownSource ?? deckToMarp(deck)}
             readOnly={readOnly}
             invalid={!!marpInvalid}
             onCommit={onMarpChange}
@@ -500,7 +587,7 @@ export function SlideCanvasStage({
       {slideComments.dock}
       </div>
 
-      <div id="slide-speaker-notes" className={`speaker-notes-pane${showNotes ? " open" : ""}`}>
+      {state.masterView ? null : <div id="slide-speaker-notes" className={`speaker-notes-pane${showNotes ? " open" : ""}`}>
         <div
           className="notes-drag-handle"
           onClick={() => setShowNotes(!showNotes)}
@@ -524,7 +611,7 @@ export function SlideCanvasStage({
             }
           />
         ) : null}
-      </div>
+      </div>}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { createFile, serializeFile, type DocFile, type SheetFile } from "../native-file";
+import { createFile, type DocFile, type SheetFile } from "../native-file";
 import type { AppCredential, AppScope } from "./types";
 
 export interface AuditActionRecord {
@@ -94,7 +94,7 @@ export class ScopedAutomationClient {
   refreshSpreadsheetQuery(
     sheet: SheetFile,
     newData: Array<Array<string | number>>,
-    queryId: string,
+    _queryId: string,
   ): SheetFile {
     this.checkAccess("files.write", sheet.id);
 

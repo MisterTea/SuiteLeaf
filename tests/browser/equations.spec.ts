@@ -78,7 +78,7 @@ test("insert an equation, edit one symbol, and round-trip Office math", async ({
   await expect(sentence.getByRole("button", { name: "Edit symbol d" })).toBeVisible();
   await expect(sentence).toContainText("The model fits");
   await expect(sentence).toContainText("and the ratio");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Untitled document", exact: true }).click();

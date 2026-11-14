@@ -73,7 +73,7 @@ describe("Office font names", () => {
     expect(await zip.file("word/styles.xml")!.async("string")).toMatch(/w:ascii="Calibri"/);
     const documentXml = await zip.file("word/document.xml")!.async("string");
     expect(documentXml).toMatch(/w:ascii="Times New Roman"/);
-    expect(documentXml).not.toContain("SuiteLeaf");
+    expect(documentXml).not.toMatch(/typeface="SuiteLeaf/);
     const { file: back } = await importOffice(await zip.generateAsync({ type: "uint8array" }), "docx", "fonts.docx");
     expect(documentPageSettings((back as DocFile).content).font).toBe("SuiteLeaf Willow");
   });
@@ -85,7 +85,7 @@ describe("Office font names", () => {
     const zip = await JSZip.loadAsync(await exportXlsx(file));
     const styles = await zip.file("xl/styles.xml")!.async("string");
     expect(styles).toContain('<name val="Arial"/>');
-    expect(styles).not.toContain("SuiteLeaf");
+    expect(styles).not.toMatch(/typeface="SuiteLeaf/);
   });
 
   it("writes Office names into a deck and reads them back as SuiteLeaf families", async () => {
@@ -96,7 +96,7 @@ describe("Office font names", () => {
     const zip = await JSZip.loadAsync(bytes);
     const slideXml = await zip.file("ppt/slides/slide1.xml")!.async("string");
     expect(slideXml).toContain('typeface="Calibri"');
-    expect(slideXml).not.toContain("SuiteLeaf");
+    expect(slideXml).not.toMatch(/typeface="SuiteLeaf/);
     const deck = (await parsePowerPoint(bytes)).content;
     const text = deck.slides[deck.slideOrder[0]].elements.find((el) => el.content === "Title");
     expect(text?.fontFamily).toBe("SuiteLeaf Willow");

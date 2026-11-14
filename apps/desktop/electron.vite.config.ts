@@ -2,12 +2,14 @@ import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 import { conditionalFormatDefaults } from "../web/conditional-format-defaults";
+import { rollupWarnings } from "../web/build-warnings";
 import { dictionaryAlias } from "../web/vite.config";
 export default defineConfig({
   main: {
     build: {
       externalizeDeps: false,
       rollupOptions: {
+        ...rollupWarnings,
         input: {
           index: resolve(import.meta.dirname, "src/main.ts"),
           "office-worker": resolve(import.meta.dirname, "src/office-worker.ts"),
@@ -48,10 +50,12 @@ export default defineConfig({
     // Dev stays on "/" so Vite can hot-replace the page. The production preset uses "./".
     worker: {
       format: "es",
+      rollupOptions: rollupWarnings,
     },
     build: {
       outDir: resolve(import.meta.dirname, "out/renderer"),
       rollupOptions: {
+        ...rollupWarnings,
         input: {
           index: resolve(import.meta.dirname, "../web/index.html"),
           "pdf-export": resolve(import.meta.dirname, "../web/pdf-export.html"),

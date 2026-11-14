@@ -138,7 +138,7 @@ test("change all previews the same misspelling, undoes in one step, and skips an
   await expectCell(page, "B6", "seperate the copies");
   await expect(page.locator(".sheet-spell-mark[data-spell-cell='B9']")).toHaveCount(0);
 
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Decisions", exact: true }).click();
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");

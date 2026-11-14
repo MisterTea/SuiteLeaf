@@ -61,7 +61,7 @@ test("a Word picture opens at its page size and corner resize does not snap back
   expect(resized.width).toBeLessThan(400);
 
   await greeting.click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const kept = Math.round(resized.width);
   await expect.poll(async () => Math.round((await logo.boundingBox())!.width)).toBeGreaterThanOrEqual(
     kept - 2,

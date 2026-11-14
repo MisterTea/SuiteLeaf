@@ -1,12 +1,11 @@
-import { useState } from "react";
+import { Play, Star, Trash2 } from "lucide-react";
 import type { Presentation, Slide } from "@suiteleaf/core";
+import { animationLabel } from "./slide-fade-in";
 import {
-  SLIDE_ANIMATION_CHOICES,
-  animationLabel,
-  animationPreview,
-  animationRows,
-  reorderAnimation,
-} from "./slide-fade-in";
+  animationGroups,
+  animationGroupContains,
+  changeAnimationEntry,
+} from "./slide-animation-editing";
 
 export function AnimationPane({
   deck,
@@ -15,6 +14,11 @@ export function AnimationPane({
   onChange,
   onClose,
   onSelect,
+  selectedElementId,
+  selectedKey,
+  onSelectEntry,
+  onPreview,
+  readOnly = false,
 }: {
   deck: Presentation;
   slideId: string;
@@ -22,77 +26,130 @@ export function AnimationPane({
   onChange: (next: Presentation) => void;
   onClose: () => void;
   onSelect: (elementId: string) => void;
+  selectedElementId?: string | null;
+  selectedKey?: string | null;
+  onSelectEntry?: (key: string) => void;
+  onPreview?: (key?: string) => void;
+  readOnly?: boolean;
 }) {
-  const rows = animationRows(slide);
-  const [previewId, setPreviewId] = useState<string | null>(null);
-  const preview = rows.find((row) => row.id === previewId);
-  const motion = preview ? animationPreview(preview) : null;
+  const rows = animationGroups(slide);
+  const change = (
+    key: string,
+    patch: Parameters<typeof changeAnimationEntry>[3],
+  ) => {
+    if (readOnly) return;
+    const next = changeAnimationEntry(deck, slideId, key, patch);
+    if (next) onChange(next);
+  };
   return (
-    <aside className="slide-side-panel" aria-label="Animation pane">
+    <aside
+      className="slide-side-panel slide-animation-pane"
+      aria-label="Animation pane"
+    >
       <header>
-        <h2>Animation pane</h2>
+        <h2>Animations</h2>
         <button type="button" aria-label="Close panel" onClick={onClose}>
           ×
         </button>
       </header>
       <div className="slide-side-scroll">
-        <p className="slide-side-note">
-          Click order for this slide. Objects that share a number appear together. An object marked after starts when the previous entrance finishes.
-        </p>
+        <button
+          type="button"
+          className="animation-play-all"
+          disabled={!rows.length}
+          onClick={() => onPreview?.()}
+        >
+          <Play size={16} fill="currentColor" />
+          Play All
+        </button>
         {rows.length === 0 ? (
-          <p className="slide-side-note">No animations yet. Select an object, then Insert › Animation.</p>
+          <p className="slide-side-note">
+            No animations yet. Select an object, then choose an entrance effect
+            in Animations.
+          </p>
         ) : (
           <ol className="animation-pane-list">
             {rows.map((row, index) => (
-              <li key={row.id}>
-                <button type="button" onClick={() => onSelect(row.id)}>
-                  {row.click}. {row.label}
+              <li
+                key={row.key}
+                className={
+                  animationGroupContains(row, selectedElementId) &&
+                  (!selectedKey || row.key === selectedKey)
+                    ? "animation-row-selected"
+                    : ""
+                }
+              >
+                <button
+                  type="button"
+                  title={row.label}
+                  aria-pressed={
+                    animationGroupContains(row, selectedElementId) &&
+                    (!selectedKey || row.key === selectedKey)
+                  }
+                  onClick={() => {
+                    onSelect(row.id);
+                    onSelectEntry?.(row.key);
+                  }}
+                >
+                  <span className="animation-row-number">{row.click}.</span>{" "}
+                  <Star size={16} fill="currentColor" aria-hidden="true" />
+                  <span className="animation-row-label">{row.label}</span>
                 </button>
-                <span>
-                  {animationLabel(row.kind)}
-                  {row.trigger === "after" ? " after previous" : row.trigger === "with" ? " with previous" : ""}
-                  {` · ${row.ms} ms`}
+                <span className="animation-row-detail">
+                  {row.exit
+                    ? "Disappear"
+                    : row.kind === "fade-on-click"
+                      ? "Fade"
+                      : animationLabel(row.kind)}{" "}
+                  ·{" "}
+                  {row.trigger === "after"
+                    ? "After previous"
+                    : row.trigger === "with"
+                      ? "With previous"
+                      : "On click"}{" "}
+                  · {row.ms / 1000} s
                 </span>
-                <button type="button" aria-label={`Preview ${row.label}`} onClick={() => setPreviewId(row.id)}>
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Move ${row.label} earlier`}
-                  disabled={index === 0}
-                  onClick={() => {
-                    const next = reorderAnimation(deck, slideId, row.id, -1);
-                    if (next) onChange(next);
-                  }}
-                >
-                  Up
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Move ${row.label} later`}
-                  disabled={index === rows.length - 1}
-                  onClick={() => {
-                    const next = reorderAnimation(deck, slideId, row.id, 1);
-                    if (next) onChange(next);
-                  }}
-                >
-                  Down
-                </button>
+                <div className="animation-row-actions">
+                  <button
+                    type="button"
+                    aria-label={`Preview ${row.label}`}
+                    onClick={() => onPreview?.(row.key)}
+                  >
+                    <Play size={13} />
+                    Preview
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Move ${row.label} earlier`}
+                    disabled={readOnly || index === 0}
+                    onClick={() => change(row.key, { move: -1 })}
+                  >
+                    Up
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Move ${row.label} later`}
+                    disabled={readOnly || index === rows.length - 1}
+                    onClick={() => change(row.key, { move: 1 })}
+                  >
+                    Down
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${row.label} animation`}
+                    disabled={readOnly}
+                    onClick={() => change(row.key, { remove: true })}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </li>
             ))}
           </ol>
         )}
-        {motion && preview ? (
-          <p className="slide-side-note">
-            <span
-              data-preview={preview.id}
-              className={motion.className}
-              style={{ animationDuration: `${motion.durationMs}ms` }}
-            />
-          </p>
-        ) : null}
         <p className="slide-side-note">
-          {SLIDE_ANIMATION_CHOICES.map((choice) => choice.label).join(", ")}
+          Numbers show the slide’s click order. Select an animation to change
+          its start and duration in the ribbon.
         </p>
       </div>
     </aside>

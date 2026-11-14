@@ -10,7 +10,7 @@ import {
   Copy,
   FolderInput,
 } from "lucide-react";
-import { useId, type DragEvent } from "react";
+import { useId, type DragEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { FileRecord } from "@suiteleaf/core";
 import { formatModified } from "./drive/status";
@@ -36,9 +36,11 @@ export function FileLibraryRow({
   onToggleStar,
   onMove,
   onDragStart,
+  selection,
 }: {
   record: FileRecord;
   snippet?: string;
+  selection?: { checked: boolean; control: ReactNode };
   view: LibraryFilter;
   desktop: boolean;
   onRename: () => void;
@@ -64,8 +66,9 @@ export function FileLibraryRow({
     .map((part) => `${id}-${part}`)
     .join(" ");
   return (
-    <div className="file-row" draggable={!!onDragStart && !trashed} onDragStart={onDragStart}>
-      <div className="file-main">
+    <div className={`file-row${selection?.checked ? " file-row-selected" : ""}`} draggable={!!onDragStart && !trashed} onDragStart={onDragStart}>
+      <div className={`file-main${selection ? " file-main-selectable" : ""}`}>
+        {selection?.control}
         <Link to={`/file/${record.file.id}`} aria-label={title} aria-describedby={described}>
           <span className={`file-icon ${record.file.kind}`}>
             {record.file.kind === "doc" ? (

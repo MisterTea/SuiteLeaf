@@ -1,3 +1,4 @@
+import { marpAudienceDocument, marpFragmentStep, showBuildIds, showBuildSteps } from "./slide-marp-fragments";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { filename, type Slide, type SlideFile } from "@suiteleaf/core";
 import { showAudienceHooks } from "./slide-show-audience";
@@ -13,11 +14,9 @@ import {
   slideTitleText,
 } from "./presenter-display";
 import { audienceLines, openAudienceScreen } from "./audience-screen";
-import { readMaster } from "./slide-master";
+import { masterForSlide } from "./slide-master";
 import { transitionMs } from "./slide-theme";
 import {
-  clickSteps,
-  fadeOnClickIds,
   moveShowCursor,
   samePlace,
   shownSlideIndex,
@@ -88,9 +87,9 @@ export function useShowControls(
       current,
       where,
       (index) =>
-        fadeOnClickIds(deckRef.current.slides[order[index]]?.elements ?? []),
+        showBuildIds(deckRef.current, index),
       order.length,
-      (index) => clickSteps(deckRef.current.slides[order[index]]?.elements ?? []),
+      (index) => showBuildSteps(deckRef.current, index),
       shown,
     );
     if (samePlace(current, next) && current.enteringId === next.enteringId)
@@ -145,6 +144,7 @@ export function useShowPlayback(
     setControlsVisible,
     showFullscreenRef,
     overlayRef,
+    marpPages,
   }: Pick<
     ShowControls,
     | "endShow"
@@ -153,7 +153,7 @@ export function useShowPlayback(
     | "setControlsVisible"
     | "showFullscreenRef"
     | "overlayRef"
-  > & { activeSlide: Slide },
+  > & { activeSlide: Slide; marpPages?: MarpPages | null },
 ) {
   const {
     deck, deckRef, presenting, setPresenting, presentSlideIndex, showCursor, blankScreen,
@@ -302,7 +302,7 @@ export function useShowPlayback(
     deck.slides[deck.slideOrder[presentSlideIndex]] || activeSlide;
   useEffect(() => {
     if (!recording) return;
-    const master = readMaster(deck);
+    const master = masterForSlide(deck, presentSlide);
     recorderRef.current?.paint(
       presentSlide,
       deck.width || 960,
@@ -316,9 +316,9 @@ export function useShowPlayback(
   const upcoming = shownSlideIndex(presentSlideIndex + 1, deck.slideOrder.length, 1, shownAt);
   const nextPresentSlide = upcoming === null ? undefined : deck.slides[deck.slideOrder[upcoming]];
   const fadeIdsAt = (index: number) =>
-    fadeOnClickIds(deck.slides[deck.slideOrder[index]]?.elements ?? []);
+    showBuildIds(deck, index);
   const stepsAt = (index: number) =>
-    clickSteps(deck.slides[deck.slideOrder[index]]?.elements ?? []);
+    showBuildSteps(deck, index);
   const cannotAdvance = samePlace(
     showCursor,
     moveShowCursor(showCursor, "next", fadeIdsAt, deck.slideOrder.length, stepsAt, shownAt),
@@ -336,7 +336,7 @@ export function useShowPlayback(
   /** The audience sees fade-on-click objects only once they are revealed. */
   const audienceHooks = (slide: Slide | undefined): SlideFaceHooks => showAudienceHooks(slide, showCursor);
 
-  const slideHeading = (slide: Slide) => slideTitleText(slide.elements, deck.master?.elements ?? []);
+  const slideHeading = (slide: Slide) => slideTitleText(slide.elements, masterForSlide(deck, slide).elements);
   const frame = showFrame({
     slideIndex: presentSlideIndex,
     slideCount: deck.slideOrder.length,
@@ -356,9 +356,10 @@ export function useShowPlayback(
     openAudienceScreen(
       popup,
       frame.audience,
-      slide ? audienceLines(slide.elements, showCursor.revealed, deck.master?.elements ?? []) : [],
+      slide ? audienceLines(slide.elements, showCursor.revealed, masterForSlide(deck, slide).elements) : [],
+      marpPages?.pages[presentSlideIndex] ? marpAudienceDocument(marpPages.pages[presentSlideIndex].plain, marpFragmentStep(deck, presentSlideIndex, showCursor.revealed)) : undefined,
     );
-  }, [presenting, presentSlideIndex, blankScreen, deck, showCursor.revealed]);
+  }, [presenting, presentSlideIndex, blankScreen, deck, showCursor.revealed, marpPages]);
 
   return {
     showMotionClass,

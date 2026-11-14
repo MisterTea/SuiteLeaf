@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { sourceValue } from "../../apps/web/src/editors/slide-source-control";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DrawingFile } from "../../packages/core/src";
@@ -34,7 +35,7 @@ function press(element: Element) {
 describe("the drawing editor", () => {
   it("draws an SVG file beside its source", async () => {
     const { drawn } = open(createDrawingFile("svg", "Boxes", PICTURE));
-    expect(screen.getByLabelText("SVG source")).toHaveProperty("value", PICTURE);
+    expect(sourceValue(screen.getByLabelText<HTMLTextAreaElement>("SVG source"))).toBe(PICTURE);
     await waitFor(() => expect(drawn("rect")).not.toBeNull());
     expect(screen.getByRole("separator", { name: "Resize the drawing and source panes" })).toBeTruthy();
   });

@@ -66,7 +66,7 @@ describe("Mobile and touch workflows (WP-030)", () => {
     expect(draftAfterBg?.revision).toBe(2);
 
     // App returns to foreground
-    const fgResult = manager.handleVisibilityChange(false);
+    manager.handleVisibilityChange(false);
     expect(manager.isAppBackgrounded()).toBe(false);
 
     // Clear draft on successful save

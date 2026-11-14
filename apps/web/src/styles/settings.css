@@ -20,4 +20,20 @@
 .settings-card h2 { margin-top: 0; }
 .settings-card p { line-height: 1.6; }
 .settings-directory { overflow-wrap: anywhere; font-family: monospace; }
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settings-scan {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.settings-scan progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent, #1a73e8);
+}
 

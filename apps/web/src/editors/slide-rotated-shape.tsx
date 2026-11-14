@@ -102,7 +102,7 @@ export function RotatedSlideShape({
       />
     );
   return (
-    <div {...boxProps} className={className} style={rotatedShapeFrameStyle(el, slideWidth, slideHeight)}>
+    <div {...boxProps} className={className} style={{ ...rotatedShapeFrameStyle(el, slideWidth, slideHeight), ...boxProps?.style }}>
       {before}
       <svg
         viewBox={`0 0 ${frame.width} ${frame.height}`}

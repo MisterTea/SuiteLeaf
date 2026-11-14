@@ -39,7 +39,7 @@ async function savedArts(page: Page): Promise<SavedArt[]> {
 async function painted(art: Locator) {
   return art.evaluate((el) => {
     const mirror = el.querySelector<HTMLElement>(".slide-spell-mirror");
-    const area = el.querySelector<HTMLElement>("textarea");
+    const area = el.querySelector<HTMLElement>(".element-textarea");
     const node = mirror ?? area ?? el;
     const style = getComputedStyle(node);
     return {
@@ -95,7 +95,7 @@ test("word art keeps its words, style, and position", async ({ page }) => {
 
   const gold = page.locator('.slide-canvas [data-word-art="gold"]');
   await expect(gold).toBeVisible();
-  await expect(gold.locator("textarea")).toHaveValue("Garden club");
+  await expect(gold.locator(".element-textarea")).toHaveText("Garden club");
   const look = await painted(gold);
   expect(channels(look.color)).toEqual(rgb(GOLD.fill));
   expect(channels(look.stroke)).toEqual(rgb(GOLD.stroke));
@@ -136,7 +136,7 @@ test("word art keeps its words, style, and position", async ({ page }) => {
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Garden word art" }).click();
   await expect(page.locator(".slides-editor")).toBeVisible();
-  await expect(gold.locator("textarea")).toHaveValue("Garden club");
+  await expect(gold.locator(".element-textarea")).toHaveText("Garden club");
   await expect(gold).toHaveAttribute("data-x", movedX!);
   await expect(gold).toHaveAttribute("data-y", movedY!);
   const reopened = await painted(gold);
@@ -156,8 +156,8 @@ test("word art keeps its words, style, and position", async ({ page }) => {
   await again.getByLabel("Style").selectOption({ label: "Blue" });
   await again.getByRole("button", { name: "Insert", exact: true }).click();
   const blue = page.locator('.slide-canvas [data-word-art="blue"]');
-  await expect(blue.locator("textarea")).toHaveValue("Spring");
-  await expect(gold.locator("textarea")).toHaveValue("Garden club");
+  await expect(blue.locator(".element-textarea")).toHaveText("Spring");
+  await expect(gold.locator(".element-textarea")).toHaveText("Garden club");
   const blueLook = await painted(blue);
   expect(channels(blueLook.color)).toEqual(rgb(BLUE.fill));
   expect(channels(blueLook.stroke)).toEqual(rgb(BLUE.stroke));
@@ -167,8 +167,8 @@ test("word art keeps its words, style, and position", async ({ page }) => {
   await page.getByRole("link", { name: "Garden word art" }).click();
   await expect(page.locator(".slides-editor")).toBeVisible();
   await expect(onSlide()).toHaveCount(2);
-  await expect(gold.locator("textarea")).toHaveValue("Garden club");
-  await expect(blue.locator("textarea")).toHaveValue("Spring");
+  await expect(gold.locator(".element-textarea")).toHaveText("Garden club");
+  await expect(blue.locator(".element-textarea")).toHaveText("Spring");
   await expect(gold).toHaveAttribute("data-x", movedX!);
   await expect(gold).toHaveAttribute("data-y", movedY!);
   const both = await savedArts(page);

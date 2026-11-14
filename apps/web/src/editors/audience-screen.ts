@@ -106,13 +106,14 @@ export function openAudienceScreen(
   popup: AudiencePopup,
   frame: AudienceFrame,
   lines: readonly string[],
+  marpDocument?: string,
 ): boolean {
   if (!popup || popup.closed) return false;
   const previous = audienceUrls.get(popup);
   let next: string | undefined;
   try {
     next = URL.createObjectURL(
-      new Blob([audienceScreenDocument(frame, lines)], { type: "text/html" }),
+      new Blob([!frame.blank && marpDocument ? marpDocument : audienceScreenDocument(frame, lines)], { type: "text/html" }),
     );
     popup.location.replace(next);
     audienceUrls.set(popup, next);

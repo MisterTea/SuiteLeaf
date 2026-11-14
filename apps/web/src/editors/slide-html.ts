@@ -1,4 +1,5 @@
 import { fontKerning, kernFeature, type Presentation } from "@suiteleaf/core";
+import { masterForSlide } from "./slide-master";
 import { marpMediaSrc } from "./slide-marp-import";
 import { escapeHtml, hasTextRuns, textInnerHtml } from "./slide-runs";
 
@@ -50,7 +51,7 @@ export function deckToHtml(deck: Presentation, title: string): string {
     .map((id, i) => {
       const s = deck.slides[id];
       if (!s) return "";
-      const bg = `background-color: ${htmlBackground(s.background?.color, deck.master?.background?.color)};`;
+      const bg = `background-color: ${htmlBackground(s.background?.color, masterForSlide(deck, s).background?.color)};`;
       const elsHtml = s.elements
         .filter((el) => !el.decorative)
         .map((el) => {

@@ -443,6 +443,28 @@ describe("ImportButton", () => {
       expect(onBatchDone).toHaveBeenCalledTimes(2);
     });
 
+    it("imports a drive drop with the import menu closed", async () => {
+      const dropImporter = { current: null as ((data: DataTransfer) => Promise<void>) | null };
+      const { onImport } = setup({ dropImporter });
+      await act(async () => {
+        await dropImporter.current!({ items: [], files: [file("Drive.docx")] } as unknown as DataTransfer);
+      });
+      expect(onImport).toHaveBeenCalledExactlyOnceWith(expect.anything(), "Drive.docx", expect.any(Function));
+    });
+
+    it("keeps one PPTX dropped on Drive in the current folder", async () => {
+      const dropImporter = { current: null as ((data: DataTransfer) => Promise<void>) | null };
+      const keepImported = vi.fn(async () => {});
+      const onBatchDone = vi.fn();
+      const { onImport } = setup({ dropImporter, openDroppedFile: false, keepImported, onBatchDone });
+      await act(async () => {
+        await dropImporter.current!({ items: [], files: [file("Lesson.pptx")] } as unknown as DataTransfer);
+      });
+      expect(keepImported).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.any(Function));
+      expect(onImport).not.toHaveBeenCalled();
+      expect(onBatchDone).toHaveBeenCalledOnce();
+    });
+
     it("reads dropped folders, nested ones included", async () => {
       const placeInFolder = vi.fn<(file: SuiteFile, folder: string) => Promise<void>>(async () => {});
       const onBatchDone = vi.fn();

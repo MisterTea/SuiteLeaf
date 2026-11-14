@@ -3,18 +3,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import type { SuiteFile } from "../file-schema";
 import { createFile, serializeFile } from "../native-file";
 import type { MigrationSourceAdapter } from "./adapters";
-import type {
-  IdentityMappingRule,
-  ItemDisposition,
-  MigrationCheckpoint,
-  MigrationItemState,
-  MigrationManifest,
-  MigrationStorageAdapter,
-  PermissionMappingPolicy,
-  PreflightReport,
-  SourceItem,
-  SourcePermission,
-} from "./types";
+import type { IdentityMappingRule, ItemDisposition, MigrationCheckpoint, MigrationItemState, MigrationManifest, MigrationStorageAdapter, PermissionMappingPolicy, PreflightReport, SourceItem } from "./types";
 
 export interface MigrationEngineOptions {
   migrationId?: string;
@@ -460,7 +449,6 @@ export class MigrationEngine {
 
     // Delimited or plain text conversion fallback
     if (ext === "csv" || ext === "tsv") {
-      const text = new TextDecoder().decode(bytes);
       const file = createFile("sheet", item.name);
       return {
         serializedText: serializeFile(file),

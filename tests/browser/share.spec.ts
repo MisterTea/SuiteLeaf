@@ -60,7 +60,7 @@ async function startNode() {
       if (line.startsWith("SUITELEAF_NODE_READY ")) done();
     });
   });
-  await expect.poll(async () => (await (await fetch(`${url}/api/node/info`)).json()).auth.enabled).toBe(true);
+  await expect.poll(async () => (await fetch(`${url}/api/auth/suiteleaf/providers`)).ok).toBe(true);
   return { url, child };
 }
 

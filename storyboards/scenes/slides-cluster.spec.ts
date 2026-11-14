@@ -352,12 +352,11 @@ test.describe("cluster mode", () => {
       await caption(page, "He lands on his team's home screen.", 1400);
 
       const chip = page.locator(".account-chip");
-      await expect(chip).toContainText("Leo Martins");
-      await expect(chip).toContainText(host);
+      await expect(chip.getByRole("button", { name: "Sign out" })).toBeVisible();
       await expect(page.getByText("Connect to a server")).toHaveCount(0);
       const chipBox = (await chip.boundingBox())!;
       await page.mouse.move(chipBox.x + chipBox.width - 16, chipBox.y + 20, { steps: 15 });
-      await caption(page, "The sidebar shows who he is and which server he's on, with Sign out and Disconnect.", 2400);
+      await caption(page, "The sidebar has an exit icon for signing out and a Disconnect button.", 2400);
 
       await showDrive(page);
       await expect(page.getByText("This folder is empty.")).toBeVisible();

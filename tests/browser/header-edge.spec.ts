@@ -149,7 +149,7 @@ test("header and footer distances stay separate from the page margin", async ({
   await expect(dialog.getByLabel("Top margin")).toHaveValue("1");
   await dialog.getByRole("button", { name: "Apply", exact: true }).click();
 
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   const saved = JSON.parse(

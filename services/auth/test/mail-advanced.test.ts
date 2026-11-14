@@ -8,8 +8,8 @@ import {
 } from "../src/mail/jobs";
 import { preferenceCommand, defaultPreferences } from "../src/mail/preferences";
 import { syncMailAccounts } from "../src/mail/sync";
-import { mailCommand, withMailbox } from "../src/mail/service";
-import { MailStore, type MailJob } from "../src/mail/store";
+
+import { type MailJob } from "../src/mail/store";
 const fake = vi.hoisted(() => ({ command: vi.fn(), mailbox: vi.fn() }));
 vi.mock("../src/mail/service", async (original) => ({
   ...(await original<typeof import("../src/mail/service")>()),

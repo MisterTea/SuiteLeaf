@@ -133,12 +133,14 @@ export default function Sheets({
     book = useRef<any>(null),
     injectorRef = useRef<any>(null),
     sheetActionsRef = useRef<EditorActions | null>(null),
-    content = useRef(structuredClone(file.content)),
     changes = useRef(onChange),
     pendingMutations = useRef<{ id: string; params?: unknown }[]>([]),
     sharedChartIds = useRef<string[] | null>(null),
     applyingRemote = useRef(false),
     error = useRef(onError);
+  // Initialize once: useRef(structuredClone(...)) would still clone the whole
+  // workbook on every render, including selection and file-title changes.
+  const [content] = useState(() => ({ current: structuredClone(file.content) }));
   changes.current = onChange;
   error.current = onError;
   const [ready, setReady] = useState(false),
@@ -230,7 +232,7 @@ export default function Sheets({
       persist,
       refreshCharts,
     });
-  }, [collabDoc, ready]);
+  }, [collabDoc, ready, content]);
   const access = (): SheetAccess =>
     readOnlyRef.current ? (canCommentRef.current ? "comment" : "view") : "edit";
   // Univer focuses its hidden cell editor while it starts, which would send

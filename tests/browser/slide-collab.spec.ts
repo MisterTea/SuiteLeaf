@@ -1,3 +1,4 @@
+import { editSlideText } from "./slide-text-helpers";
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -82,7 +83,7 @@ async function startNode() {
     });
   });
   await expect
-    .poll(async () => (await (await fetch(`${url}/api/node/info`)).json()).auth.enabled, {
+    .poll(async () => (await fetch(`${url}/api/auth/suiteleaf/providers`)).ok, {
       timeout: 20000,
     })
     .toBe(true);
@@ -195,7 +196,7 @@ test("another person's slide edit shows on the canvas and this slide stays put",
     const mayaPage = await openAs(mayaContext, node.url, maya);
     await openDeck(mayaPage, "Garden.slslides");
     const mayaNorth = mayaPage.locator(".slide-canvas .slide-text").filter({ hasText: "North" });
-    await mayaNorth.locator(".element-textarea").dblclick();
+    await editSlideText(mayaNorth);
     const editor = mayaNorth.locator(".element-editor");
     await expect(editor).toHaveAttribute("contenteditable", "true");
     await editor.press("ControlOrMeta+A");

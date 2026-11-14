@@ -1,15 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  GoogleDriveAdapter,
-  SharePointAdapter,
-  LocalDirectoryAdapter,
-  MigrationEngine,
-  type IdentityMappingRule,
-  type MigrationCheckpoint,
-  type MigrationStorageAdapter,
-  type PermissionMappingPolicy,
-  type SourceItem,
-} from "../packages/core/src/migration";
+import { GoogleDriveAdapter, SharePointAdapter, LocalDirectoryAdapter, MigrationEngine, type IdentityMappingRule, type MigrationStorageAdapter, type SourceItem } from "../packages/core/src/migration";
 import { importDirectory } from "../apps/desktop/src/directory-import";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

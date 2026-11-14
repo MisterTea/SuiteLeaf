@@ -59,6 +59,7 @@ export function useSlidesEditorState({
     x: number;
     y: number;
   } | null>(null);
+  const [textRevision, setTextRevision] = useState(0);
   const [historyMarks, setHistoryMarks] = useState({
     undo: false,
     redo: false,
@@ -79,6 +80,15 @@ export function useSlidesEditorState({
   const [panel, setPanel] = useState<
     "theme" | "transition" | "animation" | "master" | "language" | "geometry" | null
   >(null);
+  const [masterView, setMasterView] = useState(false);
+  const masterViewRef = useRef(false);
+  masterViewRef.current = masterView;
+  const returnSlideRef = useRef<string | null>(null);
+  const openMasterRef = useRef<() => void>(() => {});
+  const closeMasterRef = useRef<() => void>(() => {});
+  const switchMasterRef = useRef<(id: string) => void>(() => {});
+  const addMasterRef = useRef<() => void>(() => {});
+  const [editingMasterId, setEditingMasterId] = useState("master");
   const [accessOpen, setAccessOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorderRef = useRef<SlideshowRecorder | null>(null);
@@ -145,6 +155,7 @@ export function useSlidesEditorState({
   const pendingFocus = useRef<string | null>(null);
   /** A press that started in a text box. A click must not drop the selection. */
   const textPress = useRef(false);
+  const ignoreCanvasClick = useRef(false);
   const dragMoved = useRef(false);
   const [spellCaret, setSpellCaret] = useState<{ id: string; at: number } | null>(
     null,
@@ -186,6 +197,7 @@ export function useSlidesEditorState({
     group?: { id: string; x: number; y: number }[];
     initW?: number;
     initH?: number;
+    proportional?: boolean;
     reorder?: boolean;
     fitted?: boolean;
   } | null>(null);
@@ -198,18 +210,20 @@ export function useSlidesEditorState({
     selectedElementId, setSelectedElementId, svgEdit, setSvgEdit, tableCell, setTableCell,
     tableCellRef, editingId, setEditingId, caretMarks, setCaretMarks, selectedSlideIds,
     setSelectedSlideIds, onSlideUrlRef, notice, setNotice, contextMenu, setContextMenu,
-    historyMarks, setHistoryMarks, showNotes, setShowNotes, presenting, setPresenting,
+    textRevision, setTextRevision, historyMarks, setHistoryMarks, showNotes, setShowNotes, presenting, setPresenting,
     handoutsOpen, setHandoutsOpen, wordArtOpen, setWordArtOpen, showCursor, setShowCursor,
     presentSlideIndex, showSpeakerNotes, setShowSpeakerNotes, blankScreen, setBlankScreen,
     audiencePopup, showStartedAt, setShowStartedAt, timerPaused, setTimerPaused,
-    frozenElapsedMs, setFrozenElapsedMs, clock, setClock, panel, setPanel, accessOpen,
+    frozenElapsedMs, setFrozenElapsedMs, clock, setClock, panel, setPanel, masterView, setMasterView,
+    masterViewRef, returnSlideRef, openMasterRef, closeMasterRef, switchMasterRef, addMasterRef,
+    editingMasterId, setEditingMasterId, accessOpen,
     setAccessOpen, recording, setRecording, recorderRef, marpOpen, setMarpOpen, marpWarnings,
     setMarpWarnings, previewTheme, setPreviewTheme, transitionScope, setTransitionScope,
     transitionDuration, setDuration, chosenTransition, setChosenTransition, transitionStatus,
     setTransitionStatus, canvasMotion, setCanvasMotion, showMotion, setShowMotion, themeEdits,
     apiRef, reducedMotion, libraryThemes, saveLibraryTheme, historyRef, deckRef, activeRef,
     selectedRef, selectedIdsRef, selectedElementRef, editingRef, textRange, anchorRef,
-    presentingRef, handoutsRef, showCursorRef, moveShowRef, pendingFocus, textPress, dragMoved,
+    presentingRef, handoutsRef, showCursorRef, moveShowRef, pendingFocus, textPress, ignoreCanvasClick, dragMoved,
     spellCaret, setSpellCaret, liveDirty, clipboard, commitRef, marpOpenRef, marpStale, painted,
     setPainted, focusedBox, setFocusedBox, marpAreaRef, onChangeRef, readOnlyRef, imageInputRef,
     audioInputRef, videoInputRef, spellingRef, stageRef, draggingRef, activeDeckSlide,

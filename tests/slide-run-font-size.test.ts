@@ -48,18 +48,18 @@ describe("imported slide font sizes", () => {
     expect(runStyle({ text: "1", baseline: 30, fontSize: 18 }).lineHeight).toBe(0);
     expect(runStyle({ text: "1", baseline: 30, fontSize: 18 }).top).toBe("-0.3em");
     expect(html).toContain('data-script-scale="1"');
-    expect(html).toContain("font-size:calc(18 * var(--slide-pt, 1) * 1px)");
+    expect(html).toContain("font-size:calc(18 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)");
     expect(cleanRun({ text: "1", baseline: 30, scriptScale: true, scriptStrut: 12 }).scriptStrut).toBe(12);
     const allScript = runsToHtml([{ text: "Title", baseline: 30, scriptScale: true, scriptStrut: 64, fontSize: 96 }]);
     expect(allScript).toContain('data-script-strut="64"');
-    expect(allScript).toContain('class="slide-para" data-para-index="0" data-slide-para="1" style="display:block;margin:0;font-size:calc(64 * var(--slide-pt, 1) * 1px)"');
+    expect(allScript).toContain('class="slide-para" data-para-index="0" data-slide-para="1" style="display:block;margin:0;font-size:calc(64 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)"');
     const sized = runsToHtml([{ text: "2", baseline: 30, fontSize: 12 }]);
     expect(sized).not.toContain("font-size:calc(100% * 2 / 3)");
   });
 
   it("keeps a hyphenated word together when latin line breaking is off", () => {
     const tracked = runsToHtml([{ text: "Dashboard", tracking: -3 }]);
-    expect(tracked).toContain("letter-spacing:calc(-3 * var(--slide-pt, 1) * 1px)");
+    expect(tracked).toContain("letter-spacing:calc(-3 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)");
     expect(cleanRun({ text: "Dashboard", tracking: -3 }).tracking).toBe(-3);
     const html = runsToHtml([{ text: "data-sharing agreement", unbroken: true }]);
     expect(html).toContain("white-space:nowrap");
@@ -92,8 +92,8 @@ describe("imported slide font sizes", () => {
       { text: "Kirstie", fontSize: 28 },
     ]);
     expect(html).toContain('data-slide-line="1"');
-    expect(html).toContain("font-size:calc(40 * var(--slide-pt, 1) * 1px)");
-    expect(html).toContain("font-size:calc(28 * var(--slide-pt, 1) * 1px)");
+    expect(html).toContain("font-size:calc(40 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)");
+    expect(html).toContain("font-size:calc(28 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)");
     expect(html.match(/data-slide-line/g)).toHaveLength(4);
     expect(html).toContain("min-height:1lh");
     expect(html).not.toContain("<br>");
@@ -123,7 +123,7 @@ describe("imported slide font sizes", () => {
       { text: "sets", fontSize: 16 },
     ]);
     const para = html.match(/class="slide-para"[^>]*style="([^"]*)"/);
-    expect(para?.[1]).toContain("font-size:calc(24 * var(--slide-pt, 1) * 1px)");
+    expect(para?.[1]).toContain("font-size:calc(24 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)");
     expect(para?.[1]).not.toContain("calc(31 ");
     expect(html).toContain("line-height:0");
     expect(html).toContain('data-font-size="31"');
@@ -145,7 +145,7 @@ describe("imported slide font sizes", () => {
     const shadow = { x: 2.12, y: 2.12, blur: 3, color: "rgba(0, 0, 0, 0.431)" };
     const html = runsToHtml([{ text: "Projects", shadow }]);
     expect(html).toContain(
-      "text-shadow:calc(2.12 * var(--slide-pt, 1) * 1px) calc(2.12 * var(--slide-pt, 1) * 1px) calc(3 * var(--slide-pt, 1) * 1px) rgba(0, 0, 0, 0.431)",
+      "text-shadow:calc(2.12 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px) calc(2.12 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px) calc(3 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px) rgba(0, 0, 0, 0.431)",
     );
     expect(html).toContain('data-shadow="1"');
     expect(cleanRun({ text: "Projects", shadow }).shadow).toEqual(shadow);
@@ -175,7 +175,7 @@ describe("imported slide font sizes", () => {
 
  it("scales mixed hard-break line heights with each line font size", () => {
  const html = runsToHtml([{text:"Title",fontSize:44},{text:"\n",fontSize:32},{text:"Subtitle",fontSize:32}], undefined, undefined, {fontSize:44,lineHeight:1.2207});
- expect(html).toContain("line-height:calc(32 * var(--slide-pt, 1) * 1.2207 * 1px)");
+ expect(html).toContain("line-height:calc(32 * var(--slide-text-pt, var(--slide-pt, 1)) * 1.2207 * 1px)");
  });
 
 it("anchors a fixed bullet gutter to centered text rather than the box edge", () => {

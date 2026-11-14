@@ -1,5 +1,6 @@
 import { nudgeSlideSelection } from "@suiteleaf/core";
 import type { Layout } from "./slide-layouts";
+import { masterPageIds } from "./slide-master-view";
 import {
   deleteSlides,
   duplicateSlides,
@@ -70,12 +71,13 @@ export function slideOrderActions(
 
   // Add new slide
   const addSlide = (layout: Layout = "title-body") => {
+    if (state.masterViewRef.current) return;
     const prev = deckRef.current;
     const marpLayout: Layout =
-      prev.marp && layout !== "two-column" ? "title-body" : layout;
+      prev.marp && layout !== "two-column" && layout !== "three-column" ? "title-body" : layout;
     const current =
       prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
-    const slide = slideFromTheme(marpLayout, prev.theme, current?.transition);
+    const slide = slideFromTheme(marpLayout, prev.theme, current?.transition, prev.marp ? undefined : prev);
     const idx = Math.max(0, prev.slideOrder.indexOf(activeRef.current));
     const slideOrder = [...prev.slideOrder];
     slideOrder.splice(idx + 1, 0, slide.id);
@@ -89,6 +91,7 @@ export function slideOrderActions(
   };
 
   const duplicateCurrentSlide = () => {
+    if (state.masterViewRef.current) return;
     const result = duplicateSlides(
       deckRef.current,
       chosenSlides(),
@@ -101,6 +104,7 @@ export function slideOrderActions(
   };
 
   const deleteCurrentSlide = () => {
+    if (state.masterViewRef.current) return;
     const result = deleteSlides(deckRef.current, chosenSlides());
     if ("error" in result) {
       onError(result.error);
@@ -113,6 +117,7 @@ export function slideOrderActions(
   };
 
   const moveSlides = (where: MoveWhere) => {
+    if (state.masterViewRef.current) return;
     const prev = deckRef.current;
     const slideOrder = moveSelection(prev.slideOrder, chosenSlides(), where);
     if (slideOrder === prev.slideOrder) return;
@@ -120,7 +125,7 @@ export function slideOrderActions(
   };
 
   const stepSlide = (where: "next" | "prev") => {
-    const order = deckRef.current.slideOrder;
+    const order = state.masterViewRef.current ? masterPageIds() : deckRef.current.slideOrder;
     const to = order.indexOf(activeRef.current) + (where === "next" ? 1 : -1);
     if (to < 0 || to >= order.length) return;
     const nextId = order[to];
@@ -159,7 +164,9 @@ export function slideCommands(
     toggleBold,
     toggleItalic,
     toggleUnderline,
-  }: Pick<DeckHistoryApi, "commit" | "applySelection" | "undo" | "redo"> &
+    selectionIn,
+    textDeck,
+  }: Pick<DeckHistoryApi, "commit" | "applySelection" | "undo" | "redo" | "textDeck"> &
     Pick<
       SlideOrderActions,
       | "chosenSlides"
@@ -170,7 +177,7 @@ export function slideCommands(
       | "stepSlide"
     > &
     Pick<SlideElementActions, "deleteSelectedElement" | "selectElement"> &
-    Pick<SlideTextFormat, "toggleBold" | "toggleItalic" | "toggleUnderline">,
+    Pick<SlideTextFormat, "toggleBold" | "toggleItalic" | "toggleUnderline" | "selectionIn">,
 ) {
   const { deckRef, activeDeckSlide, selectedElementRef, clipboard, anchorRef, commitRef, activeRef } =
     state;
@@ -185,6 +192,7 @@ export function slideCommands(
       clipboard.current = { kind: "elements", elements: [structuredClone(el)] };
       return;
     }
+    if (state.masterViewRef.current) return;
     const ids = chosenSlides();
     if (!ids.length) return;
     clipboard.current = {
@@ -215,6 +223,7 @@ export function slideCommands(
       selectElement(placed[placed.length - 1]?.id ?? null);
       return;
     }
+    if (state.masterViewRef.current) return;
     const after = chosenSlides().at(-1) || slide.id;
     const result = pasteSlides(deckNow, clip.slides, after, () =>
       crypto.randomUUID(),
@@ -290,7 +299,7 @@ export function slideCommands(
     const elementId = selectedElementRef.current;
     const slideId = activeRef.current;
     if (!elementId || !slideId) return;
-    const next = applySlideAnimation(deckRef.current, slideId, elementId, kind);
+    const next = applySlideAnimation(textDeck(), slideId, elementId, kind, selectionIn(elementId));
     if (next) commit(next);
   };
   const applyFadeToSelection = () => applyAnimation(FADE_ON_CLICK);
@@ -299,7 +308,7 @@ export function slideCommands(
     const el = slide?.elements.find(
       (item) => item.id === selectedElementRef.current,
     );
-    return fadeOnClickReason(el, kind);
+    return el && selectionIn(el.id) ? undefined : fadeOnClickReason(el, kind);
   };
 
   return {

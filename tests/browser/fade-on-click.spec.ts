@@ -1,38 +1,54 @@
+import { fillSlideText } from "./slide-text-helpers";
 import { test, expect, type Page } from "@playwright/test";
 
 async function q3Deck(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "New presentation" }).click();
   await page.getByLabel("File title").fill("Q3 update");
-  await page.locator(".slide-element textarea").first().fill("Q3 update");
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    "Q3 update",
+  );
   await page.getByRole("button", { name: "Insert text box" }).click();
-  await page.locator(".slide-element.selected textarea").fill("September");
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text.selected"),
+    "September",
+  );
   await page.getByRole("button", { name: "+ New slide" }).click();
   await page.getByRole("menuitem", { name: "Title & body" }).click();
-  await page.locator(".slide-element textarea").first().fill("What changed");
+  await fillSlideText(
+    page.locator(".slide-canvas .slide-text").first(),
+    "What changed",
+  );
   await page.getByRole("option", { name: "Slide 1: Q3 update" }).click();
 }
 
-test("fade in on click hides one object until the next slideshow click", async ({ page }) => {
+test("fade in on click hides one object until the next slideshow click", async ({
+  page,
+}) => {
   await q3Deck(page);
   await page.locator(".slide-canvas").click({ position: { x: 8, y: 8 } });
   await page.getByRole("button", { name: "Insert", exact: true }).click();
   await page.getByRole("menuitem", { name: "Animation", exact: true }).hover();
-  await expect(page.getByRole("menuitem", { name: "Fade in on click" })).toBeDisabled();
+  await expect(
+    page.getByRole("menuitem", { name: "Fade in on click" }),
+  ).toBeDisabled();
   await page.keyboard.press("Escape");
 
-  await page.locator(".slide-element textarea").nth(2).click();
+  await page.locator(".slide-canvas .slide-text").nth(2).click();
   await page.getByRole("button", { name: "Insert", exact: true }).click();
   await page.getByRole("menuitem", { name: "Animation", exact: true }).hover();
   await page.getByRole("menuitem", { name: "Fade in on click" }).click();
 
   const marked = page.locator(".slide-element.has-fade-on-click");
   await expect(marked).toHaveCount(1);
-  await expect(marked.locator("textarea")).toHaveValue("September");
-  await expect(marked.locator("textarea")).toBeVisible();
+  await expect(marked.locator(".element-textarea")).toHaveText("September");
+  await expect(marked.locator(".element-textarea")).toBeVisible();
   await expect(marked.locator(".fade-on-click-mark")).toHaveText("1");
   await expect(marked.locator(".fade-on-click-mark svg")).toBeVisible();
-  await expect(page.locator(".slide-element textarea").first()).toHaveValue("Q3 update");
+  await expect(
+    page.locator(".slide-element .element-textarea").first(),
+  ).toHaveText("Q3 update");
 
   await page.getByRole("button", { name: "Slideshow", exact: true }).click();
   const show = page.locator(".presenter-overlay");
@@ -57,9 +73,9 @@ test("fade in on click hides one object until the next slideshow click", async (
   await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: /Q3 update/ }).click();
-  await expect(page.locator(".slide-element.has-fade-on-click textarea")).toHaveValue(
-    "September",
-  );
+  await expect(
+    page.locator(".slide-element.has-fade-on-click .element-textarea"),
+  ).toHaveText("September");
   await page.getByRole("button", { name: "Slideshow", exact: true }).click();
   await expect(box.getByText("September")).toBeHidden();
   await expect(box.getByText("Q3 update")).toBeVisible();

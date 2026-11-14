@@ -40,6 +40,8 @@ type StillProps = {
   hooks?: SlideFaceHooks;
   /** Media controls can be used, as in the slideshow. */
   interactive?: boolean;
+  /** Revealed MARP list items in a running show; omitted for editor and print stills. */
+  fragmentStep?: number;
   lazy?: boolean;
   className?: string;
   children?: ReactNode;
@@ -69,6 +71,7 @@ export const sameStill = (a: StillProps, b: StillProps) =>
   a.index === b.index &&
   a.hooks === b.hooks &&
   a.interactive === b.interactive &&
+  a.fragmentStep === b.fragmentStep &&
   a.lazy === b.lazy &&
   a.className === b.className &&
   a.children === b.children &&
@@ -83,6 +86,7 @@ export const SlideStill = memo(function SlideStill({
   pages = null,
   hooks,
   interactive = false,
+  fragmentStep,
   lazy = false,
   className = "",
   children,
@@ -137,7 +141,7 @@ export const SlideStill = memo(function SlideStill({
       className={`slide-still${interactive ? " slide-still-live" : ""}${className ? ` ${className}` : ""}`}
     >
       <div
-        className={`slide-surface${isFittedDeck(deck) ? " marp-fit" : ""}${drawn && painted ? " marp-painted" : ""}`}
+        className={`slide-surface${isFittedDeck(deck) ? " marp-fit" : ""}${drawn && (painted || fragmentStep !== undefined) ? " marp-painted" : ""}`}
         style={{
           width,
           height,
@@ -155,7 +159,7 @@ export const SlideStill = memo(function SlideStill({
         }}
       >
         {drawn && near ? (
-          <MarpBackdrop pages={pages} index={index} live={null} plain onPainted={setPainted} />
+          <MarpBackdrop pages={pages} index={index} live={null} plain fragmentStep={fragmentStep} onPainted={setPainted} />
         ) : null}
         <SlideFace deck={deck} slide={slide} index={index} hooks={hooks} still={!interactive} />
         {children}

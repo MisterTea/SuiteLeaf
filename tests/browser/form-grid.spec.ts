@@ -42,7 +42,7 @@ test("a required grid names the question until every row is answered", async ({ 
   await expect(table.getByText("Mon: Yes", { exact: true })).toBeVisible();
   await expect(table.getByText("Tue: No", { exact: true })).toBeVisible();
   await expect(table.locator("tbody tr")).toHaveCount(1);
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "File", exact: true }).click();

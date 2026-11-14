@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 import { generateHTML } from "@tiptap/core";
 import { filename, type DocFile, type JsonNode } from "@suiteleaf/core";
 import { listSuggestions, resolveSuggestions } from "@suiteleaf/core/suggestions";
+import { documentPdf } from "@suiteleaf/core/doc-pdf";
 import { documentHtml, documentPageSettings } from "@suiteleaf/core/document-layout";
 import { exportBinary, exportText } from "../storage";
 import { exportTabSections, exportTabsBodyHtml, exportTabsPlainText } from "./doc-export-tabs";
@@ -63,7 +64,6 @@ export async function exportDocTabs(
       }))
     : saved;
   if (format === "pdf") {
-    const { documentPdf } = await import("@suiteleaf/core/doc-pdf");
     return exportBinary(
       filename(file.title, "pdf"),
       documentPdf(sections[0].content),

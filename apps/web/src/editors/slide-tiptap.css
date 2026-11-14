@@ -1,0 +1,29 @@
+.slide-tiptap-mount {
+  display: contents;
+}
+
+.slide-tiptap-text ul,
+.slide-tiptap-text ol,
+.slide-tiptap-text li {
+  display: block;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.slide-tiptap-text .slide-para {
+  min-height: 1lh;
+}
+
+.slide-tiptap-text .slide-bullet-slot {
+  user-select: none;
+}
+
+.slide-tiptap-text .ProseMirror-selectednode {
+  outline: 1px solid currentColor;
+}
+
+.slide-tiptap-text[contenteditable="true"] {
+  user-select: text;
+  cursor: text;
+}

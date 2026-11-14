@@ -15,7 +15,7 @@ test("restoring one paragraph keeps the rest of a local document", async ({ page
   await page.getByRole("button", { name: "Bold", exact: true }).click();
   await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save now" }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   await page.getByRole("button", { name: "Version history", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "Version history" });
@@ -40,7 +40,7 @@ test("restoring one paragraph keeps the rest of a local document", async ({ page
   await page.keyboard.type("Thursday: ask Alex to cover.");
   await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save now" }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await expect(editor).toContainText("North bed: 8am");
   await expect(editor.locator("strong")).toHaveText("7am");
 
@@ -68,7 +68,7 @@ test("restoring one paragraph keeps the rest of a local document", async ({ page
   await expect(editor).not.toContainText("North bed: 8am");
   await expect(editor).toContainText("Thursday: ask Alex to cover.");
   await expect(editor.locator("strong")).toHaveText("7am");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   await page.getByRole("button", { name: "Version history", exact: true }).click();
   await expect(panel.getByText("Restored the north-bed paragraph", { exact: true })).toBeVisible();

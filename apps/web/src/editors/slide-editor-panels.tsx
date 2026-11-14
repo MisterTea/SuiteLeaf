@@ -3,7 +3,6 @@ import { SheetLanguageField } from "./sheet-language";
 import { proofingLanguage } from "./proofing-language";
 import { SlideGeometryPanel } from "./slide-geometry-panel";
 import { AnimationPane } from "./slide-animation-pane";
-import { SlideMasterPanel } from "./slide-master-panel";
 import { SlideDesignPanel } from "./slide-design-panel";
 import { DECK_THEMES, customizeTheme, setTransitionDuration } from "./slide-theme";
 import { SlideSpelling } from "./grid-spelling-ui";
@@ -17,6 +16,7 @@ import type { SlideElementActions, SlideUpdates } from "./slide-editor-elements"
 /** The side panels beside the canvas, and the spelling check. */
 export function SlideEditorPanels({
   state,
+  animationKey, onAnimationSelect, onAnimationPreview,
   file,
   activeSlide,
   applyDeck,
@@ -42,6 +42,9 @@ export function SlideEditorPanels({
     | "applyTransitionTo"
     | "playTransition"
   > & {
+    animationKey?: string | null;
+    onAnimationSelect?: (key: string) => void;
+    onAnimationPreview?: (key?: string) => void;
     state: SlidesEditorState;
     file: SlideFile;
     activeSlide: Slide;
@@ -69,18 +72,16 @@ export function SlideEditorPanels({
       {panel === "animation" ? (
         <AnimationPane
           deck={deck}
+          selectedElementId={selectedElementId}
+          selectedKey={animationKey}
+          onSelectEntry={onAnimationSelect}
+          onPreview={onAnimationPreview}
+          readOnly={state.readOnlyRef.current}
           slideId={activeSlideId}
           slide={deck.slides[activeSlideId]}
           onChange={(next) => commit(next)}
           onClose={() => setPanel(null)}
           onSelect={(elementId) => selectElement(elementId)}
-        />
-      ) : null}
-      {panel === "master" ? (
-        <SlideMasterPanel
-          deck={deck}
-          onChange={(next) => commit(next)}
-          onClose={() => setPanel(null)}
         />
       ) : null}
       {panel === "theme" || panel === "transition" ? (

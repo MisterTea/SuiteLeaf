@@ -155,7 +155,7 @@ test("a local slide version shows added and removed text and a deleted slide", a
   await back.click();
   await expect(preview).toHaveCount(0);
   await expect(panel).toHaveCount(0);
-  await expect(page.locator(".slide-canvas textarea").first()).toHaveValue("Spring fair");
+  await expect(page.locator(".slide-canvas .element-textarea").first()).toHaveText("Spring fair");
   await expect(page.locator(".thumbnail-row")).toHaveCount(2);
 
   await page.getByRole("button", { name: "Version history", exact: true }).click();
@@ -163,6 +163,6 @@ test("a local slide version shows added and removed text and a deleted slide", a
   await panel.getByRole("button", { name: "Restore this version" }).click();
   await expect(preview).toHaveCount(0);
   await expect(panel).toHaveCount(0);
-  await expect(page.locator(".slide-canvas textarea").first()).toHaveValue("Fundraiser pitch");
+  await expect(page.locator(".slide-canvas .element-textarea").first()).toHaveText("Fundraiser pitch");
   await expect(page.locator(".thumbnail-row")).toHaveCount(3);
 });

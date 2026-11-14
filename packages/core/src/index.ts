@@ -268,9 +268,26 @@ export interface StorageAdapter {
   saveAs(record: FileRecord): Promise<FileRecord | null>;
   reload(id: string): Promise<FileRecord | undefined>;
 }
+/** Progress for a document-directory rescan. `total` appears once listing finishes. */
+export interface DocumentScanProgress {
+  /** Documents found while listing, then documents read once `total` is known. */
+  files: number;
+  /** Folders entered so far. Zero before listing starts. */
+  folders: number;
+  total?: number;
+}
 export interface DesktopBridge {
+  /** Move a folder and its contents to the operating system Trash. */
+  trashFolder?(folder: string): Promise<void>;
+  exportFolderSelection?(folders: string[], fileIds: string[]): Promise<string | null>;
+  /** Change local Trash metadata and return the IDs whose status changed. */
+  setTrashed?(ids: string[], trashed: boolean): Promise<string[]>;
   getDocumentsDirectory?(): Promise<string>;
   chooseDocumentsDirectory?(): Promise<string | null>;
+  /** Read the current document directory again and drop library entries from other folders. */
+  rescanDocumentsDirectory?(): Promise<void>;
+  /** Fired while a newly chosen document directory is being scanned. */
+  onDocumentScan?(callback: (progress: DocumentScanProgress) => void): () => void;
   onFilesChanged?(callback: () => void): () => void;
   /**
    * Folders inside the documents folder. A folder is a "/"-separated path

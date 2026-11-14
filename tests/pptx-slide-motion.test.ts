@@ -61,7 +61,7 @@ describe("animations on a shape's painted parts", () => {
     const slide = await importedSlide(textBox, effect("5", false, true));
     const text = slide.elements.find((el) => el.type === "text")!;
     const art = slide.elements.find((el) => el.type === "shape")!;
-    expect(text.paragraphBuilds).toEqual([{ start: 0, end: 0, order: 1 }]);
+    expect(text.paragraphBuilds).toEqual([{ start: 0, end: 0, order: 1, kind: "fade-on-click" }]);
     expect(art.paragraphBuilds).toBeUndefined();
     expect(art.animation).toBeUndefined();
     expect(animationClicks(slide.elements)).toHaveLength(1);

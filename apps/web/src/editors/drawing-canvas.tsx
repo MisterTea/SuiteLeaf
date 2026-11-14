@@ -41,6 +41,10 @@ function mermaidNodeId(node: Element) {
   return /flowchart-(.+)-\d+$/.exec(node.id)?.[1] ?? null;
 }
 
+function graphvizNodeId(node: Element): string | null | undefined {
+  return Array.from(node.children).find((child) => child.localName === "title")?.textContent;
+}
+
 function pick(target: Element, format: DrawingFormat, deep: boolean): DrawingSelection | null {
   if (format === "svg") {
     let element = target.closest(`[${INDEX_ATTRIBUTE}]`);
@@ -55,7 +59,7 @@ function pick(target: Element, format: DrawingFormat, deep: boolean): DrawingSel
   }
   const node = target.closest("g.node");
   if (node) {
-    const id = format === "graphviz" ? node.querySelector(":scope > title")?.textContent : mermaidNodeId(node);
+    const id = format === "graphviz" ? graphvizNodeId(node) : mermaidNodeId(node);
     if (id) return { kind: "node", id };
   }
   const text = squash(target.closest("text")?.textContent);
@@ -68,7 +72,7 @@ function find(root: ParentNode, format: DrawingFormat, selection: DrawingSelecti
     return (
       [...root.querySelectorAll("g.node")].find((node) =>
         format === "graphviz"
-          ? node.querySelector(":scope > title")?.textContent === selection.id
+          ? graphvizNodeId(node) === selection.id
           : mermaidNodeId(node) === selection.id,
       ) ?? null
     );

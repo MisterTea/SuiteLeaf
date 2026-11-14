@@ -50,6 +50,14 @@ export function setupSlidesDom() {
   });
 }
 
+export function mockImageDimensions(width: number, height: number) {
+  vi.stubGlobal("Image", class {
+    naturalWidth = width;
+    naturalHeight = height;
+    async decode() {}
+  });
+}
+
 export const words = (id: string, content: string, extra: Partial<SlideElement> = {}): SlideElement => ({
   id,
   type: "text",

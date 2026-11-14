@@ -95,7 +95,7 @@ it("measures default tabs from the text box, not from the bullet", () => {
   ]);
   // Bullet and letters use the fallback width, half a point per character.
   // Absolute position 108+16+80 = 204, so the next 72pt stop is 216.
-  expect(html).toContain("width:calc(12 * var(--slide-pt, 1) * 1px)");
+  expect(html).toContain("width:calc(12 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)");
 });
 
 it("does not let a symbol bullet's em space skip a tab stop", () => {
@@ -111,7 +111,7 @@ it("does not let a symbol bullet's em space skip a tab stop", () => {
     { text: "A\tZ", fontSize: 32 },
   ]);
   // After the gutter, "A" is 16px in the fallback measure, so the stop is 72.
-  expect(html).toContain("width:calc(29 * var(--slide-pt, 1) * 1px)");
+  expect(html).toContain("width:calc(29 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)");
 });
 
 it("lands a leading tab on the hanging margin, not the default tab interval", () => {
@@ -124,7 +124,7 @@ it("lands a leading tab on the hanging margin, not the default tab interval", ()
     },
     { text: "\twhere", fontSize: 28 },
   ]);
-  expect(html).toContain("width:calc(23.76 * var(--slide-pt, 1) * 1px)");
+  expect(html).toContain("width:calc(23.76 * var(--slide-text-pt, var(--slide-pt, 1)) * 1px)");
   expect(html).not.toContain("width:calc(63.36");
   expect(html).not.toContain("width:calc(72");
 });

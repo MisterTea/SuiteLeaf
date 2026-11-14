@@ -28,9 +28,8 @@ it("leaves standalone editors without an empty action group", () => {
   expect(container.childElementCount).toBe(0);
 });
 
-it("places Back and Main menu before the presentation editing controls", () => {
+it("places Back before the presentation editing controls", () => {
   const back = vi.fn();
-  const menu = vi.fn();
   function Harness() {
     const [target, setTarget] = useState<HTMLDivElement | null>(null);
     return (
@@ -38,7 +37,6 @@ it("places Back and Main menu before the presentation editing controls", () => {
         <header data-testid="header">
           <ToolbarActions target={target}>
             <button onClick={back}>Back</button>
-            <button onClick={menu}>Main menu</button>
           </ToolbarActions>
         </header>
         <div role="toolbar">
@@ -54,14 +52,11 @@ it("places Back and Main menu before the presentation editing controls", () => {
   const buttons = within(screen.getByRole("toolbar")).getAllByRole("button");
   expect(buttons.map((button) => button.textContent)).toEqual([
     "Back",
-    "Main menu",
     "Theme",
   ]);
   expect(screen.getByTestId("header").childElementCount).toBe(0);
   fireEvent.click(buttons[0]);
-  fireEvent.click(buttons[1]);
   expect(back).toHaveBeenCalledTimes(1);
-  expect(menu).toHaveBeenCalledTimes(1);
 });
 
 it("moves working workspace actions into the toolbar outside read-only editing controls", () => {

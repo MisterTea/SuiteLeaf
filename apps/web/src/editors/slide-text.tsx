@@ -1,20 +1,26 @@
-import { semanticPoint, semanticTextLength } from "./slide-text-selection";
+import { isCaretBreak, startsTextBlock } from "./slide-text-breaks";
+import { slideTextTrialEnabled } from "./slide-text-trial";
+import { restoreTiptapSelection, slideTextEditor, tiptapTextSelection } from "./slide-tiptap-selection";
+import { normalizeBulletCaret, semanticOffset, semanticPoint } from "./slide-text-selection";
 import { readSlideMath } from "./slide-math";
 import { textAreaWidthPt } from "./slide-office-wrap";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { TextRun } from "@suiteleaf/core";
-import { paintFontFamily } from "@suiteleaf/core";
+import { paintFontFamily, textRunSchema } from "@suiteleaf/core";
 import {
   cleanRun,
   hasTextRuns,
   mergeRuns,
+  normalizeColor,
   plainText,
   replaceRunRange,
   runsOf,
   runsToHtml,
 } from "./slide-runs";
-import { continueList, listShortcut } from "./slide-list";
+import { changeListDepth, continueList, listShortcut } from "./slide-list";
 import "./slide-text.css";
+
+const TiptapSlideTextBody = lazy(() => import("./slide-tiptap-text").then(module => ({ default: module.TiptapSlideTextBody })));
 
 export function runStyle(run: TextRun, baseFontSize?: number): CSSProperties {
   return {
@@ -94,6 +100,13 @@ type StyleAttr = Partial<
     | "strike"
     | "color"
     | "highlight"
+    | "stroke"
+    | "strokeWidth"
+    | "shadow"
+    | "gradient"
+    | "reflection"
+    | "caps"
+    | "unbroken"
     | "fontSize"
     | "font"
     | "paragraphBreak"
@@ -106,6 +119,16 @@ type StyleAttr = Partial<
   >
 >;
 
+function readMetadata<T>(value: string | undefined, schema: { safeParse: (value: unknown) => { success: true; data: T } | { success: false } }): T | undefined {
+  if (!value) return;
+  try {
+    const result = schema.safeParse(JSON.parse(value));
+    if (result.success) return result.data;
+  } catch {
+    // External HTML can contain malformed data attributes.
+  }
+}
+
 function styleFrom(el: HTMLElement): StyleAttr {
   const next: StyleAttr = {};
   if (el.dataset.bold === "1" || el.tagName === "B" || el.tagName === "STRONG")
@@ -115,6 +138,20 @@ function styleFrom(el: HTMLElement): StyleAttr {
   if (el.dataset.underline === "1" || el.tagName === "U") next.underline = true;
   if (el.dataset.strike === "1" || el.tagName === "S" || el.tagName === "DEL") next.strike = true;
   if (el.dataset.color) next.color = el.dataset.color;
+  const fill = readMetadata(el.dataset.fillColor, textRunSchema.shape.color);
+  if (fill) next.color = fill;
+  if (el.dataset.stroke) next.stroke = el.dataset.stroke;
+  const strokeWidth = Number(el.dataset.strokeWidth);
+  if (strokeWidth > 0) next.strokeWidth = strokeWidth;
+  const shadow = readMetadata(el.dataset.shadowValue, textRunSchema.shape.shadow);
+  const shadowColor = shadow && normalizeColor(shadow.color);
+  if (shadow && shadowColor) next.shadow = { ...shadow, color: shadowColor };
+  const gradient = readMetadata(el.dataset.gradientValue, textRunSchema.shape.gradient);
+  if (gradient && !/\burl\s*\(/i.test(gradient) && /^(?:linear|radial|conic)-gradient\([#%.,()\w\s+-]+\)$/i.test(gradient)) next.gradient = gradient;
+  const reflection = readMetadata(el.dataset.runReflection, textRunSchema.shape.reflection);
+  if (reflection) next.reflection = reflection;
+  if (el.dataset.caps === "all" || el.dataset.caps === "small") next.caps = el.dataset.caps;
+  if (el.dataset.unbroken === "1") next.unbroken = true;
   if (el.dataset.highlight) next.highlight = el.dataset.highlight;
   if (el.dataset.fontSize && Number(el.dataset.fontSize) > 0)
     next.fontSize = Number(el.dataset.fontSize);
@@ -136,11 +173,25 @@ function styleFrom(el: HTMLElement): StyleAttr {
 function paragraphMetrics(el: HTMLElement): Partial<TextRun> {
   const next: Partial<TextRun> = {};
   if (el.dataset.paraDistributed === "1") next.paraDistributed = true;
+  const depth = textRunSchema.shape.listDepth.safeParse(
+    el.dataset.listDepth === undefined ? undefined : Number(el.dataset.listDepth),
+  );
+  if (depth.success && depth.data !== undefined) {
+    next.listDepth = depth.data;
+    const colors = readMetadata(el.dataset.listColors, textRunSchema.shape.listColors);
+    if (colors) next.listColors = colors;
+    const sizes = readMetadata(el.dataset.listFontSizes, textRunSchema.shape.listFontSizes);
+    if (sizes) next.listFontSizes = sizes;
+  }
   const margin = Number(el.dataset.paraMargin);
   const hang = Number(el.dataset.paraHang);
   const before = Number(el.dataset.spaceBefore);
   if (margin) next.paraMargin = margin;
   if (hang) next.paraHang = hang;
+  const tab = Number(el.dataset.paraTab);
+  if (tab > 0) next.paraTab = tab;
+  const tabs = readMetadata(el.dataset.paraTabs, textRunSchema.shape.paraTabs);
+  if (tabs?.length) next.paraTabs = tabs;
   const first = Number(el.dataset.paraFirst);
   if (first) next.paraFirst = first;
   if (before) next.spaceBefore = before;
@@ -182,12 +233,12 @@ export function runsFromDom(root: HTMLElement): TextRun[] {
       if (math) { runs.push(cleanRun({ ...style, ...stamp, ...math })); stamp = null; return; }
     }
     if (node.tagName === "BR") {
-      runs.push({ ...style, text: "\n" });
+      if (!isCaretBreak(node)) runs.push({ ...style, ...styleFrom(node), text: "\n" });
       return;
     }
     // Each mixed-size hard break is its own line. The break sits before that line.
     if (node.dataset.slideLine === "1") {
-      if (runs.length && !runs[runs.length - 1]?.text.endsWith("\n")) {
+      if ((runs.length && !runs[runs.length - 1]?.text.endsWith("\n")) || startsTextBlock(node.previousSibling)) {
         const fontSize = Number(node.dataset.fontSize);
         runs.push({
           text: "\n",
@@ -199,8 +250,8 @@ export function runsFromDom(root: HTMLElement): TextRun[] {
     }
     const next = { ...style, ...styleFrom(node) };
     const para = node.dataset.slidePara === "1";
-    const block = node.tagName === "DIV" || node.tagName === "P" || para;
-    if (block && runs.length && !runs[runs.length - 1]?.text.endsWith("\n")) {
+    const block = startsTextBlock(node);
+    if (block && ((runs.length && !runs[runs.length - 1]?.text.endsWith("\n")) || startsTextBlock(node.previousSibling))) {
       runs.push(
         para
           ? cleanRun({ text: "\n", paragraphBreak: true, ...paragraphMetrics(node) })
@@ -216,19 +267,16 @@ export function runsFromDom(root: HTMLElement): TextRun[] {
 export function selectionOffsets(
   root: HTMLElement,
 ): { start: number; end: number } | null {
+  const editor = slideTextEditor(root);
+  if (editor) return tiptapTextSelection(editor);
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0 || !sel.anchorNode || !sel.focusNode)
     return null;
   if (!root.contains(sel.anchorNode) || !root.contains(sel.focusNode))
     return null;
-  const measure = (node: Node, offset: number) => {
-    const pre = document.createRange();
-    pre.selectNodeContents(root);
-    pre.setEnd(node, offset);
-    return semanticTextLength(pre.cloneContents());
-  };
-  const start = measure(sel.anchorNode, sel.anchorOffset);
-  const end = measure(sel.focusNode, sel.focusOffset);
+  const start = semanticOffset(root, sel.anchorNode, sel.anchorOffset);
+  const end = semanticOffset(root, sel.focusNode, sel.focusOffset);
+  if (start == null || end == null) return null;
   return start <= end ? { start, end } : { start: end, end: start };
 }
 
@@ -236,9 +284,15 @@ export function restoreSelection(
   root: HTMLElement,
   start: number,
   end: number,
+  clamp = false,
 ) {
-  const first = semanticPoint(root, start);
-  const last = semanticPoint(root, end);
+  const editor = slideTextEditor(root);
+  if (editor) {
+    restoreTiptapSelection(editor, start, end);
+    return;
+  }
+  const first = semanticPoint(root, start, clamp);
+  const last = semanticPoint(root, end, clamp);
   if (!first || !last) return;
   const range = document.createRange();
   range.setStart(first.node, first.offset);
@@ -248,7 +302,13 @@ export function restoreSelection(
   sel?.addRange(range);
 }
 
-export function SlideTextBody({
+export function SlideTextBody(props: Parameters<typeof LegacySlideTextBody>[0]) {
+  return slideTextTrialEnabled()
+    ? <Suspense fallback={<LegacySlideTextBody {...props} />}><TiptapSlideTextBody {...props} /></Suspense>
+    : <LegacySlideTextBody {...props} />;
+}
+
+function LegacySlideTextBody({
   content,
   runs,
   bold,
@@ -268,6 +328,7 @@ export function SlideTextBody({
   onCaret,
 }: {
   content?: string;
+  revision?: number;
   runs?: TextRun[];
   bold?: boolean;
   italic?: boolean;
@@ -292,6 +353,7 @@ export function SlideTextBody({
   onTextRef.current = onText;
   onCaretRef.current = onCaret;
   const measuredWithFonts = useRef(false);
+  const previousLayout = useRef<string>(undefined);
   const [fontsReady, setFontsReady] = useState(false);
   useEffect(() => {
     let live = true;
@@ -306,13 +368,16 @@ export function SlideTextBody({
     runsOf({ content, runs, bold, italic, underline }),
   );
 
+  const layoutSignature = JSON.stringify([editing, kern, hang, fontFamily, fontSize, lineHeight, lineHeightPt, align, nowrap]);
   useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
     const expected = runsOf({ content, runs, bold, italic, underline });
     const remeasure = fontsReady && !measuredWithFonts.current;
     const unwrapForEditing = editing && !!node.querySelector("[data-slide-soft-line]");
-    if (!remeasure && !unwrapForEditing && JSON.stringify(runsFromDom(node)) === JSON.stringify(expected)) {
+    const layoutChanged = previousLayout.current !== layoutSignature;
+    previousLayout.current = layoutSignature;
+    if (!layoutChanged && !remeasure && !unwrapForEditing && JSON.stringify(runsFromDom(node)) === JSON.stringify(expected)) {
       node.dataset.empty = plainText(expected) ? "false" : "true";
       return;
     }
@@ -323,11 +388,11 @@ export function SlideTextBody({
     const widthPt = fontsReady && !editing ? textAreaWidthPt(node, fontSize) : undefined;
     const style = getComputedStyle(node);
     const unitPt = fontSize ? (parseFloat(style.getPropertyValue("--canvas-fit")) || 1) / (parseFloat(style.fontSize) / fontSize) : 1;
-    node.innerHTML = runsToHtml(expected, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap, widthPt, unitPt });
+    node.innerHTML = runsToHtml(expected, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap, widthPt, unitPt, editing });
     node.dataset.empty = plainText(expected) ? "false" : "true";
     if (fontsReady) measuredWithFonts.current = true;
     if (sel) restoreSelection(node, sel.start, sel.end);
-  }, [signature, editing, content, runs, bold, italic, underline, kern, hang, fontFamily, fontSize, lineHeight, lineHeightPt, align, nowrap, fontsReady]);
+  }, [signature, layoutSignature, editing, content, runs, bold, italic, underline, kern, hang, fontFamily, fontSize, lineHeight, lineHeightPt, align, nowrap, fontsReady]);
 
   useLayoutEffect(() => {
     if (!editing) return;
@@ -340,7 +405,10 @@ export function SlideTextBody({
     if (!editing) return;
     const node = ref.current;
     if (!node) return;
-    const report = () => onCaretRef.current(selectionOffsets(node));
+    const report = () => {
+      normalizeBulletCaret(node);
+      onCaretRef.current(selectionOffsets(node));
+    };
     document.addEventListener("selectionchange", report);
     return () => document.removeEventListener("selectionchange", report);
   }, [editing]);
@@ -395,6 +463,21 @@ export function SlideTextBody({
         selection?.addRange(range);
       }}
       onKeyDown={(e) => {
+        if (editing && e.key === "Tab" && !e.altKey && !e.metaKey && !e.ctrlKey) {
+          const node = ref.current;
+          const sel = node && selectionOffsets(node);
+          const next = sel && changeListDepth(runsFromDom(node), sel, e.shiftKey ? -1 : 1);
+          if (next && node && sel) {
+            e.preventDefault();
+            node.innerHTML = runsToHtml(next, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap, editing });
+            restoreSelection(node, sel.start, sel.end);
+            onTextRef.current(next);
+          } else if (!e.shiftKey) {
+            e.preventDefault();
+            node?.ownerDocument.execCommand("insertText", false, "\t");
+          }
+          return;
+        }
         if (
           e.key !== "Enter" ||
           e.shiftKey ||
@@ -417,7 +500,7 @@ export function SlideTextBody({
           next.to,
           next.replacement,
         );
-        node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap });
+        node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap, editing });
         node.dataset.empty = plainText(runs) ? "false" : "true";
         restoreSelection(node, next.caret, next.caret);
         onTextRef.current(runs);
@@ -437,7 +520,7 @@ export function SlideTextBody({
               next.to,
               next.replacement,
             );
-            node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap });
+            node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap, editing });
             node.dataset.empty = plainText(runs) ? "false" : "true";
             restoreSelection(node, next.caret, next.caret);
             onTextRef.current(runs, next.bullet ? { bullet: true } : undefined);

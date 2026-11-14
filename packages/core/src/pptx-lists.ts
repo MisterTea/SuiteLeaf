@@ -206,6 +206,9 @@ export function layoutListRuns<T extends ListRun>(
     align?: "left" | "center" | "right" | "justify";
     distributed?: boolean;
     size?: number;
+    listDepth?: number;
+    listColors?: (string | null)[];
+    listFontSizes?: (number | null)[];
     cssLine?: number;
     cssLinePt?: number;
   }[],
@@ -283,6 +286,7 @@ export function layoutListRuns<T extends ListRun>(
   };
   const runs: T[] = [];
   paragraphs.forEach((paragraph, index) => {
+    const list = paragraph.listDepth === undefined ? {} : { listDepth: paragraph.listDepth, listColors: paragraph.listColors, listFontSizes: paragraph.listFontSizes };
     const line = { ...(paragraph.cssLine ? { paraLine: paragraph.cssLine } : {}), ...(paragraph.cssLinePt ? { paraLinePt: paragraph.cssLinePt } : {}) };
     // Keep the first paragraph's metrics even when it has no text. The break
     // before the second paragraph already represents this first blank line.
@@ -291,6 +295,7 @@ export function layoutListRuns<T extends ListRun>(
         text: index ? "\n" : "",
         ...(index ? { paragraphBreak: true } : {}),
         ...extras(paragraph),
+        ...list,
         ...line,
         ...(paragraph.size ? { fontSize: paragraph.size } : {}),
       } as T);
@@ -298,7 +303,7 @@ export function layoutListRuns<T extends ListRun>(
     paragraph.runs.forEach((run, runIndex) => {
       runs.push(
         index === 0 && runIndex === 0
-          ? ({ ...run, ...extras(paragraph), ...line } as T)
+          ? ({ ...run, ...extras(paragraph), ...list, ...line } as T)
           : run,
       );
     });

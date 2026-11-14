@@ -23,13 +23,13 @@ function draftName(record: FileRecord, used: Set<string>): string {
 }
 
 /** Write recovery drafts only. A saved file and a SuiteDrive link stay out. */
-export async function writeDraftBackup(records: readonly FileRecord[], folder: string): Promise<number> {
+export async function writeDraftBackup(records: readonly FileRecord[], folder: string, load: (record: FileRecord) => FileRecord = (record) => record): Promise<number> {
   const drafts = records.filter((record) => record.recovery);
   await mkdir(folder, { recursive: true });
   const used = new Set<string>();
   for (const record of drafts) {
     const name = draftName(record, used);
-    await writeFile(join(folder, name), serializeFile(record.file), "utf8");
+    await writeFile(join(folder, name), serializeFile(load(record).file), "utf8");
   }
   return drafts.length;
 }

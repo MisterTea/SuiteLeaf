@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { FolderOpen, Upload, X } from "lucide-react";
 import type { FileRecord, SuiteFile } from "@suiteleaf/core";
 import { storage } from "../storage";
@@ -40,6 +40,8 @@ export function ImportButton({
   filePicker = false,
   uploading = false,
   importer,
+  dropImporter,
+  openDroppedFile = true,
   placeInFolder,
   keepImported,
   onBatchDone,
@@ -53,6 +55,9 @@ export function ImportButton({
   uploading?: boolean;
   /** Receives a function that imports a chosen file the same way the picker does. */
   importer?: RefObject<((f: File) => Promise<void>) | null>;
+  /** Drive-page drops keep single files in the current folder. */
+  openDroppedFile?: boolean;
+  dropImporter?: RefObject<((data: DataTransfer) => Promise<void>) | null>;
   /**
    * Save one converted Office file into `folder`, a path relative to the
    * library folder that is open. The path includes the folder that was dropped.
@@ -237,11 +242,11 @@ export function ImportButton({
     for (const child of children) nested.push(...(await droppedEntries(child, next)));
     return nested;
   };
-  const onDrop = async (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
+  const importDrop = async (data: DataTransfer) => {
+    if (importing) return;
     setDropOver(false);
     setMenu(false);
-    const entries = [...event.dataTransfer.items]
+    const entries = [...data.items]
       .map((item) => item.webkitGetAsEntry?.() ?? null)
       .filter((entry): entry is FileSystemEntry => !!entry);
     stopImport.current = false;
@@ -259,11 +264,11 @@ export function ImportButton({
             if (picked) loose.push(picked.file);
           }
         }
-      } else loose.push(...event.dataTransfer.files);
+      } else loose.push(...data.files);
       const plans = [];
       for (const folder of folders) plans.push(await planFolder(folder));
       setProgress({ completed: 0, total: loose.length + plans.reduce((sum, plan) => sum + plan.count, 0), name: "" });
-      const open = opensImportedFile(loose.length + folders.length);
+      const open = openDroppedFile && opensImportedFile(loose.length + folders.length);
       for (const file of loose) {
         await importOne(file, open);
         if (open) opened = true;
@@ -281,6 +286,8 @@ export function ImportButton({
       }
     }
   };
+  if (dropImporter) dropImporter.current = importDrop;
+
   useEffect(() => {
     if (!menu) return;
     const close = (event: MouseEvent) => {
@@ -360,7 +367,10 @@ export function ImportButton({
                 if (event.currentTarget.contains(event.relatedTarget as Node)) return;
                 setDropOver(false);
               }}
-              onDrop={(event) => void onDrop(event)}
+              onDrop={(event) => {
+                event.preventDefault();
+                void importDrop(event.dataTransfer);
+              }}
             >
               Drop a file or folder
             </div>

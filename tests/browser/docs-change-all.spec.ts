@@ -114,7 +114,7 @@ test("change all lists every copy, cancels, and undoes in one step", async ({ pa
 
   await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save now" }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Launch notes" }).click();
   await expect(editor).toContainText("We will receive the keys");

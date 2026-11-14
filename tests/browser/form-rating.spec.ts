@@ -34,7 +34,7 @@ test("a required rating is named when missing, then kept as 4", async ({ page })
   await expect(table.locator("th")).toHaveText("How was the talk?");
   await expect(table.locator("tbody td")).toHaveText("4");
   await expect(table.locator("tbody tr")).toHaveCount(1);
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "File", exact: true }).click();

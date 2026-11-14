@@ -15,6 +15,15 @@ const MIME: Record<string, string> = {
   svg: "image/svg+xml",
   webp: "image/webp",
   bmp: "image/bmp",
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  mpg: "video/mpeg",
+  mpeg: "video/mpeg",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
 };
 
 /** A path written in the markdown, relative to that file, or null when it is not a local file. */
@@ -45,8 +54,11 @@ export function marpAssetPaths(markdown: string): string[] {
     found.push(path);
   };
   const pattern =
-    /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?\s*\)|<img\b[^>]*\bsrc=["']([^"']+)["']|url\(\s*["']?([^"')\s]+)["']?\s*\)/gi;
-  for (const match of markdown.matchAll(pattern)) add(match[1] || match[2] || match[3]);
+    /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?\s*\)|<(?:img|video|audio|source)\b[^>]*\bsrc=["']([^"']+)["']|url\(\s*["']?([^"')\s]+)["']?\s*\)/gi;
+  for (const match of markdown.matchAll(pattern))
+    add(match[1] || match[2] || match[3]);
+  for (const match of markdown.matchAll(/<video\b[^>]*\bposter=["']([^"']+)["']/gi))
+    add(match[1]);
   return found;
 }
 

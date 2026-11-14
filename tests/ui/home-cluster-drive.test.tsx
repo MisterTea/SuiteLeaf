@@ -11,6 +11,7 @@ type BrowserProps = {
   refreshKey: string;
 };
 type ImportProps = {
+  dropImporter: { current: ((data: DataTransfer) => Promise<void>) | null };
   onImport: (r: FileRecord, name?: string, progress?: (completed: number, total: number) => void) => Promise<void>;
   onError: (s: string) => void;
   placeInFolder: (file: SuiteFile, folder: string, progress?: (completed: number, total: number) => void) => Promise<unknown>;
@@ -129,7 +130,7 @@ afterEach(() => {
 });
 
 describe("ClusterHome", () => {
-  it("names the account and server, and signs out after the cache is cleared", async () => {
+  it("shows an icon-only sign-out control and signs out after the cache is cleared", async () => {
     renderHome();
     expect(screen.getByText("Files are saved to SuiteDrive on drive.example.", { exact: false })).toBeTruthy();
     expect(screen.getByText(/kept for when you disconnect/)).toBeTruthy();
@@ -138,9 +139,12 @@ describe("ClusterHome", () => {
     expect(mailButton).toBeTruthy();
     expect(mailButton.getAttribute("title")).toBe("Mail");
     expect(document.querySelector(".account-avatar")?.textContent).toBe("A");
-    expect(document.querySelector(".account-who")?.getAttribute("title")).toBe(
-      "Ada Lovelace (ada@x.org) on drive.example",
-    );
+    const chip = document.querySelector(".account-chip");
+    expect(chip?.textContent).not.toContain("Ada Lovelace");
+    expect(chip?.textContent).not.toContain("drive.example");
+    const signOut = screen.getByRole("button", { name: "Sign out" });
+    expect(signOut.textContent).toBe("");
+    expect(signOut.querySelector("svg")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(hoisted.signOut).toHaveBeenCalled());
     hoisted.forgetDriveFiles.mockResolvedValueOnce(false);
@@ -158,7 +162,6 @@ describe("ClusterHome", () => {
     renderHome();
     expect(screen.queryByRole("button", { name: "Disconnect from server" })).toBeNull();
     expect(screen.queryByText(/kept for when you disconnect/)).toBeNull();
-    expect(document.querySelector(".account-who")?.getAttribute("title")).toBe("ada on drive.example");
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Uploads are still running.");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
@@ -221,6 +224,22 @@ describe("ClusterHome", () => {
       drive: { nodeUrl: server, itemId: "placed", name: "Lecture.slslides" },
     }));
     expect(hoisted.createInDrive).not.toHaveBeenCalled();
+  });
+
+  it("accepts file drops on the drive listing without opening Import", () => {
+    renderHome();
+    const listing = screen.getByTestId("browser");
+    const importDrop = vi.fn(async () => {});
+    hoisted.importer!.dropImporter.current = importDrop;
+    const files = { types: ["Files"], dropEffect: "none", files: [new File(["x"], "Lesson.docx")] };
+    const link = { types: ["text/uri-list"] };
+
+    expect(fireEvent.dragOver(listing, { dataTransfer: link })).toBe(true);
+    expect(fireEvent.drop(listing, { dataTransfer: link })).toBe(true);
+    expect(fireEvent.dragOver(listing, { dataTransfer: files })).toBe(false);
+    expect(files.dropEffect).toBe("copy");
+    expect(fireEvent.drop(listing, { dataTransfer: files })).toBe(false);
+    expect(importDrop).toHaveBeenCalledExactlyOnceWith(files);
   });
 
   it("imports into SuiteDrive, building the dropped folder path", async () => {

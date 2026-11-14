@@ -1,4 +1,4 @@
-import type { Slide, SlideElement, TextRun } from "@suiteleaf/core";
+import type { Slide, SlideElement } from "@suiteleaf/core";
 
 export type DrawOp =
   | { kind: "fill"; color: string }

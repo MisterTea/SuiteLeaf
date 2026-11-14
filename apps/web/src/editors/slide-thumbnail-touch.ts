@@ -98,7 +98,7 @@ export function useSlideThumbnailTouch(
     ) {
       clearTimer();
       ignoreClick.current = true;
-      if (mode.current && !dragRef.current) {
+      if (!dragRef.current) {
         const list = e.currentTarget.closest(".thumbnails-list");
         if (list) list.scrollLeft += start.lastX - e.clientX;
       }

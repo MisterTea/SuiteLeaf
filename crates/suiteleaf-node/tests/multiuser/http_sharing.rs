@@ -445,13 +445,25 @@ async fn shared_items_route_returns_shared_items_for_recipient() {
 
     // Maya (owner) sees 0 items in their shared list
     let maya_shared = cluster
-        .json(0, maya, reqwest::Method::GET, "/api/drive/items?shared=1", None)
+        .json(
+            0,
+            maya,
+            reqwest::Method::GET,
+            "/api/drive/items?shared=1",
+            None,
+        )
         .await;
     assert_eq!(maya_shared["items"].as_array().unwrap().len(), 0);
 
     // Sam has 1 item (Garden notes) shared by Maya
     let sam_shared = cluster
-        .json(0, sam, reqwest::Method::GET, "/api/drive/items?shared=1", None)
+        .json(
+            0,
+            sam,
+            reqwest::Method::GET,
+            "/api/drive/items?shared=1",
+            None,
+        )
         .await;
     let items = sam_shared["items"].as_array().unwrap();
     assert_eq!(items.len(), 1);
@@ -479,7 +491,13 @@ async fn shared_items_route_returns_shared_items_for_recipient() {
 
     // Sam still sees only 1 shared item
     let sam_still_1 = cluster
-        .json(0, sam, reqwest::Method::GET, "/api/drive/items?shared=1", None)
+        .json(
+            0,
+            sam,
+            reqwest::Method::GET,
+            "/api/drive/items?shared=1",
+            None,
+        )
         .await;
     assert_eq!(sam_still_1["items"].as_array().unwrap().len(), 1);
 
@@ -503,7 +521,13 @@ async fn shared_items_route_returns_shared_items_for_recipient() {
 
     // Sam now sees both shared items
     let sam_now_2 = cluster
-        .json(0, sam, reqwest::Method::GET, "/api/drive/items?shared=1", None)
+        .json(
+            0,
+            sam,
+            reqwest::Method::GET,
+            "/api/drive/items?shared=1",
+            None,
+        )
         .await;
     assert_eq!(sam_now_2["items"].as_array().unwrap().len(), 2);
 }

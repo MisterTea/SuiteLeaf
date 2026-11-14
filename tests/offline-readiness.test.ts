@@ -1,20 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createFile,
-  parseFile,
-  serializeFile,
-  type SlideFile,
-  type DocFile,
-  type SheetFile,
-  type FileRecord,
-  checkOfflineReadiness,
-  OfflinePinManager,
-  evaluateEvictionRisk,
-  createPortableSlideBundle,
-  verifyPortableSlideBundle,
-  evaluateOfflinePolicy,
-  explainOfflineRevocation,
-} from "../packages/core/src";
+import { createFile, parseFile, serializeFile, type SlideFile, type DocFile, type SheetFile, type FileRecord, checkOfflineReadiness, OfflinePinManager, createPortableSlideBundle, verifyPortableSlideBundle, evaluateOfflinePolicy, explainOfflineRevocation } from "../packages/core/src";
 
 describe("WP-006 Verified offline work and portable presentation bundles", () => {
   it("prevents a misleading ready label when assets are missing and lists explicit remedies", () => {

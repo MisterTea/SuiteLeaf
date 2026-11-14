@@ -1,20 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-  providerDiagnostic,
-  providerMetadata,
-  samlMetadata,
-} from "../apps/web/src/admin/provider-diagnostic";
+import { providerDiagnostic, providerMetadata } from "../apps/web/src/admin/provider-diagnostic";
 import {
   decideClientSession,
   sessionActivityNote,
 } from "../apps/web/src/session-policy";
-import {
-  authOptions,
-  envFromProcess,
-  JWT_AUDIENCE,
-  JWT_ISSUER,
-  plugins,
-} from "../services/auth/src/options";
+import { envFromProcess, JWT_AUDIENCE, JWT_ISSUER, plugins } from "../services/auth/src/options";
 
 describe("WP-008 Enterprise sign-in, MFA, and session policy", () => {
   it("validates enterprise IdP configuration without leaking secrets or accepting insecure endpoints", () => {

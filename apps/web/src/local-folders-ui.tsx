@@ -123,7 +123,9 @@ export function LocalFolderRow({
   onRename,
   onMove,
   onDrop,
+  selection,
 }: {
+  selection?: { checked: boolean; control: ReactNode };
   folder: string;
   count: number;
   onOpen: () => void;
@@ -135,12 +137,13 @@ export function LocalFolderRow({
   const drop = useDropTarget(folder, onDrop);
   return (
     <div
-      className={`file-row folder-row${drop.over ? " drop-target" : ""}`}
+      className={`file-row folder-row${drop.over ? " drop-target" : ""}${selection?.checked ? " file-row-selected" : ""}`}
       draggable
       onDragStart={(event) => dragFolder(event, folder)}
       {...drop.props}
     >
-      <div className="file-main">
+      <div className={`file-main${selection ? " file-main-selectable" : ""}`}>
+        {selection?.control}
         <button type="button" className="folder-open" onClick={onOpen}>
           <span className="file-icon folder">
             <Folder size={21} />
@@ -175,7 +178,7 @@ export function LocalMoveDialog({
 }: {
   name: string;
   /** The folder it is in now. */
-  from: string;
+  from?: string;
   folders: string[];
   /** Set when a folder is moving, so it cannot go inside itself. */
   moving?: string;
@@ -193,7 +196,7 @@ export function LocalMoveDialog({
       onClose={onClose}
     >
       <p className="dialog-note">
-        {name} is in {folderName(from)}.
+        {from === undefined ? "Choose a folder for the selected files." : `${name} is in ${folderName(from)}.`}
       </p>
       {targets.length === 0 ? (
         <p className="drive-empty">There are no other folders.</p>

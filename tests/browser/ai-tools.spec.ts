@@ -395,7 +395,7 @@ test("file tools download a file, remove it, and open it again without replacing
     "1 as new items of the bulleted list",
   );
   await expect(page.getByRole("textbox", { name: "Document content" }).locator("li")).toHaveText(["Passport", "Plug adapter", "Sunglasses"]);
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await call(page, "back_to_files");
   await waitForTools(page, "open_from_computer");
 
@@ -538,11 +538,11 @@ test("undo all of this puts back the files a request changed and removes the one
   await call(page, "create_file", { kind: "document", title: "Garden plan" });
   await waitForTools(page, "write_text");
   await call(page, "write_text", { text: "Tomatoes go in the sunny bed." });
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   await page.evaluate(() => window.__suiteleafAgent!.checkpoint());
   await call(page, "write_text", { text: "Basil goes next to them." });
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await call(page, "back_to_files");
   await waitForTools(page, "create_file");
   await call(page, "create_file", { kind: "spreadsheet", title: "Seed costs" });

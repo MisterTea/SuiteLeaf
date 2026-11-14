@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { sourceValue, sourceSelection, selectSourceRange } from "../../apps/web/src/editors/slide-source-control";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EditorActions } from "../../apps/web/src/ui";
@@ -7,6 +8,7 @@ import Slides from "../../apps/web/src/editors/Slides";
 import { CommandPalette } from "../../apps/web/src/command-palette";
 import { buildMarpFile } from "../../apps/web/src/editors/slide-marp-import";
 import { MARP_UNSUPPORTED } from "../../apps/web/src/editors/slide-marp-sync";
+import { slideTextEditor } from "../../apps/web/src/editors/slide-tiptap-selection";
 import { clampMarpSplit } from "../../apps/web/src/editors/slide-marp-split";
 
 vi.mock("../../apps/web/src/editors/themes/beam_ut.css?raw", () => ({
@@ -109,7 +111,7 @@ describe("MARP side-by-side editing", () => {
     const viewport = row.querySelector(".slide-stage-viewport")!;
     const pane = screen.getByRole("complementary", { name: "Markdown" });
     expect(viewport.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(markdown().value).toBe(SOURCE);
+    expect(sourceValue(markdown())).toBe(SOURCE);
     expect(screen.getByRole("button", { name: "Markdown" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
     expect(screen.queryByLabelText("Presentation markdown")).toBeNull();
@@ -226,14 +228,14 @@ describe("MARP side-by-side editing", () => {
     await laidOut();
     fireEvent.mouseDown(box("Ship the")!);
     fireEvent.mouseUp(window);
-    await waitFor(() => expect(markdown().selectionStart).toBe(SOURCE.indexOf("Ship the")));
+    await waitFor(() => expect(sourceSelection(markdown()).start).toBe(SOURCE.indexOf("Ship the")));
     expect(document.activeElement).not.toBe(markdown());
 
     fireEvent.click(screen.getByRole("option", { name: /^Slide 2:/ }));
     await waitFor(() => expect(box("Hiring")).toBeDefined());
     fireEvent.mouseDown(box("Hiring")!);
     fireEvent.mouseUp(window);
-    await waitFor(() => expect(markdown().selectionStart).toBe(SOURCE.indexOf("- Hiring")));
+    await waitFor(() => expect(sourceSelection(markdown()).start).toBe(SOURCE.indexOf("- Hiring")));
   });
 
   it("shows the slide the markdown caret moves onto", async () => {
@@ -244,7 +246,7 @@ describe("MARP side-by-side editing", () => {
       const area = markdown();
       if (how === "click") fireEvent.mouseDown(area);
       act(() => area.focus());
-      area.setSelectionRange(SOURCE.indexOf(text), SOURCE.indexOf(text));
+      selectSourceRange(area, SOURCE.indexOf(text), SOURCE.indexOf(text));
       if (how === "click") fireEvent.mouseUp(area);
       else fireEvent.keyUp(area, { key: "ArrowDown" });
     };
@@ -264,7 +266,7 @@ describe("MARP side-by-side editing", () => {
     await laidOut();
     const saved = () => onChange.mock.lastCall?.[0].marpSource;
     fireEvent.change(markdown(), { target: { value: SOURCE.replace("# Launch plan", "# Launch day") } });
-    expect(markdown().value).toContain("# Launch day");
+    expect(sourceValue(markdown())).toContain("# Launch day");
     expect(box("Launch plan")).toBeDefined();
     expect(saved() ?? SOURCE).not.toContain("# Launch day");
     await waitFor(() => expect(box("Launch day")).toBeDefined());
@@ -283,7 +285,7 @@ describe("MARP side-by-side editing", () => {
     await laidOut();
     fireEvent.change(markdown(), { target: { value: SOURCE.replace("# Launch plan", "# Launch day") } });
     act(() => actions().slideActions!.undo());
-    await waitFor(() => expect(markdown().value).toBe(SOURCE));
+    await waitFor(() => expect(sourceValue(markdown())).toBe(SOURCE));
     expect(box("Launch plan")).toBeDefined();
   });
 
@@ -296,7 +298,7 @@ describe("MARP side-by-side editing", () => {
     expect(alert.textContent).toContain("The markdown is invalid.");
     expect(alert.textContent).toContain("The code block that starts on line");
     expect(canvas()).toBeNull();
-    expect(markdown().value).toBe(broken);
+    expect(sourceValue(markdown())).toBe(broken);
     expect(markdown().getAttribute("aria-invalid")).toBe("true");
     expect(onChange.mock.lastCall![0].marpSource).toBe(broken);
     fireEvent.change(markdown(), { target: { value: `${broken}\`\`\`\n` } });
@@ -308,30 +310,40 @@ describe("MARP side-by-side editing", () => {
   it("writes text typed on the slide into the markdown", async () => {
     open();
     await laidOut();
-    const title = box("Launch plan")!.querySelector("textarea")!;
-    act(() => title.focus());
-    fireEvent.change(title, { target: { value: "Launch plan v2" } });
-    expect(markdown().value).toBe(SOURCE.replace("# Launch plan", "# Launch plan v2"));
-    act(() => title.blur());
+    fireEvent.doubleClick(box("Launch plan")!);
+    await waitFor(() => expect(box("Launch plan")?.querySelector(".ProseMirror")).toBeTruthy());
+    const title = box("Launch plan")!.querySelector<HTMLElement>(".ProseMirror")!;
+    act(() => {
+      const editor = slideTextEditor(title)!;
+      editor.commands.selectAll();
+      editor.commands.insertContent("Launch plan v2");
+    });
+    act(() => markdown().focus());
     await laidOut();
+    expect(sourceValue(markdown())).toBe(SOURCE.replace("# Launch plan", "# Launch plan v2"));
     expect(box("Launch plan v2")).toBeDefined();
   });
 
   it("undoes a slide edit back to the markdown it came from", async () => {
     const { actions } = open();
     await laidOut();
-    const title = box("Launch plan")!.querySelector("textarea")!;
-    act(() => title.focus());
-    fireEvent.change(title, { target: { value: "Launch later" } });
-    act(() => title.blur());
+    fireEvent.doubleClick(box("Launch plan")!);
+    await waitFor(() => expect(box("Launch plan")?.querySelector(".ProseMirror")).toBeTruthy());
+    const title = box("Launch plan")!.querySelector<HTMLElement>(".ProseMirror")!;
+    act(() => {
+      const editor = slideTextEditor(title)!;
+      editor.commands.selectAll();
+      editor.commands.insertContent("Launch later");
+    });
+    act(() => markdown().focus());
     await laidOut();
-    expect(markdown().value).toContain("# Launch later");
+    expect(sourceValue(markdown())).toContain("# Launch later");
     act(() => actions().slideActions!.undo());
-    expect(markdown().value).toBe(SOURCE);
+    expect(sourceValue(markdown())).toBe(SOURCE);
     await laidOut();
     expect(box("Launch plan")).toBeDefined();
     act(() => actions().slideActions!.redo());
-    expect(markdown().value).toContain("# Launch later");
+    expect(sourceValue(markdown())).toContain("# Launch later");
   });
 
   it("opens a deck saved with invalid markdown on the invalid notice", async () => {
@@ -347,14 +359,14 @@ describe("MARP side-by-side editing", () => {
     fireEvent.change(screen.getByPlaceholderText("Click to add speaker notes"), {
       target: { value: "Thank the team." },
     });
-    expect(markdown().value).toContain("Ship the **beta** in May.\n\n<!--\nThank the team.\n-->\n\n---");
+    expect(sourceValue(markdown())).toContain("Ship the **beta** in May.\n\n<!--\nThank the team.\n-->\n\n---");
   });
 
   it("adds a slide as markdown and lays it out", async () => {
     const { actions } = open();
     await laidOut();
     act(() => actions().slideActions!.newSlide());
-    expect(markdown().value).toContain("Ship the **beta** in May.\n\n---\n\n# New slide\n\n---\n\n# Risks");
+    expect(sourceValue(markdown())).toContain("Ship the **beta** in May.\n\n---\n\n# New slide\n\n---\n\n# Risks");
     await laidOut();
     expect(box("New slide")).toBeDefined();
   });
@@ -364,7 +376,7 @@ describe("MARP side-by-side editing", () => {
     await laidOut();
     act(() => actions().slideActions!.insertShape("rect"));
     expect(onError).toHaveBeenCalledWith(MARP_UNSUPPORTED);
-    expect(markdown().value).toBe(SOURCE);
+    expect(sourceValue(markdown())).toBe(SOURCE);
     expect(document.querySelectorAll(".slide-canvas .slide-shape")).toHaveLength(0);
   });
 
@@ -387,12 +399,12 @@ describe("MARP side-by-side editing", () => {
     fireEvent.mouseDown(box("Launch plan")!);
     fireEvent.mouseUp(window);
     fireEvent.click(await screen.findByRole("button", { name: "Underline" }));
-    expect(markdown().value).toContain("\n# <u>Launch plan</u>\n");
+    expect(sourceValue(markdown())).toContain("\n# <u>Launch plan</u>\n");
     await laidOut();
     fireEvent.mouseDown(box("Launch plan")!);
     fireEvent.mouseUp(window);
     fireEvent.click(screen.getByRole("button", { name: "Accent colour for the selection" }));
-    expect(markdown().value).toMatch(/\n# <span style="color: #[0-9a-f]{6}"><u>Launch plan<\/u><\/span>\n/);
+    expect(sourceValue(markdown())).toMatch(/\n# <span style="color: #[0-9a-f]{6}"><u>Launch plan<\/u><\/span>\n/);
   });
 
   it("shows HTML as a locked block that opens its lines in the markdown", async () => {
@@ -405,11 +417,11 @@ describe("MARP side-by-side editing", () => {
     fireEvent.doubleClick(block);
     await waitFor(() => expect(document.activeElement).toBe(markdown()));
     const area = markdown();
-    expect(area.value.slice(area.selectionStart, area.selectionEnd)).toBe('<div class="note">Note</div>');
+    expect(sourceValue(area).slice(sourceSelection(area).start, sourceSelection(area).end)).toBe('<div class="note">Note</div>');
     fireEvent.mouseDown(block);
     fireEvent.mouseUp(window);
     fireEvent.click(screen.getByRole("button", { name: "Delete element" }));
-    expect(markdown().value).toBe(SOURCE);
+    expect(sourceValue(markdown())).toBe(SOURCE);
   });
 
   it("says a container tag is never closed on the slide pane", async () => {
@@ -423,6 +435,6 @@ describe("MARP side-by-side editing", () => {
     open(SOURCE, true);
     await laidOut();
     expect(markdown().readOnly).toBe(true);
-    expect(markdown().value).toBe(SOURCE);
+    expect(sourceValue(markdown())).toBe(SOURCE);
   });
 });

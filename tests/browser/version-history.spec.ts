@@ -19,10 +19,10 @@ test("local version history previews read-only, names a snapshot, and restores i
 
   await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save now" }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   await editor.fill("Tuesday — Sam, all the beds, 7am");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   await page.getByRole("button", { name: "Version history", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "Version history" });
@@ -54,7 +54,7 @@ test("local version history previews read-only, names a snapshot, and restores i
   await expect(panel).toHaveCount(0);
   await expect(editor).toContainText("Monday — Rosa, greenhouse, 7am");
   await expect(editor).not.toContainText("Tuesday — Sam");
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
 
   await page.reload();
   await page.getByRole("button", { name: "Version history", exact: true }).click();

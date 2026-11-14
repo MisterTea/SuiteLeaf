@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DECK_THEMES } from "../../apps/web/src/editors/slide-theme";
-import { openSlides, pick, press, setupSlidesDom, words } from "./slide-editor-harness";
+import { choose, openSlides, pick, press, setupSlidesDom, words } from "./slide-editor-harness";
 
 vi.mock("../../apps/web/src/editors/themes/beam_ut.css?raw", () => ({ default: "/* @theme beam_ut */" }));
 
@@ -136,26 +136,32 @@ describe("other panels", () => {
     expect(screen.queryByRole("complementary", { name: /Animation/ })).toBeNull();
 
     act(() => editor.slide().openMaster());
-    const master = panel("Slide master");
-    fireEvent.change(within(master).getByLabelText("Master background"), { target: { value: "#ffeecc" } });
-    expect(editor.deck().master?.background?.color).toBe("#ffeecc");
-    fireEvent.change(within(master).getByLabelText("Master footer text"), { target: { value: "  " } });
-    expect(button("Add footer to master", master)).toHaveProperty("disabled", true);
-    fireEvent.change(within(master).getByLabelText("Master footer text"), { target: { value: "Club" } });
-    fireEvent.click(button("Add footer to master", master));
-    expect(editor.deck().master?.elements?.[0]).toMatchObject({ type: "text", content: "Club" });
-    fireEvent.change(within(master).getByLabelText("Master text"), { target: { value: "Garden" } });
-    expect(editor.deck().master?.elements?.[0].content).toBe("Garden");
-
-    const logo = within(master).getByLabelText("Master logo");
-    fireEvent.change(logo, { target: { files: [new File(["x"], "big.png", { type: "image/png" })].map((file) => Object.defineProperty(file, "size", { value: 3 * 1024 * 1024 })) } });
-    fireEvent.change(logo, { target: { files: [new File(["png"], "logo.png", { type: "image/png" })] } });
-    await waitFor(() => expect(editor.deck().master?.elements).toHaveLength(2));
-    expect(within(master).getByText(/Image|logo/)).toBeTruthy();
-    fireEvent.click(within(master).getAllByRole("button", { name: "Remove" })[0]);
-    expect(editor.deck().master?.elements).toHaveLength(1);
+    expect(screen.getByRole("status").textContent).toMatch(/Slide master/);
+    expect(screen.getByRole("option", { name: "Title slide" })).toBeTruthy();
+    choose("Background", "Warm sand");
+    expect(editor.deck().master?.background?.color).toBe("#fef3c7");
+    const masters = screen.getByRole("combobox", { name: "Master" }) as HTMLSelectElement;
+    expect([...masters.options].map((option) => option.text)).toEqual(["Master 1"]);
+    fireEvent.click(screen.getByRole("button", { name: "New master" }));
+    const added = screen.getByRole("combobox", { name: "Master" }) as HTMLSelectElement;
+    expect([...added.options].map((option) => option.text)).toEqual(["Master 1", "Master 2"]);
+    expect(added.selectedOptions[0]?.textContent).toBe("Master 2");
+    expect(editor.deck().masters).toHaveLength(2);
+    expect(editor.deck().master?.background?.color).toBe("#fef3c7");
+    fireEvent.change(added, { target: { value: "master" } });
+    expect((screen.getByRole("combobox", { name: "Master" }) as HTMLSelectElement).selectedOptions[0]?.textContent).toBe("Master 1");
+    act(() => editor.slide().insertTextBox());
+    expect(editor.deck().master?.elements?.[0]?.type).toBe("text");
+    fireEvent.click(screen.getByRole("option", { name: "Title slide" }));
+    expect(screen.getByRole("status").textContent).toMatch(/Title slide/);
+    expect(document.querySelector(".slide-canvas [data-placeholder='Click to add title']")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Close Master View" })[0]!);
+    expect(screen.queryByRole("button", { name: "Close Master View" })).toBeNull();
+    expect(editor.active()).toBe("a");
+    expect(editor.deck().master?.background?.color).toBe("#fef3c7");
     act(() => editor.slide().openMaster());
-    expect(screen.queryByRole("complementary", { name: "Slide master" })).toBeNull();
+    act(() => editor.slide().openMaster());
+    expect(screen.queryByRole("button", { name: "Close Master View" })).toBeNull();
   });
 
   it("sets the proofing language and opens the size and position panel", () => {

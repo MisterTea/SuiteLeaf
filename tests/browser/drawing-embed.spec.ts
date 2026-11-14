@@ -1,3 +1,4 @@
+import { expectSourceValue, fillSource, sourceValue } from "./source-editor-helpers";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
@@ -21,12 +22,12 @@ async function redraw(page: Page, target: Locator, title: string) {
   const drawing = page.getByRole("dialog", { name: `Picture in ${title}` });
   await expect(drawing).toBeVisible();
   const source = drawing.getByLabel("SVG source");
-  await expect(source).toHaveValue(LOGO);
+  await expectSourceValue(source, LOGO);
   // The drawing covers the whole window, the file's own header included.
   const box = (await drawing.boundingBox())!;
   expect(box.width).toBe(page.viewportSize()!.width);
   expect(box.height).toBe(page.viewportSize()!.height);
-  await source.fill(LOGO.replace('fill="#1a73e8"', 'fill="#d93025"'));
+  await fillSource(source, LOGO.replace('fill="#1a73e8"', 'fill="#d93025"'));
   await drawing.getByRole("button", { name: `Back to ${title}` }).click();
   await expect(drawing).toHaveCount(0);
 }
@@ -80,17 +81,17 @@ test("an SVG file in a MARP deck opens in Drawing, and the deck keeps naming the
   await page.getByRole("button", { name: /^New MARP deck/ }).click();
   const markdown = page.getByLabel("Presentation markdown");
   await page.locator('input[type="file"][accept*="image/svg+xml"]').setInputFiles(PICKED);
-  await expect(markdown).toHaveValue(/!\[[^\]]*\]\(media\/logo\.svg\)/);
-  const before = await markdown.inputValue();
+  await expectSourceValue(markdown, /!\[[^\]]*\]\(media\/logo\.svg\)/);
+  const before = await sourceValue(markdown);
   const box = page.locator(".slide-canvas .slide-image").first();
   await box.dblclick();
   const drawing = page.getByRole("dialog", { name: "media/logo.svg in Untitled presentation" });
-  await expect(drawing.getByLabel("SVG source")).toHaveValue(LOGO);
-  await drawing.getByLabel("SVG source").fill(LOGO.replace('fill="#1a73e8"', 'fill="#d93025"'));
+  await expectSourceValue(drawing.getByLabel("SVG source"), LOGO);
+  await fillSource(drawing.getByLabel("SVG source"), LOGO.replace('fill="#1a73e8"', 'fill="#d93025"'));
   await drawing.getByRole("button", { name: "Back to Untitled presentation" }).click();
   await expect(drawing).toHaveCount(0);
   await expect.poll(() => svgOf(box.locator("img"))).toContain('fill="#d93025"');
-  expect(await markdown.inputValue()).toBe(before);
+  expect(await sourceValue(markdown)).toBe(before);
   await page.getByRole("button", { name: "Undo (Cmd+Z)" }).click();
   await expect.poll(() => svgOf(box.locator("img"))).toContain('fill="#1a73e8"');
 });
@@ -119,7 +120,7 @@ test("editing one of two copies of an SVG in a document changes only that copy, 
   await drawing.locator(".drawing-host").locator("rect").click();
   const canvas = drawing.getByRole("application", { name: "Drawing canvas" });
   for (let i = 0; i < 5; i++) await canvas.press("ArrowRight");
-  await expect(drawing.getByLabel("SVG source")).toHaveValue(/<rect x="15" y="10"/);
+  await expectSourceValue(drawing.getByLabel("SVG source"), /<rect x="15" y="10"/);
   // The document is still as it was while the picture is open.
   expect(await svgOf(pictures.nth(0))).toBe(LOGO);
   expect(await svgOf(pictures.nth(1))).toBe(LOGO);
@@ -167,10 +168,10 @@ test("keys pressed in Drawing change the drawing, not the slide underneath, and 
   const canvas = drawing.getByRole("application", { name: "Drawing canvas" });
   await drawing.locator(".drawing-host").locator("rect").click();
   await canvas.press("Delete");
-  await expect(source).not.toHaveValue(/<rect/);
+  await expect.poll(() => sourceValue(source)).not.toMatch(/<rect/);
   await expect(box).toHaveCount(1);
   await canvas.press("ControlOrMeta+z");
-  await expect(source).toHaveValue(LOGO);
+  await expectSourceValue(source, LOGO);
   await expect(box).toHaveCount(1);
   await drawing.getByRole("button", { name: "Back to Untitled presentation" }).click();
   await expect(drawing).toHaveCount(0);
@@ -189,7 +190,7 @@ test("a slide picture keeps its width and takes the drawing's new shape", async 
   const before = (await box.boundingBox())!;
   await box.dblclick();
   const drawing = page.getByRole("dialog", { name: "Picture in Untitled presentation" });
-  await drawing.getByLabel("SVG source").fill(LOGO.replace('height="100" viewBox="0 0 200 100"', 'height="400" viewBox="0 0 200 400"'));
+  await fillSource(drawing.getByLabel("SVG source"), LOGO.replace('height="100" viewBox="0 0 200 100"', 'height="400" viewBox="0 0 200 400"'));
   await drawing.getByRole("button", { name: "Back to Untitled presentation" }).click();
   await expect.poll(async () => (await box.boundingBox())!.height).toBeGreaterThan(before.height * 1.5);
   const after = (await box.boundingBox())!;
@@ -204,15 +205,15 @@ test("an SVG file a MARP deck shows twice changes in both places", async ({ page
   const markdown = page.getByLabel("Presentation markdown");
   const input = page.locator('input[type="file"][accept*="image/svg+xml"]');
   await input.setInputFiles(PICKED);
-  await expect(markdown).toHaveValue(/media\/logo\.svg/);
+  await expectSourceValue(markdown, /media\/logo\.svg/);
   await input.setInputFiles(PICKED);
-  await expect.poll(async () => (await markdown.inputValue()).match(/\(media\/logo\.svg\)/g)?.length).toBe(2);
+  await expect.poll(async () => (await sourceValue(markdown)).match(/\(media\/logo\.svg\)/g)?.length).toBe(2);
   const boxes = page.locator(".slide-canvas .slide-image");
   await expect(boxes).toHaveCount(2);
   await boxes.first().dblclick();
   const drawing = page.getByRole("dialog", { name: "media/logo.svg in Untitled presentation" });
-  await drawing.getByLabel("SVG source").fill(RED);
+  await fillSource(drawing.getByLabel("SVG source"), RED);
   await drawing.getByRole("button", { name: "Back to Untitled presentation" }).click();
   for (const i of [0, 1]) await expect.poll(() => svgOf(boxes.nth(i).locator("img"))).toBe(RED);
-  expect((await markdown.inputValue()).match(/\(media\/logo\.svg\)/g)?.length).toBe(2);
+  expect((await sourceValue(markdown)).match(/\(media\/logo\.svg\)/g)?.length).toBe(2);
 });

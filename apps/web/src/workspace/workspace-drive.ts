@@ -74,12 +74,12 @@ export function driveFileActions(
     // Uploads rename SuiteDrive files after their title, so the copy gets its own.
     const title = `${current.current!.file.title} (copy)`.slice(0, 200);
     const file = { ...current.current!.file, title } as SuiteFile;
-    setDriveConflict(null);
     const link = await saveNewDriveFile(
       file,
       conflict.parentId,
       nativeFilename(file),
     );
+    setDriveConflict(null);
     current.current = {
       ...current.current!,
       file: { ...current.current!.file, title } as SuiteFile,

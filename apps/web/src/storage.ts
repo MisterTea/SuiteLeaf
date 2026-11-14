@@ -43,7 +43,7 @@ const browserStorage: StorageAdapter = {
     return record;
   },
 };
-export const storage: StorageAdapter = window.suiteleaf ?? browserStorage;
+export const storage: StorageAdapter = (typeof window !== "undefined" ? window.suiteleaf : undefined) ?? browserStorage;
 /**
  * Export a file: a download in the browser (resolves to undefined); on the
  * desktop, the saved path, or null if the person cancelled the save dialog.

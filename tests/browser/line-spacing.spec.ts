@@ -87,7 +87,7 @@ test("line spacing follows the caret, changes only the selection, and survives s
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Garden club minutes" }).click();
   await expect(paragraph(page, "greenhouse")).toHaveAttribute("data-line-spacing", "1.5");

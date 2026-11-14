@@ -238,6 +238,22 @@ describe("per-word slide formatting", () => {
     expect(officeList).not.toContain("slide-bullet-fixed");
     expect(officeList.match(/slide-bullet-slot/g)?.length).toBe(3);
     expect(officeList.match(/min-width:calc\(27px \* var\(--canvas-fit, 1\)\)/g)?.length).toBe(3);
+    const starSquare = textInnerHtml({
+      fontSize: 64,
+      runs: [
+        { text: "▪ ", font: "StarSymbol", fontSize: 118.4, color: "#333399", paraHang: 27 },
+        { text: "Welcome", fontSize: 64 },
+      ],
+    });
+    expect(starSquare).toContain("vertical-align:-0.05em;");
+    expect(starSquare).not.toContain("slide-bullet-fixed");
+    const sameSizeSquare = textInnerHtml({
+      runs: [
+        { text: "▪ ", fontSize: 64, paraHang: 27 },
+        { text: "Welcome", fontSize: 64 },
+      ],
+    });
+    expect(sameSizeSquare).not.toContain("vertical-align:-0.05em");
     expect(textInnerHtml(saved)).toContain('data-bold="1"');
     expect(textInnerHtml(saved)).toContain("data-color=\"#95d5b2\"");
     expect(runsOf(saved).map((run) => run.text).join("")).toBe(line);
@@ -267,6 +283,6 @@ describe("per-word slide formatting", () => {
     });
     const blankParas = blank.split('class="slide-para"').slice(1);
     expect(blankParas[1]).toContain("<br>");
-    expect(blankParas[1]).toContain("calc(14 * var(--slide-pt, 1)");
+    expect(blankParas[1]).toContain("calc(14 * var(--slide-text-pt, var(--slide-pt, 1))");
   });
 });

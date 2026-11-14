@@ -9,7 +9,7 @@ async function newDocument(page: Page, title: string, body?: string) {
     await editor.click();
     await editor.fill(body);
   }
-  await expect(page.getByRole("status")).toContainText("Saved");
+  await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await expect(page.getByLabel("Search files")).toBeVisible();
 }
@@ -82,13 +82,10 @@ test("trash keeps a file for undo, restore, search, and starring", async ({ page
   await page.getByRole("link", { name: "Lasagne", exact: true }).click();
   await expect(page.getByLabel("File title")).toHaveValue("Lasagne");
   await expect(page.getByRole("textbox", { name: "Document content" })).toContainText("bechamel");
-  await expect(page.getByRole("button", { name: "Star document" })).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
-  await page.getByRole("button", { name: "Star document" }).click();
-  await expect(page.getByRole("button", { name: "Starred" })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Back to files" }).click();
+  await expect(page.getByRole("button", { name: "Star Lasagne", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "Star Lasagne", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Unstar Lasagne", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Star Weekly shopping", exact: true }).click();
   await expect(page.getByRole("button", { name: "Unstar Weekly shopping" })).toHaveAttribute(
     "aria-pressed",
