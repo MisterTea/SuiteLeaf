@@ -143,7 +143,7 @@ it("uses the native caret when an arrow or input arrives before selectionchange"
       if (type === "keydown") fireEvent.keyDown(root, { key: "ArrowLeft" });
       else fireEvent(root, new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: "X" }));
     });
-    expect(selectionOffsets(root)).toEqual({ start: 1, end: 1 });
+    expect(selectionOffsets(root)).toEqual(type === "keydown" ? { start: 0, end: 0 } : { start: 1, end: 1 });
   }
 });
 

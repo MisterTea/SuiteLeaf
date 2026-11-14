@@ -63,6 +63,18 @@ export function TiptapSlideTextBody(props: Props) {
             editor.commands.setTextSelection(event.key === "ArrowLeft" ? editor.state.selection.from : editor.state.selection.to);
             return true;
           }
+          if (!event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey &&
+            (event.key === "ArrowLeft" || event.key === "ArrowRight") && editor.state.selection.empty) {
+            const { $from } = editor.state.selection;
+            const direction = event.key === "ArrowLeft" ? -1 : 1;
+            const offset = $from.parentOffset;
+            const adjacent = $from.parent.textBetween(Math.max(0, offset - 1), Math.min($from.parent.content.size, offset + 1), "", "\ufffc");
+            // Complex graphemes and bidirectional text keep native navigation.
+            if ($from.parent.isTextblock && /^[\x20-\x7e]+$/.test(adjacent) && (direction < 0 ? offset > 0 : offset < $from.parent.content.size)) {
+              editor.commands.setTextSelection($from.pos + direction);
+              return true;
+            }
+          }
           return false;
         },
         attributes: {
