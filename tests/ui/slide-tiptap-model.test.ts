@@ -7,6 +7,7 @@ import { authoredOffset, documentPosition, markerLength, safeOfficeRun, slideDoc
 import { renderSlideText, slideTextKit } from "../../apps/web/src/editors/slide-tiptap-schema";
 import { tiptapDomSelection } from "../../apps/web/src/editors/slide-tiptap-selection";
 import { slideTextTrialEnabled } from "../../apps/web/src/editors/slide-text-trial";
+import { runsOf } from "../../apps/web/src/editors/slide-runs";
 
 const editors: Editor[] = [];
 afterEach(() => { editors.splice(0).forEach(editor => editor.destroy()); document.body.replaceChildren(); });
@@ -36,6 +37,13 @@ describe("slide text's structured model", () => {
     const firstMarker = model([br, { text: "Only paragraph" }]);
     expect(firstMarker.childCount).toBe(1);
     expect(slideDocumentToRuns(firstMarker)[0]).toMatchObject(br);
+  });
+
+  it("preserves an explicitly empty first paragraph through normalization and editing", () => {
+    const runs: TextRun[] = [{ text: "" }, { text: "\n", paragraphBreak: true }, { text: "▪ First" }];
+    const doc = model(runsOf({ runs }));
+    expect(slideParagraphs(doc).map(p => p.node.textContent)).toEqual(["", "First"]);
+    expect(slideParagraphs(model(runsOf({ runs: slideDocumentToRuns(doc) }))).map(p => p.node.textContent)).toEqual(["", "First"]);
   });
 
   it("roundtrips ordinary paragraphs, blank lines, hard breaks and all inline marks", () => {

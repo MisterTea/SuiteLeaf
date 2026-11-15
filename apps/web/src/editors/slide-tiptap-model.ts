@@ -61,6 +61,7 @@ export function slideRunsToDocument(runs: readonly TextRun[]): JSONContent {
     if (run.paragraphBreak && run.text === "\n") paragraphs.push({ runs: [], breakRun: run });
     else {
       if (!paragraphs.length) paragraphs.push({ runs: [], breakRun: null });
+      if (!run.text) paragraphs.at(-1)!.runs.push(run);
       // Legacy typed lists store their item boundaries as ordinary newlines.
       const parts = run.text.split(/(\n)/);
       for (let i = 0; i < parts.length; i++) {
@@ -154,7 +155,7 @@ export function slideDocumentToRuns(doc: ProseNode): TextRun[] {
     }
     const words = [...p.marker, ...p.runs];
     if (index || p.node.attrs.breakRun?.paragraphBreak) return [{ ...(p.node.attrs.breakRun ?? {}), ...office, text: "\n", paragraphBreak: true }, ...words];
-    if (!words.length) return Object.keys(office).length ? [{ ...office, text: "" }] : [];
+    if (!words.length) return Object.keys(office).length || doc.childCount > 1 ? [{ ...office, text: "" }] : [];
     return [{ ...words[0], ...office }, ...words.slice(1)];
   });
 }

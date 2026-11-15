@@ -144,7 +144,11 @@ export function replaceRunRange(
 export function mergeRuns(runs: readonly TextRun[]): TextRun[] {
   const out: TextRun[] = [];
   for (const run of runs) {
-    if (!run.text) continue;
+    if (!run.text) {
+      // An imported empty first paragraph anchors the separators after it.
+      if (!out.length && runs.some(item => item.paragraphBreak)) out.push(cleanRun(run));
+      continue;
+    }
     const cleaned = cleanRun(run);
     const prev = out[out.length - 1];
     // A hard break is its own run. Joining it with the next word would drop the line.
