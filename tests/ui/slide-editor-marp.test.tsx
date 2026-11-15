@@ -105,6 +105,8 @@ describe("a MARP deck in the editor", () => {
     await fitted(editor);
     const body = editor.elements().find((el) => el.content?.includes("Ship"))!;
     const first = editor.active();
+    touch(box(body.id), "pointerdown", 100, body.y);
+    touch(box(body.id), "pointerup", 100, body.y);
     editor.onChange.mockClear();
     touch(box(body.id), "pointerdown", 100, body.y);
     touch(box(body.id), "pointermove", 100, body.y + 20);

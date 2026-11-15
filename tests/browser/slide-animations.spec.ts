@@ -1,6 +1,43 @@
 import { editSlideText } from "./slide-text-helpers";
 import { expect, test } from "@playwright/test";
 
+test("imported bullets with leading blank paragraphs reveal one at a time", async ({ page }) => {
+  const now = new Date().toISOString();
+  const lines = ["▪ First", "▪ Second", "▪ Third"];
+  const br = { text: "\n", paragraphBreak: true };
+  const file = {
+    format: "suiteleaf", version: 1, id: crypto.randomUUID(), kind: "slide",
+    title: "Imported builds", createdAt: now, updatedAt: now,
+    content: {
+      id: crypto.randomUUID(), width: 960, height: 540, slideOrder: ["a"],
+      slides: { a: { id: "a", elements: [{
+        id: "bullets", type: "text", x: 50, y: 50, width: 800, height: 400, fontSize: 28,
+        content: "\n\n" + lines.join("\n"),
+        runs: [br, br, ...lines.flatMap(text => [br, { text }])],
+        paragraphBuilds: lines.map((_, i) => ({ start: i + 2, end: i + 2, order: i + 1 })),
+      }] } },
+    },
+  };
+  await page.goto("/");
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+    name: "Imported builds.slslides", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(file)),
+  });
+  await page.getByRole("button", { name: "Slideshow", exact: true }).click();
+  const show = page.locator(".presenter-slide-box");
+  const bullets = lines.map((_, i) => show.locator(`[data-element-id="bullets"] .slide-para[data-para-index="${i + 2}"]`));
+  for (let revealed = 0; revealed <= 3; revealed++) {
+    for (let i = 0; i < bullets.length; i++) {
+      await expect(bullets[i]).toHaveText(lines[i]);
+      if (i < revealed) await expect(bullets[i]).toBeVisible();
+      else await expect(bullets[i]).toBeHidden();
+    }
+    if (revealed < 3) await show.click();
+  }
+  await page.keyboard.press("ArrowLeft");
+  await expect(bullets[1]).toBeVisible();
+  await expect(bullets[2]).toBeHidden();
+});
+
 test("animation ribbon and pane leave the slide visible and preview the painted object", async ({
   page,
 }) => {
@@ -121,88 +158,101 @@ test("Appear preview visibly resets the slide before revealing each object", asy
   await expect(boxes.nth(0)).toHaveCSS("opacity", "1");
 });
 
-test("one picture preview hides and reveals its image, fill and outline together", async ({
-  page,
-}) => {
-  const slideId = "layered-slide";
-  const now = new Date().toISOString();
-  const file = {
-    format: "suiteleaf",
-    version: 1,
-    id: crypto.randomUUID(),
-    kind: "slide",
-    title: "Layered picture",
-    createdAt: now,
-    updatedAt: now,
-    content: {
+for (const sourceIds of [true, false]) {
+  test(`one picture preview and slideshow reveal its frame together (source IDs=${sourceIds})`, async ({
+    page,
+  }) => {
+    const slideId = "layered-slide";
+    const now = new Date().toISOString();
+    const file = {
+      format: "suiteleaf",
+      version: 1,
       id: crypto.randomUUID(),
-      width: 960,
-      height: 540,
-      slideOrder: [slideId],
-      slides: { [slideId]: { id: slideId, elements: [] as unknown[] } },
-    },
-  };
-  const base = {
-    x: 100,
-    y: 100,
-    width: 400,
-    height: 200,
-    sourceShapeId: "5",
-    animation: "appear-on-click" as const,
-    animationOrder: 1,
-  };
-  const src =
-    "data:image/svg+xml;base64," +
-    Buffer.from(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="tomato"/></svg>',
-    ).toString("base64");
-  file.content.slides[slideId].elements = [
-    { ...base, id: "fill", type: "shape", shapeType: "rect", fill: "#ffffff" },
-    { ...base, id: "picture", type: "image", src, alt: "Slide image" },
-    {
-      ...base,
-      id: "outline",
-      type: "shape",
-      shapeType: "rect",
-      fill: "transparent",
-      stroke: "#000000",
-      strokeWidth: 2,
-    },
-  ];
-  await page.goto("/");
-  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
-    name: "Layered picture.slslides",
-    mimeType: "application/json",
-    buffer: Buffer.from(JSON.stringify(file)),
+      kind: "slide",
+      title: "Layered picture",
+      createdAt: now,
+      updatedAt: now,
+      content: {
+        id: crypto.randomUUID(),
+        width: 960,
+        height: 540,
+        slideOrder: [slideId],
+        slides: { [slideId]: { id: slideId, elements: [] as unknown[] } },
+      },
+    };
+    const base = {
+      x: 100,
+      y: 100,
+      width: 400,
+      height: 200,
+      sourceShapeId: sourceIds ? "5" : undefined,
+    };
+    const src =
+      "data:image/svg+xml;base64," +
+      Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="tomato"/></svg>',
+      ).toString("base64");
+    file.content.slides[slideId].elements = [
+      { ...base, id: "fill", type: "shape", shapeType: "rect", fill: "#ffffff" },
+      { ...base, id: "picture", type: "image", src, alt: "Slide image", animation: "appear-on-click", animationOrder: 1 },
+      {
+        ...base,
+        id: "outline",
+        type: "shape",
+        shapeType: "rect",
+        fill: "transparent",
+        stroke: "#000000",
+        strokeWidth: 2,
+      },
+    ];
+    await page.goto("/");
+    await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+      name: "Layered picture.slslides",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(file)),
+    });
+    await page.getByRole("button", { name: "Animations", exact: true }).click();
+    const layers = page.locator(".slide-canvas [data-element-id]");
+    await page
+      .getByRole("button", { name: "Preview Picture 1", exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        layers.evaluateAll((nodes) =>
+          nodes.map((node) => getComputedStyle(node).opacity),
+        ),
+      )
+      .toEqual(["0", "0", "0"]);
+    await expect
+      .poll(() =>
+        layers.evaluateAll((nodes) =>
+          nodes.map((node) => getComputedStyle(node).opacity),
+        ),
+      )
+      .toEqual(["1", "1", "1"]);
+    await page.getByRole("button", { name: "Stop preview", exact: true }).click();
+    await expect
+      .poll(() =>
+        layers.evaluateAll((nodes) =>
+          nodes.every((node) => node.getAnimations().length === 0),
+        ),
+      )
+      .toBe(true);
+    await page.getByRole("button", { name: "Slideshow", exact: true }).click();
+    const shown = page.locator(".presenter-slide-box [data-element-id]");
+    await expect.poll(() => shown.evaluateAll((nodes) =>
+      nodes.map((node) => getComputedStyle(node).visibility),
+    )).toEqual(["hidden", "hidden", "hidden"]);
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => shown.evaluateAll((nodes) =>
+      nodes.map((node) => [getComputedStyle(node).visibility, getComputedStyle(node).opacity]),
+    )).toEqual([["visible", "1"], ["visible", "1"], ["visible", "1"]]);
+    await page.keyboard.press("ArrowLeft");
+    await expect.poll(() => shown.evaluateAll((nodes) =>
+      nodes.map((node) => getComputedStyle(node).visibility),
+    )).toEqual(["hidden", "hidden", "hidden"]);
   });
-  await page.getByRole("button", { name: "Animations", exact: true }).click();
-  const layers = page.locator(".slide-canvas [data-element-id]");
-  await page
-    .getByRole("button", { name: "Preview Picture 1", exact: true })
-    .click();
-  await expect
-    .poll(() =>
-      layers.evaluateAll((nodes) =>
-        nodes.map((node) => getComputedStyle(node).opacity),
-      ),
-    )
-    .toEqual(["0", "0", "0"]);
-  await expect
-    .poll(() =>
-      layers.evaluateAll((nodes) =>
-        nodes.map((node) => getComputedStyle(node).opacity),
-      ),
-    )
-    .toEqual(["1", "1", "1"]);
-  await page.getByRole("button", { name: "Stop preview", exact: true }).click();
-  await expect
-    .poll(() =>
-      layers.evaluateAll((nodes) =>
-        nodes.every((node) => node.getAnimations().length === 0),
-      ),
-    )
-    .toBe(true);
-});
+}
 
 test("long bullet labels keep their opening words visible and truncate at the right edge", async ({
   page,

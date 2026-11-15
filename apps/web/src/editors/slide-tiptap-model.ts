@@ -56,10 +56,11 @@ function splitAt(runs: TextRun[], at: number): [TextRun[], TextRun[]] {
 
 /** Keep Office paragraph metadata separate from inline formatting. */
 export function slideRunsToDocument(runs: readonly TextRun[]): JSONContent {
-  const paragraphs: { runs: TextRun[]; breakRun: TextRun | null }[] = [{ runs: [], breakRun: null }];
+  const paragraphs: { runs: TextRun[]; breakRun: TextRun | null }[] = [];
   for (const run of runs) {
     if (run.paragraphBreak && run.text === "\n") paragraphs.push({ runs: [], breakRun: run });
     else {
+      if (!paragraphs.length) paragraphs.push({ runs: [], breakRun: null });
       // Legacy typed lists store their item boundaries as ordinary newlines.
       const parts = run.text.split(/(\n)/);
       for (let i = 0; i < parts.length; i++) {
@@ -68,6 +69,9 @@ export function slideRunsToDocument(runs: readonly TextRun[]): JSONContent {
       }
     }
   }
+  // Office's first paragraph marker opens its first slot; it is not a blank
+  // paragraph before that slot. Keep a block for genuinely empty documents.
+  if (!paragraphs.length) paragraphs.push({ runs: [], breakRun: null });
   const content: JSONContent[] = [];
   const stack: { depth: number; list: JSONContent; last: JSONContent }[] = [];
   for (const { runs: words, breakRun } of paragraphs) {
@@ -122,7 +126,7 @@ export function slideParagraphs(doc: ProseNode): SlideParagraph[] {
       }
       const runs: TextRun[] = [];
       node.forEach(child => runs.push(runOf(child)));
-      if (result.length) offset++;
+      if (result.length || node.attrs.breakRun?.paragraphBreak) offset++;
       result.push({ node, pos, depth: Math.max(0, depth), list, start: offset, marker, runs });
       offset += [...marker, ...runs].reduce((n, run) => n + run.text.length, 0);
       return;
@@ -149,7 +153,7 @@ export function slideDocumentToRuns(doc: ProseNode): TextRun[] {
       delete office.listDepth;
     }
     const words = [...p.marker, ...p.runs];
-    if (index) return [{ ...(p.node.attrs.breakRun ?? {}), ...office, text: "\n", paragraphBreak: true }, ...words];
+    if (index || p.node.attrs.breakRun?.paragraphBreak) return [{ ...(p.node.attrs.breakRun ?? {}), ...office, text: "\n", paragraphBreak: true }, ...words];
     if (!words.length) return Object.keys(office).length ? [{ ...office, text: "" }] : [];
     return [{ ...words[0], ...office }, ...words.slice(1)];
   });

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { Slide } from "@suiteleaf/core";
+import { pictureAnimationOwner } from "./slide-picture-animation";
 import {
   animationGroups,
   animationPreviewTimeline,
@@ -29,23 +30,29 @@ export function useAnimationPreview(
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
+    const partsByOwner = new Map<string, Set<string>>();
+    for (const element of slide.elements) {
+      const owner = pictureAnimationOwner(element, slide.elements).id;
+      const parts = partsByOwner.get(owner) ?? new Set<string>();
+      parts.add(element.id);
+      partsByOwner.set(owner, parts);
+    }
     for (const { entry, delay } of timeline) {
-      const box = [
+      const partIds = partsByOwner.get(entry.id);
+      const boxes = [
         ...(root.current?.querySelectorAll<HTMLElement>(
           ".slide-canvas [data-element-id]",
         ) ?? []),
-      ].find((node) => node.dataset.elementId === entry.id);
-      const targets = entry.paragraphs
+      ].filter((node) => partIds?.has(node.dataset.elementId ?? ""));
+      const targets = boxes.flatMap((box) => entry.paragraphs
         ? [
-            ...(box?.querySelectorAll<HTMLElement>("[data-para-index]") ?? []),
+            ...box.querySelectorAll<HTMLElement>("[data-para-index]"),
           ].filter(
             (node) =>
               Number(node.dataset.paraIndex) >= entry.paragraphs!.start &&
               Number(node.dataset.paraIndex) <= entry.paragraphs!.end,
           )
-        : box
-          ? [box]
-          : [];
+        : [box]);
       const frames: Keyframe[] = entry.exit
         ? [{ opacity: 1 }, { opacity: 0 }]
         : entry.kind === "fly-on-click"
