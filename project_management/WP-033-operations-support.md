@@ -1,71 +1,38 @@
 ---
-id: "WP-033"
-title: "Operational visibility and actionable support"
-type: "work_package"
-status: "done"
-priority: "P1"
-phase: 2
-area: "operations"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S04", "S06", "S26"]
+id: WP-033
+status: ready
+priority: P1
+wave: 2
+effort: L
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Operational visibility and actionable support
+# WP-033: Make cluster operations supportable
 
-## Outcome and rationale
+## Outcome and baseline
 
-Make self-hosting supportable and let administrators diagnose failures without repeatedly exporting private documents or guessing which subsystem failed.
+Runbooks and operations modules exist; service-level recovery needs measured deployment evidence.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/operations](../packages/core/src/operations); [docs/operations-runbooks.md](../docs/operations-runbooks.md). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-Nodes replicate database operations/blobs, host auth, and serve SuiteDrive. Existing admin activity views are not a complete health/support console. Inspect `deploy/`, node HTTP/replication modules, and `apps/web/src/admin/`.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Expose health/readiness, replication lag/backlog, failed saves, room health, queue failures, storage usage, quotas, backup freshness, and restore-test status.
-- Add capacity thresholds, quota policies, alerts, and a clear distinction between transient offline state and data-integrity failures.
-- Create stable error codes, user remedies, correlation IDs, and an opt-in diagnostics bundle excluding document contents, tokens, and secrets by default.
-- Provide operator runbooks for auth failure, full disks, missing blobs, damaged indexes, node replacement, upgrades, and restore; include a support access path when ordinary sign-in is unavailable.
-- If commercial support is offered, define severity, ownership, escalation, response expectations, and an incident/status process independent of the affected application.
-- Track support outcomes and common failure categories without unnecessary personal-data collection.
-
-## Dependencies and delivery
-
-No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Instrument sync lag, storage, queue age and errors.
+- [ ] add redacted diagnostics, health checks, capacity planning and rehearsed incident playbooks.
 
 ## Acceptance criteria
 
-- An operator can identify an induced failed upload, lagging node, full disk, and stale backup from documented telemetry.
-- A diagnostics bundle contains enough context to reproduce a known issue without including file contents or credentials.
-- A locked-out administrator has a documented, authenticated recovery/escalation route.
-- Quotas fail safely before writes are acknowledged and preserve unsynchronized local edits.
+- [ ] Inject full disk, node outage and stalled replication in a disposable cluster.
+- [ ] alerts identify failures without file contents.
+- [ ] an operator restores service using the runbook and publishes measured impact/recovery.
 
-## Verification
+## Dependencies and execution
 
-- Unit-test redaction/error mapping and dashboard data; server integration tests for health and alert transitions.
-- Inject representative failures and follow the runbooks in a disposable deployment.
-- Verify monitoring permissions and avoid leaking user activity to unauthorized administrators.
+Dependencies: WP-010, WP-011. These gate final integration acceptance, not initial investigation. Wave 2; priority P1; rough effort L (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-Do not promise support response times without staffing/capacity approval. A green health endpoint alone is not evidence that backups or application workflows work.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S04`, `S06`, `S26`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-005", "WP-010"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-2026-11-04: WP-005 and WP-010 completed and removed from `blocked_on`. Package has all prerequisites cleared; status is `ready` and `blocked` is false.
-2026-11-04: Completed and verified. Implemented `packages/core/src/operations/` (`types.ts`, `telemetry.ts`, `diagnostics-bundle.ts`, `quota-policy.ts`) and operator documentation in `docs/operations-runbooks.md`. Verified telemetry detection for failed uploads, lagging nodes, full disks, and stale backups with actionable operator/user remedies; clear distinction between transient offline state and data-integrity failures; opt-in diagnostics bundles strictly redacting tokens, passwords, API keys, and file contents; safe quota enforcement before write acknowledgement that preserves unsynced local edits; and authenticated emergency recovery routes for locked-out administrators. Unit test suite `tests/operations-support.test.ts` (5 tests) passes with >96% coverage and Rust emergency tests pass. Package status is `done`.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

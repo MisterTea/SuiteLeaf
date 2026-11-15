@@ -308,7 +308,7 @@ describe("file access", () => {
       host.registerAgentHost("home", {
         kind: "home",
         snapshot: () => "Screen: the file list.",
-        tools: [{ name: "create_file", label: "New file", description: "", parameters: { type: "object", properties: { kind: { type: "string" } } } as never, execute: ({ kind }: { kind: string }) => {
+        tools: [{ name: "create_file", label: "New file", description: "", authorize: () => {}, parameters: { type: "object", properties: { kind: { type: "string" } } } as never, execute: ({ kind }: { kind: string }) => {
             made.push(kind);
             return "Created.";
           } } as never],
@@ -405,7 +405,7 @@ describe("reloading in the middle of a tool", () => {
         kind: "home",
         snapshot: () => "",
         tools: [
-          { name: "connect", label: "Connect", description: "", parameters: { type: "object", properties: {} } as never, execute: () => agentSession.reloadAndResume("Connected.", () => void (reloaded = true)) } as never,
+          { name: "connect", label: "Connect", description: "", authorize: () => {}, parameters: { type: "object", properties: {} } as never, execute: () => agentSession.reloadAndResume("Connected.", () => void (reloaded = true)) } as never,
         ],
       }),
     );

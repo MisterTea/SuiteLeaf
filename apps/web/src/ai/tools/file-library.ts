@@ -2,6 +2,7 @@ import type { FileRecord, SuiteFile } from "@suiteleaf/core";
 import { ToolError } from "../host";
 import { moveCursor } from "../cursor";
 import { NAMES, scrolledTo, wait, type Kind } from "./file-tool-kit";
+import { assertRecordAccess } from "./file-authorization";
 
 /** What the file list (home screen) lends the agent. */
 export interface HomeAgentContext {
@@ -135,6 +136,7 @@ async function poll<T>(read: () => T | undefined, ms = 3000): Promise<T | undefi
 
 /** Move the named files to Trash if needed, ask, then empty Trash through the dialog. */
 export async function emptyTrashForever(ctx: HomeAgentContext, targets: FileRecord[]) {
+  for (const target of targets) await assertRecordAccess(target, true);
   for (const target of targets) {
     const latest = (await ctx.fresh()).find((r) => r.file.id === target.file.id) ?? target;
     if (!latest.trashedAt) await ctx.remove(latest);
@@ -158,6 +160,7 @@ export async function emptyTrashForever(ctx: HomeAgentContext, targets: FileReco
       const submit = [...dialog.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Delete forever");
       await moveCursor(submit, "Delete forever");
       await wait(400);
+      for (const target of targets) await assertRecordAccess(target, true);
       submit?.click();
     } else if (extra.length) {
       cancel?.click();

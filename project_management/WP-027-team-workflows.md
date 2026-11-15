@@ -1,71 +1,37 @@
 ---
-id: "WP-027"
-title: "Notifications, assigned work, and approvals"
-type: "work_package"
-status: "done"
-priority: "P1"
-phase: 2
-area: "workflow"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S01", "S02"]
+id: WP-027
+status: ready
+priority: P2
+wave: 2
+effort: M
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Notifications, assigned work, and approvals
+# WP-027: Complete review assignments and approvals
 
-## Outcome and rationale
+## Outcome and baseline
 
-Give teams a coherent way to act on comments, reviews, form submissions, and shared documents without relying on manual follow-up.
+Workflow and approval components exist; module tests do not prove a team can complete the workflow.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/workflows](../packages/core/src/workflows); [docs/workflows-and-expected-behavior.md](../docs/workflows-and-expected-behavior.md). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-Existing comments, mentions, history, sharing, and document suggestions provide UI/content anchors. Start with `apps/web/src/drive/file-comments.tsx`, editor comment modules, `apps/web/src/editors/doc-mentions.ts`, and node drive APIs.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Define stable events and tasks for mentions, assignments, review requests, sharing changes, form submissions, and approval actions. Link each event to an authorized file/version/anchor.
-- Provide an inbox, unread state, assignment owner/due date, resolve/reopen, notification preferences, batching/digests, and deduplication.
-- Bind approval to immutable versions and define what changes invalidate it; support multiple reviewers and explicit decision histories.
-- Add transactional event/outbox delivery so failed notifications retry without duplicate task creation. Integrate email/chat only through configured providers.
-- Remove or redact inaccessible notification content on revocation; distinguish notification visibility from permission to the referenced file.
-
-## Dependencies and delivery
-
-No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Integrate assignments, due dates, mentions, notifications, approval history and revision binding into document/file views.
 
 ## Acceptance criteria
 
-- A mention/assignment creates one actionable item, survives refresh, and tracks resolution.
-- Repeated retries do not duplicate notifications or approvals.
-- An approved version remains identifiable and later edits clearly require a new review.
-- A user who loses access cannot retrieve document snippets through old notification endpoints.
+- [ ] Author assigns a reviewer, reviewer comments and approves, author changes content and approval becomes stale.
+- [ ] repeated notifications are deduplicated.
+- [ ] unauthorized actors cannot approve or read the task.
 
-## Verification
+## Dependencies and execution
 
-- Vitest event/task models, preference filtering, jsdom inbox behavior, and approval state; server tests for outbox durability/access.
-- Simulate delivery failures, deleted anchors, revoked access, and concurrent decisions.
-- Do not add browser tests that only verify notification strings.
+Dependencies: WP-007, WP-018. These gate final integration acceptance, not initial investigation. Wave 2; priority P2; rough effort M (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-A basic review approval is not a legally binding signature. Sending external notifications requires an explicitly configured and authorized channel.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-2026-11-04: WP-007 completed. Removed from `blocked_on`; `blocked` is now false and package status is `ready`.
-
-2026-11-04, later: Notifications, assigned work, and approvals completed and accepted. Implemented team workflow inbox (`TeamWorkflowInbox`) with mention and assignment task generation, resolve/reopen lifecycle, and permission-aware content redaction preventing snippet leakage upon permission revocation. Implemented transactional outbox (`TransactionalOutbox`) with idempotency deduplication and retry resilience. Implemented multi-reviewer document approvals (`ApprovalWorkflowManager`) bound to immutable document hashes with automatic invalidation upon subsequent document edits. Tested in `tests/team-workflows.test.ts` and `tests/review-approval.test.ts`. Status changed to `done`. WP-027 dependency removed from WP-038.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

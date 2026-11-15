@@ -86,6 +86,6 @@ export function roomRecoveryText(
     const action = link === "joining" ? "Joining" : "Reconnecting";
     return `${action}. ${edits(pending)} still on this device.`;
   }
-  if (link === "joining") return "Joining the shared document.";
+  if (link === "joining") return null;
   return "Reconnecting to the shared document.";
 }

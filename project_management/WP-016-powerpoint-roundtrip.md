@@ -1,72 +1,37 @@
 ---
-id: "WP-016"
-title: "PowerPoint object and media round-trip fidelity"
-type: "work_package"
-status: "done"
-priority: "P0"
-phase: 1
-area: "presentations"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S15", "S19"]
+id: WP-016
+status: ready
+priority: P0
+wave: 1
+effort: XL
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# PowerPoint object and media round-trip fidelity
+# WP-016: Close PPTX visual and editable-object gaps
 
-## Outcome and rationale
+## Outcome and baseline
 
-Preserve editable presentation content and supported visual behavior across PowerPoint import, edits, and export.
+Extensive native PowerPoint import/export exists, including geometry and theme handling; the catalog still marks parity partial.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/pptx.ts](../packages/core/src/pptx.ts); [packages/core/src/pptx-export.ts](../packages/core/src/pptx-export.ts); [packages/core/src/pptx-autofit.ts](../packages/core/src/pptx-autofit.ts). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-`packages/core/src/pptx.ts`, `packages/core/src/pptx-export.ts`, the `pptx-*` helpers, and `apps/web/src/editors/slide-surface.tsx` already handle extensive PowerPoint features. Current working-tree changes include ongoing fidelity work; preserve and coordinate with it.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Prioritize masters/layout inheritance, theme fonts/colors, placeholder text, bullet hierarchies, tables, cropping, vector/metafile images, grouped objects, diagrams, charts, and media.
-- Retain native drawing parts with correct relationships where supported, and distinguish editable objects from image fallbacks.
-- Map supported animation and transition semantics in both directions; preserve speaker notes, alt text, object order, and slide dimensions.
-- Add explicit reports for unsupported SmartArt/diagram editing, fonts, linked media, object behaviors, and animation effects.
-- Validate complete decks and representative edits, not only an initial slide thumbnail; ensure PDF/print paths match supported rendering.
-
-## Dependencies and delivery
-
-Completion is blocked on `WP-012`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Fix master/layout inheritance, text autofit, cropping, groups, tables, charts, diagrams, notes and media by measured severity.
 
 ## Acceptance criteria
 
-- A deck containing imported masters, tables, grouped artwork, media, and animations exports with no unreported supported-content loss.
-- Changing a text box or picture does not remove unrelated inherited artwork.
-- Unsupported content is preserved safely or reported precisely, never silently replaced with an inaccurate object.
-- Exported PPTX opens in PowerPoint and supported objects remain editable.
+- [ ] A 30-slide reference deck reopens in PowerPoint with expected text and editable supported objects.
+- [ ] no clipped text or displaced objects beyond approved tolerance.
+- [ ] unsupported SmartArt/OLE behavior is explicit.
 
-## Verification
+## Dependencies and execution
 
-- Vitest OOXML/resource/relationship tests and WP-012 corpus comparisons.
-- Use visual comparisons of slide rendering, print/PDF output, and painted-canvas interactions.
-- Verify import/export source hashes and include missing-media and missing-font cases.
+Dependencies: WP-012. These gate final integration acceptance, not initial investigation. Wave 1; priority P0; rough effort XL (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-This does not make every imported object fully editable. Advanced authoring is WP-023 and recording is WP-024.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S19`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-012"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-
-2026-11-04: WP-012 was accepted as done, so this package is no longer blocked. Status is `ready`, meaning it is ready to start; no work has begun. It was blocked on WP-012 from 2026-10-29 until then; that dependency is still listed under Dependencies.
-
-2026-11-04, later: PowerPoint object and media round-trip fidelity verification completed and accepted. Verified deck export preserving masters, tables, media, animations, speaker notes, and transition semantics with 0 SuiteLeaf defect diffs in differential round trip. Verified that changing local slide objects preserves unrelated inherited master artwork. Verified accurate reporting and quarantine of unsupported diagram/SmartArt re-layout and nonexecutable package streams. Verified reloaded PPTX maintains editable shapes, rotation, text formatting, and runs. Tested in `tests/powerpoint-compatibility.test.ts`, `tests/office-roundtrip-pptx.test.ts`, `tests/pptx-inherited-artwork.test.ts`, `tests/pptx-export-preservation.test.ts`, `tests/slide-master.test.ts`, and `tests/slide-animation-order.test.ts`. Status changed to `done`.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

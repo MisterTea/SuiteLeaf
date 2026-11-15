@@ -1,115 +1,57 @@
----
-id: "PM-ROADMAP"
-title: "Delivery sequence and requirement coverage"
-type: "roadmap"
-status: "planning"
-created: "2026-10-29"
-updated: "2026-10-29"
-blocked: false
-blocked_on: []
----
+# Delivery roadmap
 
-# Delivery sequence and requirement coverage
+This roadmap prioritizes finishing and proving user workflows. It does not schedule a rewrite. The four waves below are new planning groups, not a claim that the historical catalog phase gates passed.
 
-## Phase 1: Trust the work
+## Priorities
 
-Start evidence/inventory (WP-001), durable collaboration (WP-002), save/sync (WP-005), backup/restore (WP-010), and managed releases (WP-011). Once evidence contracts exist, establish the compatibility corpus (WP-012), user reports (WP-013), and format-specific fidelity (WP-014–016). Spreadsheet and slide collaboration (WP-003–004) follow the durable session contract. Offline readiness (WP-006) builds on durable local-save/sync state. Permissions (WP-007) and identity (WP-008) can start while this work proceeds.
+- **P0:** trust in saved data, interoperability, collaboration, recovery and accessibility. Accessibility begins in wave 1, although its cross-editor acceptance gate closes in wave 3.
+- **P1:** professional desktop workflows and a supportable team pilot.
+- **P2:** broader workspace differentiation and advanced ecosystem scope. P2 does not mean necessary features can be omitted from an unrestricted Office-parity claim.
 
-**Exit gate:** supported edits survive disconnection and restart; local/server/backup state is truthful; supported Office content survives edit/export/reopen with explicit limitations; independent restore works; releases have a safe deployment/recovery path. This is a workflow gate, not a promised date.
+## Wave 1: safe files and a measurable baseline
 
-## Phase 2: Adopt as a team
+Packages: WP-001–006 and WP-010–016. Begin the WP-029 accessibility audit immediately. Start with WP-001 and WP-012 fixture/reference setup, then run save/recovery and the three format pipelines. Fix high-severity content loss and wrong calculation before visual polish. Document collaboration is the shared foundation for sheet and slide integration.
 
-Deliver effective-access explanations (WP-007), enterprise identity (WP-008), provisioning/offboarding (WP-009), permission-aware search (WP-026), tasks/notifications/approvals (WP-027), migration (WP-028), operations/support (WP-033), optional governed AI (WP-034), transparent packaging/exit (WP-035), and shared templates (WP-036).
+Exit: all supported fixtures have zero silent content loss; calculation differences are explained or fixed; crash/reconnect preserves acknowledged changes; an independent clean-cluster restore succeeds; release/update paths have measured recovery. Office reference unavailability blocks the Office fidelity claim, not all development. A LibreOffice result is labeled as such.
 
-**Exit gate:** a pilot organization can import representative files and users, review access, collaborate, diagnose failures, recover records, offboard an employee, and export its data without bespoke undocumented scripts. Record residual requirements for each pilot rather than claiming every organization can migrate.
+## Wave 2: usable and operable team pilot
 
-## Phase 3: Replace professional daily workflows
+Packages: WP-007–009, WP-026–028, WP-033–036. Start permissions early because later services depend on them. Discovery and scaffolding can run before dependencies finish; final acceptance cannot. WP-027 waits for the review semantics in WP-018, and WP-036 waits for the relevant format work. Therefore waves overlap rather than being strict sequential sprints.
 
-Expand document publishing/review/research (WP-017–019), spreadsheet ingestion/analysis/performance (WP-020–022), slide authoring/recording (WP-023–024), Forms (WP-025), accessibility (WP-029), and mobile (WP-030). Accessibility requirements belong in designs from the beginning; their phase number does not justify postponing baseline usability.
+Exit: a pilot imports a mixed folder, shares it, finds permitted content, reviews a document, revokes access, offboards an employee and exports all file bytes. Operators recover from a failed node and diagnose errors with redacted evidence. AI cannot bypass the same permissions. Identity-provider checks need a configured test tenant.
 
-**Exit gate:** representative report, financial workbook, presentation, form, accessible-editing, and mobile workflows complete within SuiteLeaf, and declared interchange/export behavior is verified. New features must join the collaboration and compatibility contracts rather than bypassing them.
+## Wave 3: professional authoring and delivery
 
-## Phase 4: Expand the platform
+Packages: WP-017–025 and WP-029–030. Prioritize the report, financial workbook and presentation below. Ship slices after their own acceptance; do not wait for all advanced analytics to finish before shipping a stable editor improvement.
 
-Deliver safe automation (WP-031), advanced governance (WP-032), communications integrations (WP-037), and knowledge/planning/structured-work integrations (WP-038). Earlier packages may implement a minimal internal job/outbox abstraction and integrate with the public automation platform later; this avoids a circular dependency.
+Exit workflows:
 
-**Exit gate:** integrations and policies have scoped access, lifecycle controls, diagnostics, and tested exports. Native email/conferencing, a full DAX/VBA engine, and standalone notebook/database/portal products remain explicit product decisions; integration support must not be advertised as complete native parity.
+1. **Word:** import and revise a 100-page report containing sections, tables, figures, references and tracked changes; update fields; reopen in Word and print without unexplained content or layout loss.
+2. **Excel:** import a budget, recalculate supported formulas, refresh a joined source, pivot and chart the result, audit an error and print selected pages; reopen in Excel with equivalent results.
+3. **PowerPoint:** edit a 30-slide branded deck, change its master, collaborate, present with private notes on another display, and export both editable PPTX and narrated video.
+4. **Inclusive operation:** complete the primary workflows with keyboard/assistive technology; complete the declared phone/tablet subset with no hidden controls or lifecycle data loss.
+5. **Forms:** if included in the release claim, concurrent response submission, privacy and authorized export pass on the deployed cluster.
 
-## Major dependency chains
+## Wave 4: automation and the broader suite
 
-- WP-001 → WP-012 → WP-013 and WP-014/WP-015/WP-016.
-- WP-002 → WP-003, WP-004, and WP-018.
-- WP-005 → WP-006; WP-005 + WP-010 → WP-033.
-- WP-007 + WP-008 + WP-010 → WP-009.
-- WP-007 + WP-010 + WP-012 + WP-013 → WP-028.
-- WP-007 → WP-025, WP-026, WP-027, and WP-036.
-- WP-007 + WP-008 → WP-031; plus WP-010 → WP-032.
-- WP-023 → WP-024.
-- WP-005 + WP-006 + WP-029 → WP-030.
-- WP-008 + WP-031 → WP-037.
-- WP-026 + WP-027 + WP-031 → WP-038.
+Packages: WP-031–032 and WP-037–038. Define macro, Outlook/Exchange, OneNote, Access, Teams/Planner and diagramming boundaries early; implement selected integrations after the core contracts stabilize. Each XL package must be divided into bounded releases with its own supported-feature list.
 
-The package YAML is the authoritative current blocked state. These are initial dependency chains. A predecessor can deliver a stable accepted interface before all optional enhancements, but change the dependency explicitly rather than silently bypassing it.
+Exit: safe automation and policy enforcement are demonstrated; selected mail/calendar/notebook/task workflows interoperate; every deferred ecosystem feature has an explicit exclusion and migration route. An integration is not marketed as a native application replacement. A limited script engine is not VBA or COM compatibility.
 
-## Coverage of the feature recommendations
+## Sizing and staffing
 
-| Recommendation | Owning work packages |
-| --- | --- |
-| Accurate capability claims and workflow evidence | WP-001, WP-012 |
-| Shared editing, presence, reconnect, offline reconciliation, undo | WP-002, WP-003, WP-004, WP-005, WP-006 |
-| Office round trips, unsupported objects, fonts, compatibility reports | WP-012, WP-013, WP-014, WP-015, WP-016 |
-| Save/sync diagnostics and conflict recovery | WP-005, WP-033 |
-| Offline files and presentation bundles | WP-006 |
-| Explainable access, guests, expiration, permission preview | WP-007 |
-| Enterprise SSO, MFA/passkeys, session policy | WP-008 |
-| SCIM and safe employee departure | WP-009 |
-| Independent backup and disaster recovery | WP-010 |
-| Signing, update rings, rollback, managed settings | WP-011 |
-| Professional styles, fields, captions, references, indexes | WP-017 |
-| Tracked revisions, combine/compare, assigned review, approval | WP-018, WP-027 |
-| Research/citations, reference managers, languages, mail merge | WP-019 |
-| Query editor, connectors, refresh jobs | WP-020, WP-031 |
-| Structured tables, advanced pivots/charts, formula audit, Goal Seek/Solver | WP-015, WP-021 |
-| Profiling, responsiveness, cancellation, capacity tiers | WP-022 |
-| Masters/design, media, accessible slides, presenter tools | WP-016, WP-023, WP-029 |
-| Faithful recordings, narration, captions, portable video | WP-024 |
-| Production Forms, branching, uploads, quizzes, response exports | WP-025 |
-| Team search and discovery | WP-026 |
-| Comments, inbox, tasks, review notifications | WP-027 |
-| Google Drive/SharePoint migration and cutover | WP-028 |
-| Accessibility, screen readers, tagged exports | WP-029 |
-| Mobile/touch and offline lifecycle | WP-030 |
-| APIs, extensions, scripts, webhooks, schedules | WP-031 |
-| Retention, legal holds, discovery, sensitive-data controls | WP-032 |
-| Operations, capacity/quota diagnostics, support and escalation | WP-033 |
-| Optional AI, local/remote transparency, reviewable edits | WP-034 |
-| Transparent packaging, predictable costs, cancellation and exit | WP-035 |
-| Organization templates and branding | WP-036 |
-| Email/calendar/contacts/chat/meetings integration strategy | WP-037 |
-| Tasks/notebooks/portals/structured-work integration strategy | WP-038 |
+Effort is a rough engineering estimate for completing the stated scope, not elapsed calendar time: S = 1–2 engineer-weeks; M = 3–5; L = 6–10; XL = 12–24 or more. Estimates include implementation and validation but exclude procurement and waiting for external tenants/devices. Confidence is low until WP-001/WP-012 discovery; XL packages may require separate product decisions and much longer programs. Do not total these as a delivery commitment.
 
-## Coverage of recurring complaints
+Suggested responsibility: an interoperability/rendering owner for WP-012–019/023; a spreadsheet owner for WP-003/015/020–022; a workspace/platform owner for persistence, collaboration and enterprise services; a cross-cutting quality/accessibility owner. This describes staffing needs, not assignments or spawned agents. No delivery date is promised without actual capacity.
 
-| Complaint theme | User/admin outcome | Owning packages |
-| --- | --- | --- |
-| Opaque or stuck synchronization | Know where every revision is and recover failed work | WP-005, WP-033 |
-| Formatting/calculation changes during interchange | Know and verify what exports preserve | WP-012–016 |
-| Offline availability fails at travel/presentation time | Verify dependencies and reopen without a network | WP-006, WP-024, WP-030 |
-| Confusing permissions and surprise inherited access | Explain effective access and preview changes | WP-007, WP-032 |
-| Confusing licenses, cost increases, bundled AI | Clear packaging, predictable usage, optional AI, portable files | WP-034, WP-035 |
-| Intrusive/uncontrollable AI | Disable it, see processing location, review/undo edits | WP-034 |
-| Slow spreadsheets with no useful explanation | Measure costs, cancel work, choose a better data workflow | WP-020, WP-022 |
-| Fragmented offboarding and lost ownership | Revoke access and verify transfer before deletion | WP-009, WP-010, WP-032 |
-| Support loops and uncertain recovery | Redacted diagnostics, clear escalation, proven restore | WP-010, WP-033 |
+## First iteration
 
-## Cross-package interface decisions to record early
+1. Reconcile source/catalog/README claims; establish exact supported Office builds, platforms and formats.
+2. Capture a minimal representative DOCX/XLSX/PPTX reference set and current failure inventory. Extend to the 90-fixture corpus before claiming the full gate.
+3. Prove save/crash recovery across browser-local, desktop and cluster modes; triage existing uncommitted changes before integrating new fixes.
+4. Rank format failures by data loss, wrong results, unusable layout and authoring limitations. Select one accepted vertical slice per editor.
+5. Audit keyboard and canvas accessibility in those same slices, and assign owners/estimates based on observed failures.
 
-1. Stable document/worksheet/slide/object IDs and native schema migration rules.
-2. Durable revision identifiers shared by saving, collaboration, history, approval, export, and backup.
-3. One server-side effective-access evaluator reused by files, collaboration, search, AI, automation, and notifications.
-4. A versioned compatibility-finding schema with locations and severity shared by imports, exports, CLI, and migration.
-5. A durable job/event/outbox model shared by refresh, notifications, migration, forms, and later public automation.
-6. Offline policy and data-lifecycle semantics that distinguish local copies, server state, backups, retention, and exports.
-7. Feature catalog and test evidence that separate implemented, tested, unsupported, and inconclusive states.
+## Measurement rules
 
-Record decisions with rationale, alternatives, migration consequences, and affected package IDs. Do not let different feature teams invent incompatible versions of these contracts.
+Numeric targets in packages are proposed acceptance goals, not measured SuiteLeaf performance. Freeze hardware, fixture scope and tolerances before evaluation; changes to targets require a recorded reason. Count unsupported, blocked and untested cases separately. Require zero unresolved data-loss, permission-bypass or wrong-supported-calculation defects in the release subset. Record visual tolerances per fixture; never hide pagination, clipping or font-metric defects in an average score.

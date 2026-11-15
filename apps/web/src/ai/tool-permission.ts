@@ -22,11 +22,15 @@ const READ_TOOLS = new Set([
 ]);
 
 let fileRole: AssistantFileRole = "none";
+let fileKey = "";
 let accessCheck: (() => Promise<AssistantFileRole>) | undefined;
 
-export function setAssistantFileRole(role: AssistantFileRole) {
+export function setAssistantFileRole(role: AssistantFileRole, key = fileKey) {
   fileRole = role;
+  fileKey = key;
 }
+
+export const currentAssistantFileKey = () => fileKey;
 
 /** Re-read access before a tool call. A missing check keeps the last role. */
 export function setAssistantAccessCheck(check: (() => Promise<AssistantFileRole>) | undefined) {
@@ -85,13 +89,15 @@ export function assistantToolAllowed(
 
 const TARGET_KEYS = ["fileId", "itemId", "targetId"] as const;
 
-function namedTarget(args: unknown): string | undefined {
-  if (!args || typeof args !== "object") return;
+function namedTargets(args: unknown): string[] {
+  if (!args || typeof args !== "object") return [];
   const row = args as Record<string, unknown>;
+  const targets: string[] = [];
   for (const key of TARGET_KEYS) {
     const value = row[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "string" && value.trim()) targets.push(value.trim());
   }
+  return [...new Set(targets)];
 }
 
 /**
@@ -105,16 +111,20 @@ export function assistantTargetAllowed(
   roleOf?: (id: string) => AssistantFileRole | undefined,
   openFileId?: string,
 ): { ok: true } | { ok: false; reason: string } {
-  const target = namedTarget(args);
-  if (!target || (openFileId && target === openFileId)) {
+  const targets = namedTargets(args);
+  if (!targets.length) {
     return assistantToolAllowed(openRole, toolName);
   }
-  const role = roleOf?.(target);
-  if (!role) {
-    return {
-      ok: false,
-      reason: "The assistant cannot use a file whose access is unknown.",
-    };
+  for (const target of targets) {
+    const role = target === openFileId ? openRole : roleOf?.(target);
+    if (!role) {
+      return {
+        ok: false,
+        reason: "The assistant cannot use a file whose access is unknown.",
+      };
+    }
+    const permission = assistantToolAllowed(role, toolName);
+    if (!permission.ok) return permission;
   }
-  return assistantToolAllowed(role, toolName);
+  return { ok: true };
 }

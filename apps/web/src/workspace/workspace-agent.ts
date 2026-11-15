@@ -22,6 +22,7 @@ import {
 } from "../ai/tools/files";
 import { conflictTools } from "../ai/tools/cluster";
 import { createInDrive } from "../drive/drive-files";
+import { assertDriveCreation } from "../ai/tools/file-authorization";
 import type { WorkspaceState } from "./workspace-state";
 
 function fileVersions(
@@ -128,6 +129,8 @@ function fileVersions(
       extensionFor(rec.file.kind),
     );
     if (rec.drive) {
+      const source = await drive.get(rec.drive.itemId);
+      await assertDriveCreation(source.parentId);
       await drive.copyVersion(rec.drive.itemId, entry.id, filename);
       return filename;
     }
@@ -191,8 +194,11 @@ export function useWorkspaceAgent(
           create: async (kind, title) => {
             await save();
             const created = createFile(kind, title);
-            if (cluster)
-              await createInDrive(created, driveParentId.current, navigate);
+            if (cluster) {
+              const parentId = driveParentId.current;
+              await assertDriveCreation(parentId);
+              await createInDrive(created, parentId, navigate, undefined, false);
+            }
             else
               navigate(
                 `/file/${(await storage.save({ file: created })).file.id}`,
@@ -200,7 +206,10 @@ export function useWorkspaceAgent(
           },
           openNew: async (file) => {
             await save();
-            if (cluster) await createInDrive(file, null, navigate);
+            if (cluster) {
+              await assertDriveCreation(null);
+              await createInDrive(file, null, navigate, undefined, false);
+            }
             else navigate(`/file/${(await storage.save({ file })).file.id}`);
           },
           snapshotFile: async () => {
@@ -230,7 +239,10 @@ export function useWorkspaceAgent(
             ...(driveConflict
               ? conflictTools({
                   conflict: () => !!driveConflictRef.current,
-                  saveCopy: saveDriveCopy,
+                  saveCopy: async () => {
+                    await assertDriveCreation(driveConflictRef.current?.parentId ?? null);
+                    await saveDriveCopy();
+                  },
                   reload: reloadFromDrive,
                   title: () => current.current?.file.title ?? "",
                   rename: changeTitle,

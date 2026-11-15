@@ -14,6 +14,12 @@ afterEach(() => {
 });
 
 describe("assistant tool permission", () => {
+  it("checks every target ID instead of letting an editable first target mask another file", () => {
+    expect(assistantTargetAllowed("editor", "set_cells", { fileId: "open", itemId: "other" }, () => "viewer", "open").ok).toBe(false);
+    expect(assistantTargetAllowed("editor", "set_cells", { fileId: "open", itemId: "open" }, undefined, "open").ok).toBe(true);
+    expect(assistantTargetAllowed("editor", "set_cells", { fileId: "open", targetId: "unknown" }, undefined, "open").ok).toBe(false);
+  });
+
   it("blocks a change after access drops, and still allows a read", () => {
     setAssistantFileRole("editor");
     expect(assistantToolAllowed(currentAssistantFileRole(), "set_cells").ok).toBe(true);

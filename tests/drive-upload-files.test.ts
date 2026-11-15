@@ -244,6 +244,15 @@ describe("drive files", () => {
     expect(navigate).toHaveBeenCalledWith(`/file/${created.id}`);
   });
 
+  it("keeps an AI creation's denied destination from falling back to root or leaving a local copy", async () => {
+    const file = createFile("doc", "Denied");
+    hoisted.saveNewDriveFile.mockRejectedValueOnce(new Error("Forbidden"));
+    await expect(createInDrive(file, "shared-folder", navigate, undefined, false)).rejects.toThrow("Forbidden");
+    expect(hoisted.saveNewDriveFile).toHaveBeenCalledWith(file, "shared-folder", "Denied.sldoc", { fallbackToRoot: false });
+    expect(hoisted.records.has(file.id)).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it("removes cached SuiteDrive files after open editors upload", async () => {
     const synced = createFile("doc", "Synced");
     const local = createFile("doc", "Local");

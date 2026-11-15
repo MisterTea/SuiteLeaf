@@ -51,6 +51,7 @@ const status = () => {
 
 export const todoTool: SuiteTool = tool({
   name: "todo",
+  authorize: () => {}, // The checklist never reads or changes a document.
   label: "Checklist",
   description:
     "Your checklist for the user's request. Actions: add (items: the parts of the request, in order, each a short step in the user's words; only what they asked for), toggle (id or ids: mark items done once you have done them), list, clear. Every result shows the whole list.",

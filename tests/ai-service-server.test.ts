@@ -1,4 +1,5 @@
 import { request } from "node:http";
+import { normalize } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const fake = vi.hoisted(() => {
@@ -131,7 +132,7 @@ describe("node model server", () => {
     });
     // A loaded model is not prepared again.
     expect(await events(await post("/v1/load", { model: "gemma-4-e4b" }))).toEqual([]);
-    expect(fake.state.loads).toEqual(["/models/gemma-4-E4B-it-Q4_0.gguf"]);
+    expect(fake.state.loads).toEqual([normalize("/models/gemma-4-E4B-it-Q4_0.gguf")]);
   });
 
   it("streams completions and stops on a stop string", async () => {

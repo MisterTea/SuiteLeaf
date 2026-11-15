@@ -1,71 +1,40 @@
 ---
-id: "WP-026"
-title: "Permission-aware workspace search and discovery"
-type: "work_package"
-status: "done"
-priority: "P1"
-phase: 2
-area: "files"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S09", "S11"]
+id: WP-026
+status: ready
+priority: P1
+wave: 2
+effort: L
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Permission-aware workspace search and discovery
+# WP-026: Deliver permission-aware workspace discovery
 
-## Outcome and rationale
+## Outcome and baseline
 
-Let users find authorized information across a team workspace without opening every file or exposing restricted content.
+Search modules and local library search exist; end-to-end indexing freshness and permission guarantees need proof.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/search](../packages/core/src/search); [apps/web/src/library-search.ts](../apps/web/src/library-search.ts). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-Local search already extracts text from documents, workbooks, slides, drawings, and forms in `apps/web/src/library-search.ts`, with a text bound for large files. SuiteDrive browsing and permissions are separate existing foundations.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Build a server-side index keyed by stable file/version IDs with incremental updates, deletion handling, rebuilds, and observable freshness.
-- Index supported content plus title, owner, type, folder, modified time, and shared state; add filters, previews, snippets, and deep links to paragraphs/cells/slides.
-- Enforce effective access at query and result retrieval time, including group/ACL changes and revocation. Search snippets, counts, suggestions, and caches must not leak restricted information.
-- Provide local/offline search over available files, clearly distinguishing indexed scope and staleness.
-- Add saved searches and useful recent/shared discovery; keep semantic/AI search optional and subject to identical authorization.
-
-## Dependencies and delivery
-
-No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Index document text, sheet values, slide notes and metadata.
+- [ ] expose filters and snippets.
+- [ ] support incremental reindex and deletion.
 
 ## Acceptance criteria
 
-- Authorized content is searchable and results navigate to the correct file location.
-- Permission revocation removes discoverability within a documented bound and blocks opening immediately according to server policy.
-- Deleted files, stale versions, and renamed/moved files reconcile correctly without orphaned results.
-- Rebuilding the index does not mutate document content or require unrestricted user-facing access.
+- [ ] Find a known fixture in each format.
+- [ ] edits appear within a measured target of 30s.
+- [ ] revocation immediately blocks results/snippets.
+- [ ] deleted/private content cannot leak through cache or alternate queries.
 
-## Verification
+## Dependencies and execution
 
-- Unit-test extraction, filters, snippets, anchors, and index updates; integration-test ACL invalidation and query isolation.
-- Test hidden terms cannot be inferred through counts/autocomplete.
-- Benchmark indexing/query behavior on a representative corpus with no invented scale guarantees.
+Dependencies: WP-007. These gate final integration acceptance, not initial investigation. Wave 2; priority P1; rough effort L (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-This does not index email or third-party services until explicit connectors exist. Form responses require stronger access separation than public question text.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S09`, `S11`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-2026-11-04: WP-007 completed. Removed from `blocked_on`; `blocked` is now false and package status is `ready`.
-
-2026-11-04, later: Permission-aware workspace search and discovery completed and accepted. Implemented `WorkspaceSearchIndex` with incremental updates, document text and deep link extraction (`SearchTarget` for document tabs, spreadsheet cells, and slide numbers), strict permission checks preventing unauthorized disclosure or count leaks, immediate discoverability revocation upon permission loss, non-mutating index rebuilds, observable index freshness, and saved search management. Verified in `tests/workspace-search.test.ts`, `tests/library-search.test.ts`, `tests/doc-search.test.ts`, `cargo test -p suitedrive --test drive search`, and `cargo test -p suitedrive --test directory trail`. Status changed to `done`. WP-026 dependency removed from WP-038.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

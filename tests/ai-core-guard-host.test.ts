@@ -22,9 +22,11 @@ const { applyRestoredFile, bindRestoredFile } = await import("../apps/web/src/ai
 const { PARSE_ERROR } = await import("../apps/web/src/ai/model-stream");
 const { writeAiPreferences, reloadAiPreferences } = await import("../apps/web/src/ai/preferences");
 const { acceptHeldEdits, clearHeldEdits } = await import("../apps/web/src/ai/tool-review");
+const { setAssistantFileRole } = await import("../apps/web/src/ai/tool-permission");
 
 const offs: (() => void)[] = [];
 beforeEach(() => {
+  setAssistantFileRole("local", "test-file");
   vi.useFakeTimers();
   memoryStorage();
   reloadAiPreferences();
@@ -44,7 +46,7 @@ async function settle<T>(work: () => T | Promise<T>) {
 }
 
 const simple = (name: string, extra: Partial<import("../apps/web/src/ai/host").SuiteTool> = {}) =>
-  ({ name, label: name.replace(/_/g, " "), description: "", parameters: {} as never, execute: () => `${name} ran`, ...extra }) as import("../apps/web/src/ai/host").SuiteTool;
+  ({ name, label: name.replace(/_/g, " "), description: "", parameters: {} as never, authorize: () => {}, execute: () => `${name} ran`, ...extra }) as import("../apps/web/src/ai/host").SuiteTool;
 
 describe("requests and approvals", () => {
   it("knows the request and whether it asked for an action", () => {

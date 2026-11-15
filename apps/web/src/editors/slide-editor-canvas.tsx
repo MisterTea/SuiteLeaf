@@ -1,5 +1,6 @@
 import type { SlideTextMenuTarget } from "./slide-text-menu";
-import type { ReactNode, RefObject } from "react";
+import { useContext, type ReactNode, type RefObject } from "react";
+import { EditorStatusTarget } from "../editor-status-target";
 import { useSlideMobileTextZoom } from "./slide-mobile-text-zoom";
 import { slidePointScale, type Slide, type SlideElement, type SlideFile } from "@suiteleaf/core";
 import { slidePictureToEdit } from "./svg-picture-edit";
@@ -408,9 +409,10 @@ export function SlideCanvasStage({
     editingRef, setEditingId, textRange,
     canvasMotion, snapGuide, marpWarnings, marpAreaRef, showNotes, setShowNotes,
   } = state;
+  const statusTarget = useContext(EditorStatusTarget);
   useSlideMobileTextZoom(stageRef, shownSlide, state.focusedBox, deck.width || 960, readOnly);
   return (
-    <div className="slides-canvas-stage">
+    <div className="slides-canvas-stage" ref={statusTarget}>
       {state.masterView ? (
         <div className="master-view-bar" role="status">
           <strong>{masterPageLabel(state.activeSlideId).label}</strong>

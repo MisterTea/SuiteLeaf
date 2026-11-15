@@ -26,6 +26,7 @@ import { driveName, openFromDrive } from "../drive/drive-files";
 import { CommandPalette } from "../command-palette";
 import { InstallButton } from "../InstallButton";
 import { AiButton } from "../ai/AgentSidebar";
+import { useWorkspaceAiAccess } from "../ai/access";
 import { VersionHistory, VersionPreview } from "../editors/version-history";
 import { SheetVersionPreview, SlideVersionPreview } from "../editors/version-compare";
 import { SaveTemplateDialog } from "../templates/gallery";
@@ -49,6 +50,7 @@ import { ImportNotes } from "./workspace-import-notes";
 import { WorkspaceEditor } from "./workspace-editor";
 import { FullscreenButton } from "./fullscreen-button";
 import { WorkspaceStatusToast } from "./workspace-status-toast";
+import { EditorStatusTarget } from "../editor-status-target";
 import { EditorToolbarTarget, EditorToolbarNavigationTarget, ToolbarActions } from "../editor-toolbar-actions";
 
 export function Workspace() {
@@ -56,6 +58,7 @@ export function Workspace() {
   const ws = useWorkspaceState();
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [navigationTarget, setNavigationTarget] = useState<HTMLDivElement | null>(null);
+  const [statusTarget, setStatusTarget] = useState<HTMLDivElement | null>(null);
   const [commentsFile, setCommentsFile] = useState<string | null>(null);
   const {
     id, navigate, record, setRecord, error, setError, status, setStatus,
@@ -68,6 +71,8 @@ export function Workspace() {
     signUpOpen, setSignUpOpen, driveRole, othersHere, mode, cluster, canEdit,
     describeRef, roomNotice,
   } = ws;
+  // Preserve an assistant's open-file request while its permissions load.
+  useWorkspaceAiAccess(canEdit || (driveRole === null && !error));
   useWorkspaceRoom(ws);
   useAgreedContent(ws);
   useSelectTitle(ws);
@@ -138,6 +143,7 @@ export function Workspace() {
   return (
     <EditorToolbarTarget.Provider value={setToolbarTarget}>
     <EditorToolbarNavigationTarget.Provider value={setNavigationTarget}>
+    <EditorStatusTarget.Provider value={setStatusTarget}>
     <CommandPalette kind={f.kind}>
       <div ref={viewportRef} className="workspace" data-editor-kind={f.kind}>
         {cluster ? (
@@ -262,7 +268,7 @@ export function Workspace() {
                 <Share2 size={18} aria-hidden="true" />
               </button>
             ) : null}
-            <AiButton />
+            {canEdit ? <AiButton /> : null}
             <InstallButton />
             <FullscreenButton />
             {mode.kind !== "cluster" ? (
@@ -315,6 +321,7 @@ export function Workspace() {
         </div>
         <WorkspaceStatusToast
           key={f.id}
+          target={f.kind === "slide" ? statusTarget : null}
           status={status}
           record={record}
           roomNotice={roomNotice}
@@ -560,6 +567,7 @@ export function Workspace() {
         </div>
       </div>
     </CommandPalette>
+    </EditorStatusTarget.Provider>
     </EditorToolbarNavigationTarget.Provider>
     </EditorToolbarTarget.Provider>
   );

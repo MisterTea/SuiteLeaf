@@ -36,13 +36,16 @@ const hoisted = vi.hoisted(() => ({
   signOut: vi.fn(async () => {}),
   disconnect: vi.fn(async () => {}),
   create: vi.fn(),
+  get: vi.fn(),
 }));
 
 vi.mock("../../apps/web/src/node-client", () => ({
   drive: {
     listFolders: async () => hoisted.folders.map((f) => ({ ...f })),
     create: hoisted.create,
+    get: hoisted.get,
   },
+  getSession: () => hoisted.session,
   signOut: hoisted.signOut,
 }));
 vi.mock("../../apps/web/src/drive/DriveBrowser", () => ({
@@ -70,6 +73,7 @@ vi.mock("../../apps/web/src/mode", () => ({
   disconnect: hoisted.disconnect,
 }));
 vi.mock("../../apps/web/src/ai/host", () => ({
+  ToolError: Error,
   useAgentHost: (_id: string, build: never) => {
     hoisted.host = build;
   },
@@ -102,6 +106,7 @@ const renderHome = () =>
   );
 
 beforeEach(() => {
+  hoisted.get.mockReset().mockResolvedValue({ kind: "folder", role: "editor", trashed: false });
   hoisted.session = { user: { id: "ada", name: "Ada Lovelace", email: "ada@x.org", role: "admin" } };
   hoisted.sync = null;
   hoisted.locked = false;
@@ -290,7 +295,7 @@ describe("ClusterHome", () => {
     hoisted.browser!.control.current = { path: ["My Drive"] };
     expect(ctx.drive()).toEqual({ path: ["My Drive"] });
     await ctx.create("sheet", "Budget");
-    expect(hoisted.createInDrive).toHaveBeenCalledWith(expect.objectContaining({ title: "Budget" }), null, expect.any(Function));
+    expect(hoisted.createInDrive).toHaveBeenCalledWith(expect.objectContaining({ title: "Budget" }), null, expect.any(Function), undefined, false);
     await ctx.open({ id: "item" });
     expect(hoisted.openFromDrive).toHaveBeenCalled();
     expect(await ctx.signOut()).toBe(true);

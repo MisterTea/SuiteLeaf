@@ -46,6 +46,7 @@ const { requestFile } = await import("../../apps/web/src/ai/file-request");
 const { todoTool, clearTodos } = await import("../../apps/web/src/ai/todo");
 const { moveCursor, hideCursor } = await import("../../apps/web/src/ai/cursor");
 const { registerAgentHost, whileAgentActs } = await import("../../apps/web/src/ai/host");
+const { useWorkspaceAiAccess } = await import("../../apps/web/src/ai/access");
 
 type Mode = { demo?: boolean; cluster?: boolean };
 const wrap = (node: ReactNode, { demo = false, cluster = false }: Mode = {}, path = "/") => (
@@ -81,6 +82,29 @@ afterEach(() => {
 });
 
 describe("the AI button and layer", () => {
+  it.each(["viewer", "commenter", null])("hides AI for %s access and closes an already open assistant", async role => {
+    function Access({ role }: { role: string | null }) {
+      useWorkspaceAiAccess(role === "editor" || role === "owner" || role === "local");
+      return <><AiButton /><AgentLayer /></>;
+    }
+    const view = render(wrap(<Access role="editor" />));
+    fireEvent.click(screen.getByRole("button", { name: "AI assistant" }));
+    expect(await screen.findByRole("complementary", { name: "AI assistant" })).toBeTruthy();
+    session.resume.mockClear();
+    session.reset.mockClear();
+    view.rerender(wrap(<Access role={role} />));
+    expect(screen.queryByRole("button", { name: "AI assistant" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "AI assistant" })).toBeNull();
+    expect(document.body.classList.contains("agent-open")).toBe(false);
+    expect(session.reset).toHaveBeenCalled();
+    expect(session.resume).not.toHaveBeenCalled();
+    for (const editable of ["owner", "editor", "local"]) {
+      view.rerender(wrap(<Access role={editable} />));
+      expect(screen.getByRole("button", { name: "AI assistant" })).toBeTruthy();
+      expect(screen.queryByRole("complementary", { name: "AI assistant" })).toBeNull();
+    }
+  });
+
   it("turns the assistant on with the first click and opens and closes the panel", async () => {
     render(wrap(<><AiButton /><AgentLayer /></>));
     const button = screen.getByRole("button", { name: "AI assistant" });

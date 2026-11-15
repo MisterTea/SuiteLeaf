@@ -119,6 +119,7 @@ describe("SuiteDrive", () => {
     const ctx = {
       host: "team.example.org",
       user: "sam@example.org",
+      authorizeCreate: async () => {},
       drive: () => control as DriveControl | null,
       create: async (kind: string, title?: string) => {
         state.created.push(`${kind}:${title ?? ""}`);

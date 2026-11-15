@@ -57,7 +57,8 @@ export function useWorkspaceLoad(
     setAssistantAccessCheck(async () => {
       const record = current.current;
       if (!record) return "none";
-      if (!record.drive || !getSession()) return "local";
+      if (!record.drive) return "local";
+      if (!getSession()) return "none";
       try {
         return (await drive.get(record.drive.itemId)).role ?? "viewer";
       } catch {
@@ -71,7 +72,7 @@ export function useWorkspaceLoad(
     alive.current = true;
     setActionsReady(false);
     setDriveRole(null);
-    setAssistantFileRole("none");
+    setAssistantFileRole("none", id ?? "");
     setShareOpen(false);
     setSignUpOpen(false);
     canEditRef.current = false;
@@ -105,7 +106,7 @@ export function useWorkspaceLoad(
         canSaveRef.current =
           canChange || (role === "responder" && r.file.kind === "form");
         setDriveRole(role);
-        setAssistantFileRole(role);
+        setAssistantFileRole(role, r.file.id);
         let sealed: string | null = null;
         if (canEditRef.current) {
           const opened = sealIfIdle(r.file, Date.now(), versionPauseMs(localStorage));
