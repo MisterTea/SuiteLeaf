@@ -47,7 +47,7 @@ for (const kind of ["docx", "xlsx"] as const)
         kind.toUpperCase(),
       );
       await page.getByRole("button", { name: "Save As", exact: true }).click();
-      await expect(page.getByRole("status")).toContainText("Saved to file");
+      await expect(page.locator(".save-status")).toContainText("Saved to file");
       const native = JSON.parse(await readFile(save, "utf8"));
       expect(native.kind).toBe(kind === "docx" ? "doc" : "sheet");
       expect(native.importInfo.sourceFormat).toBe(kind);

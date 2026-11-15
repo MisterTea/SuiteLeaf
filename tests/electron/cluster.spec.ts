@@ -106,8 +106,8 @@ test("the desktop app works as a cluster client and can switch back", async () =
     });
     try {
       const page = await app.firstWindow();
-      // A room notice such as "Joining the shared document." can show beside it for a moment.
-      const saveStatus = () => page.getByRole("status").first();
+      // Wait for save completion without requiring a successful-save toast.
+      const saveStatus = () => page.locator(".save-status");
       const card = page.getByLabel("Sign in to SuiteLeaf");
       const stored = () =>
         page.evaluate(() => localStorage.getItem("suiteleaf:node-session"));

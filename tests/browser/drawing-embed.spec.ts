@@ -50,7 +50,7 @@ test("an SVG picture on a slide opens in Drawing, and the slide takes the change
   await expect(picture).toBeVisible();
   await redraw(page, box, "Untitled presentation");
   await expect.poll(() => svgOf(picture)).toContain('fill="#d93025"');
-  await expect(page.getByRole("status").filter({ hasText: /Saved|Unsaved/ })).toBeVisible();
+  await expect(page.locator(".save-status")).toContainText(/Saved|Unsaved/);
   // The slide's own undo takes the change back, so the presentation recorded it.
   await page.locator(".slide-canvas").click({ position: { x: 5, y: 5 } });
   await page.getByRole("button", { name: "Undo (Cmd+Z)" }).click();

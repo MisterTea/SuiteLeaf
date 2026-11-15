@@ -170,7 +170,7 @@ test("a downloaded native file says what it is and reopens over its library copy
   const downloading = page.waitForEvent("download");
   await button.click();
   const path = (await (await downloading).path())!;
-  await expect(page.getByRole("status")).toHaveText(
+  await expect(page.locator(".save-status")).toHaveText(
     "Downloaded “Packing list.sldoc”",
   );
   const chooseDownloaded = () =>
@@ -187,7 +187,7 @@ test("a downloaded native file says what it is and reopens over its library copy
 
   await back();
   await chooseDownloaded();
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.locator(".save-status")).toContainText(
     "“Packing list.sldoc” matches the copy here",
   );
   await back();
@@ -215,7 +215,7 @@ test("a downloaded native file says what it is and reopens over its library copy
   await expect(page.getByLabel("File title")).toHaveValue("Packing list");
   await expect(editor).toContainText("Passport");
   await expect(editor).not.toContainText("shoes");
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.locator(".save-status")).toContainText(
     "Replaced with “Packing list.sldoc”",
   );
   await back();
