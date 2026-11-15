@@ -340,9 +340,10 @@ test("Docs defaults follow dark theme while explicit colors and print stay intac
   await expect(normal).toHaveCSS("color", "rgb(0, 0, 0)");
 });
 
-async function touchGesture(page: Page, start: { x: number; y: number }, end = start, hold = 0) {
+async function touchGesture(page: Page, start: { x: number; y: number }, end = start, hold = 0, pressed?: () => Promise<void>) {
   const session = await page.context().newCDPSession(page);
   await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+  await pressed?.();
   if (hold) await page.waitForTimeout(hold);
   if (end.x !== start.x || end.y !== start.y) {
     for (let step = 1; step <= 5; step++) {
@@ -373,7 +374,8 @@ test("Mobile MARP swipes hit painted content and change slides", async ({ page, 
   const start = { x: bounds.x + bounds.width / 2 + 60, y: bounds.y + bounds.height / 2 };
   // Browser hit testing must reach the box over MARP's iframe, not a DOM stand-in.
   expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-element-id]")?.dataset.elementId, start)).toBe(bodyId);
-  await touchGesture(page, start, { x: start.x - 120, y: start.y });
+  await touchGesture(page, start, { x: start.x - 120, y: start.y }, 0,
+    async () => { await expect(body).not.toHaveClass(/selected/); });
   await expect(page.locator(".thumbnail-row.active")).toHaveAttribute("data-slide-id", before.slideOrder[1]);
   const title = page.locator(".slide-canvas .slide-text").first();
   const titleBounds = (await title.boundingBox())!;
@@ -517,7 +519,8 @@ test("Mobile slides touch: text selection, editing, slide holds and notes", asyn
   });
   const bounds = (await text.boundingBox())!;
   const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-  await touchGesture(page, center);
+  await touchGesture(page, center, center, 0,
+    async () => { await expect(text).not.toHaveClass(/selected/); });
   await expect(text).toHaveClass(/selected/);
   await expect(text.locator(".resize-handle")).toHaveCount(8);
   await expect(text.locator('[contenteditable="true"]')).toHaveCount(0);

@@ -46,7 +46,10 @@ const hold = (target: Element) => {
 
 it("selects a text box on the first tap and edits on the second tap", () => {
   openSlides();
-  tap(box("a-words"));
+  pointer(box("a-words"), "pointerdown");
+  expect(box("a-words").classList.contains("selected")).toBe(false);
+  pointer(box("a-words"), "pointerup");
+  fireEvent.click(box("a-words"));
   expect(box("a-words").classList.contains("selected")).toBe(true);
   expect(box("a-words").querySelector('[contenteditable="true"]')).toBeNull();
   expect(box("a-words").contains(document.activeElement)).toBe(false);
@@ -63,6 +66,7 @@ it("moves and resizes the selected text box with a finger without editing", () =
     width: 960,
     height: 540,
   } as DOMRect);
+  tap(box("a-words"));
   pointer(box("a-words"), "pointerdown");
   pointer(box("a-words"), "pointermove", 150, 120);
   expect(editor.elements()[0]).toMatchObject({ x: 90, y: 80 });
@@ -268,6 +272,7 @@ it("ignores short, vertical, canceled, and multi-touch swipes", () => {
 
 it("leaves editable object gestures alone and allows read-only object swipes", () => {
   const editable = openSlides();
+  tap(box("a-words"));
   pointer(box("a-words"), "pointerdown", 200, 100);
   pointer(box("a-words"), "pointerup", 100, 100);
   expect(editable.active()).toBe("a");
@@ -277,6 +282,36 @@ it("leaves editable object gestures alone and allows read-only object swipes", (
   pointer(box("a-words"), "pointerup", 100, 100);
   expect(viewer.active()).toBe("b");
   expect(viewer.onChange).not.toHaveBeenCalled();
+});
+
+it.each([false, true])("does not select or move an unselected object during a swipe (angled=%s)", (angled) => {
+  const editor = openSlides();
+  const before = editor.deck();
+  const target = box("a-words");
+  pointer(target, "pointerdown", 250, 100);
+  expect(target.classList.contains("selected")).toBe(false);
+  if (angled) pointer(target, "pointermove", 248, 112);
+  pointer(target, "pointermove", 150, 120);
+  expect(target.classList.contains("selected")).toBe(false);
+  expect(editor.deck()).toEqual(before);
+  pointer(target, "pointerup", 100, 120);
+  expect(editor.active()).toBe(angled ? "a" : "b");
+  expect(document.querySelector(".slide-canvas .selected")).toBeNull();
+  expect(editor.deck()).toEqual(before);
+  expect(editor.onChange).not.toHaveBeenCalled();
+});
+
+it("does not select after cancellation or a gesture that returns to its starting point", () => {
+  openSlides();
+  const target = box("a-words");
+  pointer(target, "pointerdown", 100, 100);
+  pointer(target, "pointercancel", 100, 100);
+  pointer(target, "pointerup", 100, 100);
+  expect(target.classList.contains("selected")).toBe(false);
+  pointer(target, "pointerdown", 100, 100);
+  pointer(target, "pointermove", 120, 120);
+  pointer(target, "pointerup", 100, 100);
+  expect(target.classList.contains("selected")).toBe(false);
 });
 
 it("ignores swipes in editable text and on desktop", () => {

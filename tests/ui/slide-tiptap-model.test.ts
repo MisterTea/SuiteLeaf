@@ -7,6 +7,7 @@ import { authoredOffset, documentPosition, markerLength, safeOfficeRun, slideDoc
 import { renderSlideText, slideTextKit } from "../../apps/web/src/editors/slide-tiptap-schema";
 import { tiptapDomSelection } from "../../apps/web/src/editors/slide-tiptap-selection";
 import { slideTextTrialEnabled } from "../../apps/web/src/editors/slide-text-trial";
+import { runsOf } from "../../apps/web/src/editors/slide-runs";
 
 const editors: Editor[] = [];
 afterEach(() => { editors.splice(0).forEach(editor => editor.destroy()); document.body.replaceChildren(); });
@@ -20,6 +21,31 @@ function editor(runs: TextRun[]) {
 const words = (runs: TextRun[]) => runs.map(run => run.text).join("");
 
 describe("slide text's structured model", () => {
+  it("keeps imported leading paragraph slots aligned with bullet animation indexes after saving", () => {
+    const br: TextRun = { text: "\n", paragraphBreak: true, paraAlign: "left" };
+    const runs: TextRun[] = [br, br, br, { text: "▪ First" }, br, { text: "▪ Second" }, br, { text: "▪ Third" }];
+    for (const doc of [model(runs), model(slideDocumentToRuns(model(runs)))]) {
+      expect(slideParagraphs(doc).map(p => p.node.textContent)).toEqual(["", "", "First", "Second", "Third"]);
+      const root = document.createElement("div");
+      root.append(renderSlideText(doc));
+      expect([2, 3, 4].map(index => root.querySelector(`[data-para-index="${index}"]`)?.textContent)).toEqual(["▪ First", "▪ Second", "▪ Third"]);
+      expect(words(slideDocumentToRuns(doc))).toBe(words(runs));
+      const first = slideParagraphs(doc)[2];
+      const offset = first.start + words(first.marker).length + 2;
+      expect(authoredOffset(doc, documentPosition(doc, offset))).toBe(offset);
+    }
+    const firstMarker = model([br, { text: "Only paragraph" }]);
+    expect(firstMarker.childCount).toBe(1);
+    expect(slideDocumentToRuns(firstMarker)[0]).toMatchObject(br);
+  });
+
+  it("preserves an explicitly empty first paragraph through normalization and editing", () => {
+    const runs: TextRun[] = [{ text: "" }, { text: "\n", paragraphBreak: true }, { text: "▪ First" }];
+    const doc = model(runsOf({ runs }));
+    expect(slideParagraphs(doc).map(p => p.node.textContent)).toEqual(["", "First"]);
+    expect(slideParagraphs(model(runsOf({ runs: slideDocumentToRuns(doc) }))).map(p => p.node.textContent)).toEqual(["", "First"]);
+  });
+
   it("roundtrips ordinary paragraphs, blank lines, hard breaks and all inline marks", () => {
     const runs: TextRun[] = [{ text: "Bold", bold: true, italic: true, underline: true, strike: true }, { text: "\nnext", font: "Arial", fontSize: 12 }, { text: "\n", paragraphBreak: true, paraAlign: "right", paraLinePt: 20 }, { text: "\n", paragraphBreak: true }, { text: "last" }];
     const output = slideDocumentToRuns(model(runs));

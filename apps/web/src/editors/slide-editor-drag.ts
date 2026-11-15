@@ -6,7 +6,7 @@ import { isMarpChrome, isMarpTitle, reorderFittedMarpItem, reorderMarpItem } fro
 import type { ResizeHandle, SlidesEditorState } from "./slide-editor-state";
 import type { SlideUpdates } from "./slide-editor-elements";
 
-/** Moving, resizing, and reordering objects on the slide with the mouse. */
+/** Mouse drags and touch taps/drags for selecting and arranging slide objects. */
 export function useElementDrag(
   state: SlidesEditorState,
   { activeSlide, updateElement, publishLive }: Pick<SlideUpdates, "updateElement"> & {
@@ -23,20 +23,13 @@ export function useElementDrag(
   const lastTouchTap = useRef<{ id: string; time: number } | null>(null);
   const publishRef = useRef(publishLive);
   publishRef.current = publishLive;
-  const touchPress = useRef<{ id: number; elementId: string; handle?: ResizeHandle; axis?: "horizontal" | "vertical" } | null>(null);
+  const touchPress = useRef<{
+    id: number; elementId: string; handle?: ResizeHandle; axis?: "horizontal" | "vertical";
+    startX: number; startY: number; selectOnRelease: boolean; moved: boolean;
+  } | null>(null);
 
-  // Mouse drag & resize handlers for elements
-  const onElementMouseDown = (
-    e: React.MouseEvent,
-    elementId: string,
-    handle?: ResizeHandle,
-  ) => {
-    e.stopPropagation();
-    textPress.current = !!(e.target as HTMLElement).closest?.(
-      ".element-textarea, .element-editor",
-    );
-    dragMoved.current = false;
-    if (e.shiftKey) {
+  const selectElement = (elementId: string, shiftKey = false, handle?: ResizeHandle) => {
+    if (shiftKey) {
       const ids = selectedIdsRef.current.includes(elementId)
         ? selectedIdsRef.current.filter((id) => id !== elementId)
         : [...selectedIdsRef.current, elementId];
@@ -52,6 +45,20 @@ export function useElementDrag(
       setEditingId(null);
       textRange.current = null;
     }
+  };
+
+  // Mouse drag & resize handlers for elements
+  const onElementMouseDown = (
+    e: React.MouseEvent,
+    elementId: string,
+    handle?: ResizeHandle,
+  ) => {
+    e.stopPropagation();
+    textPress.current = !!(e.target as HTMLElement).closest?.(
+      ".element-textarea, .element-editor",
+    );
+    dragMoved.current = false;
+    selectElement(elementId, e.shiftKey, handle);
     const el = activeSlide.elements.find((item) => item.id === elementId);
     if (!el || readOnlyRef.current || el.locked) return;
     if (
@@ -102,8 +109,14 @@ export function useElementDrag(
     if (!handle && editingRef.current === elementId) return;
     e.preventDefault();
     state.ignoreCanvasClick.current = true;
-    onElementMouseDown(e, elementId, handle);
-    touchPress.current = { id: e.pointerId, elementId, handle };
+    const selectOnRelease = !handle && !selectedIdsRef.current.includes(elementId);
+    dragMoved.current = false;
+    if (selectOnRelease) draggingRef.current = null;
+    else onElementMouseDown(e, elementId, handle);
+    touchPress.current = {
+      id: e.pointerId, elementId, handle, selectOnRelease, moved: false,
+      startX: e.clientX, startY: e.clientY,
+    };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
   const onElementPointerUp = (e: React.PointerEvent) => {
@@ -111,7 +124,13 @@ export function useElementDrag(
     if (!press || press.id !== e.pointerId) return;
     touchPress.current = null;
     const el = activeSlide.elements.find((item) => item.id === press.elementId);
-    if (dragMoved.current || press.handle || el?.type !== "text" || readOnlyRef.current) {
+    const moved = press.moved || Math.hypot(e.clientX - press.startX, e.clientY - press.startY) >= 8;
+    if (moved || dragMoved.current || press.handle || !el) {
+      lastTouchTap.current = null;
+      return;
+    }
+    if (press.selectOnRelease) selectElement(el.id);
+    if (el.type !== "text" || readOnlyRef.current) {
       lastTouchTap.current = null;
       return;
     }
@@ -280,7 +299,11 @@ export function useElementDrag(
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
     const onPointerMove = (e: PointerEvent) => {
-      if (touchPress.current?.id === e.pointerId) onMouseMove(e);
+      const press = touchPress.current;
+      if (press?.id !== e.pointerId) return;
+      if (Math.hypot(e.clientX - press.startX, e.clientY - press.startY) >= 8)
+        press.moved = true;
+      onMouseMove(e);
     };
     const onPointerUp = (e: PointerEvent) => {
       if (e.pointerType !== "touch") return;

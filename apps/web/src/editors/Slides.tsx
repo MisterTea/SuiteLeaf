@@ -129,7 +129,7 @@ export default function Slides({
     const index = order.indexOf(state.activeRef.current);
     const id = order[index + direction];
     if (id) applySelection(id, [id], null);
-  }, readOnly, { overObjects: !!deck.marp, editingId: state.editingId });
+  }, readOnly, { overObjects: !!deck.marp, editingId: state.editingId, selectedId: state.selectedElementId });
 
   const ordering = slideOrderActions(state, { commit, applySelection, onError });
   const { addSlide, duplicateCurrentSlide, deleteCurrentSlide, moveSlides } = ordering;

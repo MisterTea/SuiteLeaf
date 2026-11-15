@@ -1,14 +1,16 @@
 import { useEffect, useRef, type RefObject } from "react";
 
-/** Navigate from the slide background while leaving object and text gestures alone. */
+/** Touch navigation over the slide and unselected objects, preserving editing and deliberate drags. */
 export function useSlideMobileSwipe(
   host: RefObject<HTMLDivElement | null>,
   navigate: (direction: -1 | 1) => void,
   readOnly: boolean,
-  { overObjects = false, editingId = null }: { overObjects?: boolean; editingId?: string | null } = {},
+  { overObjects = false, editingId = null, selectedId = null }: {
+    overObjects?: boolean; editingId?: string | null; selectedId?: string | null;
+  } = {},
 ) {
-  const latest = useRef({ navigate, readOnly, overObjects, editingId });
-  latest.current = { navigate, readOnly, overObjects, editingId };
+  const latest = useRef({ navigate, readOnly, overObjects, editingId, selectedId });
+  latest.current = { navigate, readOnly, overObjects, editingId, selectedId };
   useEffect(() => {
     const node = host.current;
     if (!node) return;
@@ -22,9 +24,11 @@ export function useSlideMobileSwipe(
       if (target.closest("button, a, input, select, .slide-comment-mark, aside, .presenter-controls")) return;
       const elementId = target.closest<HTMLElement>("[data-element-id]")?.dataset.elementId;
       if (target.closest("textarea, [contenteditable=true]") &&
-        (!latest.current.overObjects || !elementId || latest.current.editingId === elementId)) return;
+        (!elementId || latest.current.editingId === elementId ||
+          (!latest.current.overObjects && latest.current.selectedId === elementId))) return;
       if (elementId && latest.current.editingId === elementId) return;
-      if (!latest.current.readOnly && !latest.current.overObjects && elementId) return;
+      if (!latest.current.readOnly && !latest.current.overObjects && elementId &&
+        latest.current.selectedId === elementId) return;
       press = { id: event.pointerId, x: event.clientX, y: event.clientY };
       node.setPointerCapture?.(event.pointerId);
     };
