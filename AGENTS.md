@@ -8,6 +8,8 @@ When asked to build the app, run `npm run build`, then `npm run package:desktop`
 
 ## Tests
 
+Before pushing to `main` or creating a PR, run CI locally using `nektos/act` and resolve any failures.
+
 Keep unit test coverage above 90%. Use Vitest for behavior. A Playwright test is for something Vitest cannot see:
 
 - Layout: positions, overlap, scrolling, and whether a control is actually on screen.

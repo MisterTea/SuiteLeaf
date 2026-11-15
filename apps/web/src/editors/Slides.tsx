@@ -29,6 +29,7 @@ import { SlideContextMenu, SlideThumbnails, useThumbnailDrag, type SlideDrag } f
 import { slideDesign } from "./slide-editor-design";
 import { slideElementActions, useSlideUpdates } from "./slide-editor-elements";
 import { slideTextFormat } from "./slide-editor-text";
+import { useSlideMobileSwipe } from "./slide-mobile-swipe";
 import { useElementDrag } from "./slide-editor-drag";
 import { useSlideExports } from "./slide-editor-exports";
 import { useShowControls, useShowPlayback } from "./slide-editor-show";
@@ -122,6 +123,13 @@ export default function Slides({
     togglePanel: toggleSlideCommentPanel,
     openResolved: openSlideResolved,
   } = slideComments;
+
+  useSlideMobileSwipe(state.stageRef, (direction) => {
+    const order = state.deckRef.current.slideOrder;
+    const index = order.indexOf(state.activeRef.current);
+    const id = order[index + direction];
+    if (id) applySelection(id, [id], null);
+  }, readOnly, { overObjects: !!deck.marp, editingId: state.editingId });
 
   const ordering = slideOrderActions(state, { commit, applySelection, onError });
   const { addSlide, duplicateCurrentSlide, deleteCurrentSlide, moveSlides } = ordering;

@@ -92,7 +92,10 @@ export function useDeckHistory(
   };
   const publishLive = (next: SlideFile["content"]) => {
     const stored = materializeMasterView(next, editingMasterRef.current);
-    showStored(stored);
+    // Keep drag previews local; showStored publishes the final change on release.
+    const shown = masterViewRef.current ? attachMasterPages(stored, editingMasterRef.current) : stored;
+    deckRef.current = shown;
+    setDeck(shown);
     liveDirty.current = true;
   };
 

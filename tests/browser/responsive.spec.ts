@@ -354,6 +354,35 @@ async function touchGesture(page: Page, start: { x: number; y: number }, end = s
   await session.detach();
 }
 
+test("Mobile MARP swipes hit painted content and change slides", async ({ page, isMobile }) => {
+  test.skip(!isMobile);
+  await page.goto("/");
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+    name: "swipe-marp.md", mimeType: "text/markdown",
+    buffer: Buffer.from("---\nmarp: true\n---\n# First slide\n\nSwipe across this text.\n\n---\n# Second slide\n\nSwipe back.\n"),
+  });
+  const canvas = page.locator(".slide-canvas");
+  await expect(canvas).not.toHaveAttribute("aria-busy", "true");
+  await expect(canvas).toHaveClass(/marp-painted/);
+  const deck = () => page.locator(".slides-editor").evaluate((element) =>
+    JSON.parse((element as HTMLElement).dataset.deckSnapshot!));
+  const before = await deck();
+  const bodyId = before.slides[before.slideOrder[0]].elements.find((element: { content?: string }) => element.content?.includes("Swipe across")).id;
+  const body = page.locator(`.slide-canvas [data-element-id="${bodyId}"]`);
+  const bounds = (await body.boundingBox())!;
+  const start = { x: bounds.x + bounds.width / 2 + 60, y: bounds.y + bounds.height / 2 };
+  // Browser hit testing must reach the box over MARP's iframe, not a DOM stand-in.
+  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-element-id]")?.dataset.elementId, start)).toBe(bodyId);
+  await touchGesture(page, start, { x: start.x - 120, y: start.y });
+  await expect(page.locator(".thumbnail-row.active")).toHaveAttribute("data-slide-id", before.slideOrder[1]);
+  const title = page.locator(".slide-canvas .slide-text").first();
+  const titleBounds = (await title.boundingBox())!;
+  const back = { x: titleBounds.x + titleBounds.width / 2 - 60, y: titleBounds.y + titleBounds.height / 2 };
+  await touchGesture(page, back, { x: back.x + 120, y: back.y });
+  await expect(page.locator(".thumbnail-row.active")).toHaveAttribute("data-slide-id", before.slideOrder[0]);
+  expect(await deck()).toEqual(before);
+});
+
 test("Mobile Docs reflows readable text, tables and images and restores paper layout for print", async ({ page, isMobile }) => {
   test.skip(!isMobile);
   const file = createFile("doc", "Phone reading");

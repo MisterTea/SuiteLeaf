@@ -60,7 +60,85 @@ const markdown = () => screen.getByLabelText("Presentation markdown") as HTMLTex
 const fitted = (editor: ReturnType<typeof openSlides>) =>
   waitFor(() => expect(editor.deck().marpFit).toBe(MARP_FIT_REVISION), { timeout: 5000 });
 
+const touch = (target: Element, type: string, x: number, y: number) => fireEvent(target,
+  new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1,
+    pointerType: "touch", clientX: x, clientY: y }));
+
+async function onPhone(run: () => Promise<void>) {
+  const width = window.innerWidth;
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+  try { await run(); }
+  finally { Object.defineProperty(window, "innerWidth", { configurable: true, value: width }); }
+}
+
 describe("a MARP deck in the editor", () => {
+  it.each([false, true])("swipes over MARP content without reordering or saving it (readOnly=%s)", async (readOnly) => onPhone(async () => {
+    const editor = openMarp(SOURCE, { readOnly });
+    await fitted(editor);
+    const before = editor.deck();
+    editor.onChange.mockClear();
+    const body = editor.elements().find((el) => el.content?.includes("Ship"))!;
+    const target = box(body.id).querySelector(".element-editor, textarea") ?? box(body.id);
+    touch(target, "pointerdown", 250, 150);
+    touch(target, "pointermove", 160, 155);
+    touch(target, "pointerup", 100, 155);
+    expect(editor.active()).toBe(editor.order()[1]);
+    const title = editor.elements(editor.order()[1]).find((el) => el.type === "text")!;
+    touch(box(title.id), "pointerdown", 100, 150);
+    touch(box(title.id), "pointermove", 200, 150);
+    touch(box(title.id), "pointerup", 250, 150);
+    expect(editor.active()).toBe(editor.order()[0]);
+    const html = editor.elements().find((el) => el.marpHtml)!;
+    touch(box(html.id), "pointerdown", 250, 150);
+    touch(box(html.id), "pointermove", 160, 150);
+    touch(box(html.id), "pointerup", 100, 150);
+    expect(editor.active()).toBe(editor.order()[1]);
+    expect(editor.deck()).toEqual(before);
+    expect(editor.onChange).not.toHaveBeenCalled();
+  }));
+
+  it("keeps vertical MARP touch reordering separate from horizontal navigation", async () => onPhone(async () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width: 960, height: 540,
+    } as DOMRect);
+    const editor = openMarp();
+    await fitted(editor);
+    const body = editor.elements().find((el) => el.content?.includes("Ship"))!;
+    const first = editor.active();
+    editor.onChange.mockClear();
+    touch(box(body.id), "pointerdown", 100, body.y);
+    touch(box(body.id), "pointermove", 100, body.y + 20);
+    // A gesture that started vertically stays a reorder even if it drifts sideways.
+    touch(box(body.id), "pointermove", 300, 530);
+    expect(editor.onChange).not.toHaveBeenCalled();
+    touch(box(body.id), "pointerup", 300, 530);
+    expect(editor.active()).toBe(first);
+    expect(editor.onChange).toHaveBeenCalledTimes(1);
+    const source = editor.deck().marpSource!;
+    expect(source.indexOf("Then tell everyone.")).toBeLessThan(source.indexOf("Ship the beta"));
+  }));
+
+  it("leaves active MARP text editing and the markdown pane alone", async () => onPhone(async () => {
+    const editor = openMarp();
+    await fitted(editor);
+    const body = editor.elements().find((el) => el.content?.includes("Ship"))!;
+    for (let tap = 0; tap < 2; tap++) {
+      touch(box(body.id), "pointerdown", 100, 150);
+      touch(box(body.id), "pointerup", 100, 150);
+    }
+    const text = box(body.id).querySelector('[contenteditable="true"]')!;
+    expect(text).not.toBeNull();
+    touch(text, "pointerdown", 250, 150);
+    touch(text, "pointermove", 160, 150);
+    touch(text, "pointerup", 100, 150);
+    expect(editor.active()).toBe(editor.order()[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Show markdown", exact: true }));
+    touch(markdown(), "pointerdown", 250, 150);
+    touch(markdown(), "pointermove", 160, 150);
+    touch(markdown(), "pointerup", 100, 150);
+    expect(editor.active()).toBe(editor.order()[0]);
+  }));
+
   it("adds a three-column slide from the New slide menu", async () => {
     const editor = openMarp();
     await fitted(editor);
@@ -155,11 +233,13 @@ describe("a MARP deck in the editor", () => {
     const body = () => editor.elements().filter((el) => el.type === "text" && el.placeholder !== "Click to add title");
     await fitted(editor);
     const moved = body().find((el) => el.content?.includes("Ship"))!;
+    editor.onChange.mockClear();
     fireEvent.mouseDown(box(moved.id), { clientX: 100, clientY: moved.y });
     fireEvent.mouseMove(window, { clientX: 100, clientY: moved.y + 3 });
     fireEvent.mouseMove(window, { clientX: 100, clientY: 530 });
-    expect(editor.onChange).toHaveBeenCalled();
+    expect(editor.onChange).not.toHaveBeenCalled();
     fireEvent.mouseUp(window);
+    expect(editor.onChange).toHaveBeenCalledTimes(1);
     expect(sourceValue(markdown()).indexOf("Then tell everyone.")).toBeLessThan(sourceValue(markdown()).indexOf("Ship the beta"));
 
     const title = editor.elements().find((el) => el.placeholder === "Click to add title")!;
