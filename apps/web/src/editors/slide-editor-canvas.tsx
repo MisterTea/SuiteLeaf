@@ -460,6 +460,7 @@ export function SlideCanvasStage({
       >
       <div
         className="slide-stage-viewport"
+        style={{ touchAction: "pan-y pinch-zoom" }}
         ref={stageRef}
         onPointerDownCapture={(event) => {
           if (!(event.target as HTMLElement).closest("[data-element-id]"))

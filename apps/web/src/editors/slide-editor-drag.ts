@@ -23,7 +23,7 @@ export function useElementDrag(
   const lastTouchTap = useRef<{ id: string; time: number } | null>(null);
   const publishRef = useRef(publishLive);
   publishRef.current = publishLive;
-  const touchPress = useRef<{ id: number; elementId: string; handle?: ResizeHandle } | null>(null);
+  const touchPress = useRef<{ id: number; elementId: string; handle?: ResizeHandle; axis?: "horizontal" | "vertical" } | null>(null);
 
   // Mouse drag & resize handlers for elements
   const onElementMouseDown = (
@@ -147,6 +147,13 @@ export function useElementDrag(
       dragMoved.current = true;
       textPress.current = false;
       if (reorder) {
+        // In MARP, horizontal touch gestures navigate; vertical ones reorder.
+        const touch = touchPress.current;
+        if (touch) {
+          touch.axis ??= Math.abs(e.clientX - startX) > Math.abs(e.clientY - startY) * 1.5
+            ? "horizontal" : "vertical";
+          if (touch.axis === "horizontal") return;
+        }
         const canvas = stageRef.current.querySelector(".slide-canvas");
         const slide =
           deckRef.current.slides[activeRef.current] ||
@@ -262,10 +269,11 @@ export function useElementDrag(
       draggingRef.current = null;
       setSnapGuide(null);
       if (!liveDirty.current) return;
-      liveDirty.current = false;
       const next = deckRef.current;
-      if (JSON.stringify(next) === JSON.stringify(historyRef.current!.tip))
+      if (JSON.stringify(next) === JSON.stringify(historyRef.current!.tip)) {
+        liveDirty.current = false;
         return;
+      }
       commitRef.current(next);
     };
 

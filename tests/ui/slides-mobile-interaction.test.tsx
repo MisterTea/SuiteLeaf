@@ -65,13 +65,18 @@ it("moves and resizes the selected text box with a finger without editing", () =
   } as DOMRect);
   pointer(box("a-words"), "pointerdown");
   pointer(box("a-words"), "pointermove", 150, 120);
+  expect(editor.elements()[0]).toMatchObject({ x: 90, y: 80 });
+  expect(editor.onChange).not.toHaveBeenCalled();
   pointer(box("a-words"), "pointerup", 150, 120);
+  expect(editor.onChange).toHaveBeenCalledTimes(1);
   expect(editor.elements()[0]).toMatchObject({ x: 90, y: 80 });
   expect(box("a-words").querySelector('[contenteditable="true"]')).toBeNull();
   const handle = box("a-words").querySelector(".handle-se")!;
   pointer(handle, "pointerdown");
   pointer(handle, "pointermove", 150, 120);
+  expect(editor.onChange).toHaveBeenCalledTimes(1);
   pointer(handle, "pointerup", 150, 120);
+  expect(editor.onChange).toHaveBeenCalledTimes(2);
   expect(editor.elements()[0]).toMatchObject({ width: 450, height: 120 });
   act(() => editor.slide().undo());
   expect(editor.elements()[0]).toMatchObject({ width: 400, height: 80 });
@@ -222,4 +227,91 @@ it.each([false, true])("toggles speaker notes from the toolbar icon, retaining s
   expect(
     screen.queryByPlaceholderText("Click to add speaker notes"),
   ).toBeNull();
+});
+
+it("navigates between slides with horizontal background swipes without saving edits", () => {
+  const editor = openSlides();
+  const stage = document.querySelector(".slide-stage-viewport")!;
+  const swipe = (from: number, to: number) => {
+    pointer(stage, "pointerdown", from, 100);
+    pointer(stage, "pointerup", to, 100);
+  };
+  swipe(200, 100);
+  expect(editor.active()).toBe("b");
+  swipe(200, 100);
+  expect(editor.active()).toBe("c");
+  swipe(200, 100);
+  expect(editor.active()).toBe("c");
+  swipe(100, 200);
+  expect(editor.active()).toBe("b");
+  swipe(100, 200);
+  swipe(100, 200);
+  expect(editor.active()).toBe("a");
+  expect(editor.onChange).not.toHaveBeenCalled();
+});
+
+it("ignores short, vertical, canceled, and multi-touch swipes", () => {
+  const editor = openSlides();
+  const stage = document.querySelector(".slide-stage-viewport")!;
+  pointer(stage, "pointerdown", 200, 100);
+  pointer(stage, "pointerup", 180, 100);
+  pointer(stage, "pointerdown", 200, 100);
+  pointer(stage, "pointerup", 100, 300);
+  pointer(stage, "pointerdown", 200, 100);
+  pointer(stage, "pointercancel");
+  pointer(stage, "pointerup", 100, 100);
+  pointer(stage, "pointerdown", 200, 100);
+  pointer(stage, "pointerdown", 210, 100);
+  pointer(stage, "pointerup", 100, 100);
+  expect(editor.active()).toBe("a");
+});
+
+it("leaves editable object gestures alone and allows read-only object swipes", () => {
+  const editable = openSlides();
+  pointer(box("a-words"), "pointerdown", 200, 100);
+  pointer(box("a-words"), "pointerup", 100, 100);
+  expect(editable.active()).toBe("a");
+  editable.unmount();
+  const viewer = openSlides({ readOnly: true });
+  pointer(box("a-words"), "pointerdown", 200, 100);
+  pointer(box("a-words"), "pointerup", 100, 100);
+  expect(viewer.active()).toBe("b");
+  expect(viewer.onChange).not.toHaveBeenCalled();
+});
+
+it("ignores swipes in editable text and on desktop", () => {
+  const editor = openSlides();
+  tap(box("a-words"));
+  tap(box("a-words"));
+  const text = box("a-words").querySelector('[contenteditable="true"]')!;
+  pointer(text, "pointerdown", 200, 100);
+  pointer(text, "pointerup", 100, 100);
+  expect(editor.active()).toBe("a");
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1000 });
+  const stage = document.querySelector(".slide-stage-viewport")!;
+  pointer(stage, "pointerdown", 200, 100);
+  pointer(stage, "pointerup", 100, 100);
+  fireEvent.mouseDown(stage, { clientX: 200 });
+  fireEvent.mouseUp(stage, { clientX: 100 });
+  expect(editor.active()).toBe("a");
+});
+
+it("swipes through a slideshow once per gesture and still advances on a tap", () => {
+  const editor = openSlides();
+  act(() => editor.actions().present!());
+  const slide = () => document.querySelector(".presenter-slide-box")!;
+  const counter = () => document.querySelector(".presenter-counter")!.textContent;
+  pointer(slide(), "pointerdown", 200, 100);
+  pointer(slide(), "pointerup", 100, 100);
+  fireEvent.click(slide(), { detail: 1 });
+  expect(counter()).toBe("Slide 2 of 3");
+  pointer(slide(), "pointerdown", 100, 100);
+  pointer(slide(), "pointerup", 200, 100);
+  fireEvent.click(slide(), { detail: 1 });
+  expect(counter()).toBe("Slide 1 of 3");
+  pointer(slide(), "pointerdown", 100, 100);
+  pointer(slide(), "pointerup", 100, 100);
+  fireEvent.click(slide(), { detail: 1 });
+  expect(counter()).toBe("Slide 2 of 3");
+  expect(editor.onChange).not.toHaveBeenCalled();
 });

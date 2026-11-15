@@ -1,5 +1,6 @@
 import { marpAudienceDocument, marpFragmentStep, showBuildIds } from "./slide-marp-fragments";
 import { ChevronLeft, ChevronRight, StickyNote, X } from "lucide-react";
+import { useSlideMobileSwipe } from "./slide-mobile-swipe";
 import { useState } from "react";
 import { filename, type SlideFile } from "@suiteleaf/core";
 import { exportBinary } from "../storage";
@@ -38,6 +39,9 @@ export function SlideShowOverlay({
     recorderRef,
   } = state;
   const { overlayRef, controlsVisible, controlsHoveredRef, endShow, showFullscreenRef } = controls;
+  useSlideMobileSwipe(overlayRef, (direction) => {
+    moveShowRef.current(direction === 1 ? "next" : "prev");
+  }, true);
   const {
     showMotionClass,
     presentSlide,
@@ -52,6 +56,7 @@ export function SlideShowOverlay({
   return (
     <div
       ref={overlayRef}
+      style={{ touchAction: "pan-y pinch-zoom" }}
       className={`presenter-overlay ${showSpeakerNotes ? "with-notes" : ""} ${controlsVisible ? "" : "idle"}`}
       role="dialog"
       aria-modal="true"
