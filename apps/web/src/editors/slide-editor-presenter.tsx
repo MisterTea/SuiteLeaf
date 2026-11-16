@@ -76,7 +76,13 @@ export function SlideShowOverlay({
             ? `min(62vw, calc((100vh - 112px) * ${deck.width || 960} / ${deck.height || 540}))`
             : `min(100vw, calc(100vh * ${deck.width || 960} / ${deck.height || 540}))`,
         }}
-        onClick={() => moveShowRef.current("next")}
+        onClick={() => {
+          window.getSelection()?.removeAllRanges();
+          moveShowRef.current("next");
+        }}
+        onMouseDown={() => {
+          window.getSelection()?.removeAllRanges();
+        }}
       >
         {(marpShow
           ? [presentSlideIndex - 1, presentSlideIndex, presentSlideIndex + 1]

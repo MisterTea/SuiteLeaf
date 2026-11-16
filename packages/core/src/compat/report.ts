@@ -103,6 +103,10 @@ export function summaryMarkdown(results: CompatResult[], specs: FixtureSpec[], l
   const blocking = blockingIssues(results, specs, list);
   lines.push("", blocking.length ? `Release-blocking: ${blocking.length}` : "Release-blocking: none");
   for (const item of blocking) lines.push(`- ${item.fixture}: ${item.reason}`);
+  const unavailable = results.filter((result) => result.reference.status === "unavailable").length;
+  if (unavailable) {
+    lines.push("", `Reference verification incomplete: ${unavailable}/${results.length} fixtures have no reference application result. No detected conversion losses does not establish Office parity.`);
+  }
   const tolerated = list.filter((entry) => results.some((r) => r.fixture === entry.fixture));
   if (tolerated.length) {
     lines.push("", "Tolerated:");

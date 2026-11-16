@@ -133,6 +133,30 @@ describe("the slideshow", () => {
     expect(screen.queryByRole("dialog", { name: "Slideshow" })).toBeNull();
   });
 
+  it("clears selection when starting the show, advancing, and clicking on the slide", () => {
+    const editor = threeSlides();
+    const removeAllRanges = vi.fn();
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      removeAllRanges,
+    } as unknown as Selection);
+
+    act(() => editor.actions().present!());
+    expect(removeAllRanges).toHaveBeenCalled();
+    removeAllRanges.mockClear();
+
+    press("ArrowRight");
+    expect(removeAllRanges).toHaveBeenCalled();
+    removeAllRanges.mockClear();
+
+    const slideBox = show().querySelector(".presenter-slide-box")!;
+    fireEvent.click(slideBox);
+    expect(removeAllRanges).toHaveBeenCalled();
+    removeAllRanges.mockClear();
+
+    press("Escape");
+    expect(removeAllRanges).toHaveBeenCalled();
+  });
+
   it("keeps the slideshow open and explains blocked or failed audience windows", () => {
     const editor = threeSlides();
     act(() => editor.slide().presenterView());
@@ -175,7 +199,7 @@ describe("the slideshow", () => {
     }
   });
 
-  it("follows the browser's full screen and leaves it when the show ends", async () => {
+  it("survives fullscreen loss without losing its place and leaves fullscreen on explicit exit", async () => {
     const root = document.documentElement;
     let full: Element | null = null;
     Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => full });
@@ -191,9 +215,21 @@ describe("the slideshow", () => {
       act(() => editor.slide().presenterView());
       await act(async () => {});
       expect(root.requestFullscreen).toHaveBeenCalled();
+      press("ArrowRight");
+      expect(counter()).toBe("Slide 2 of 3");
+      act(() => void document.dispatchEvent(new Event("fullscreenchange")));
+      expect(counter()).toBe("Slide 2 of 3");
       full = null;
       act(() => void document.dispatchEvent(new Event("fullscreenchange")));
+      fireEvent.blur(window);
+      act(() => void document.dispatchEvent(new Event("visibilitychange")));
+      expect(counter()).toBe("Slide 2 of 3");
+      expect(root.requestFullscreen).toHaveBeenCalledTimes(1);
+      press("ArrowRight");
+      expect(counter()).toBe("Slide 3 of 3");
+      fireEvent.click(control(/Exit/));
       expect(screen.queryByRole("dialog", { name: "Slideshow" })).toBeNull();
+      expect(exit).not.toHaveBeenCalled();
 
       act(() => editor.actions().present!());
       await act(async () => {});

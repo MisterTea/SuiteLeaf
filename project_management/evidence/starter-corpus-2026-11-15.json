@@ -1,0 +1,1182 @@
+{
+  "date": "2026-11-15",
+  "baseCommit": "076954b9",
+  "note": "SuiteLeaf stages only; external reference unavailable. Source binaries are generated locally, not embedded in this record.",
+  "manifest": {
+    "fingerprint": "fc200d26c9ab0c22",
+    "reference": "none",
+    "fixtures": [
+      {
+        "id": "docx-report",
+        "source": "fixtures/docx-report.docx",
+        "format": "docx",
+        "generator": "docx@9.10.0 + jszip@3",
+        "license": "Generated in this repository; no third-party document content.",
+        "classification": "supported",
+        "features": [
+          "sections",
+          "repeated headers",
+          "table",
+          "footnote",
+          "citations and sources",
+          "comment",
+          "tracked insertion",
+          "Calibri",
+          "picture"
+        ],
+        "probes": [
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Garden report"
+          },
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Tomatoes are in"
+          },
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Second page"
+          },
+          {
+            "dimension": "content",
+            "kind": "footnote",
+            "value": "Planted in spring"
+          },
+          {
+            "dimension": "content",
+            "kind": "citation",
+            "value": "D\u00eda19"
+          },
+          {
+            "dimension": "content",
+            "kind": "source",
+            "value": "D\u00eda19"
+          },
+          {
+            "dimension": "objects",
+            "kind": "table",
+            "count": 1
+          },
+          {
+            "dimension": "objects",
+            "kind": "cell",
+            "value": "Beans"
+          },
+          {
+            "dimension": "review",
+            "kind": "comment",
+            "value": "Check the stakes"
+          },
+          {
+            "dimension": "review",
+            "kind": "revision",
+            "value": "Paths are swept"
+          },
+          {
+            "dimension": "fonts",
+            "kind": "font",
+            "value": "Calibri"
+          },
+          {
+            "dimension": "media",
+            "kind": "image",
+            "sha256": "886eca293713dd0dc77ee8c492c64e81359f6e0286b79d5f6df20c506466d1e2"
+          },
+          {
+            "dimension": "layout",
+            "kind": "header",
+            "value": "Garden report header"
+          },
+          {
+            "dimension": "layout",
+            "kind": "sections",
+            "count": 2
+          },
+          {
+            "dimension": "layout",
+            "kind": "pages",
+            "count": 2
+          }
+        ],
+        "specHash": "94ca72b7f22910c6",
+        "sha256": "1289e1056ca09a8901198bf107d4ca74ca59077c05dee5b7c9495e1e5175d2b2",
+        "bytes": 48385
+      },
+      {
+        "id": "docx-sections",
+        "source": "fixtures/docx-sections.docx",
+        "format": "docx",
+        "generator": "docx@9.10.0",
+        "license": "Generated in this repository; no third-party document content.",
+        "classification": "supported",
+        "features": [
+          "two sections",
+          "section headers",
+          "page-number footer",
+          "footnote",
+          "numbered list",
+          "lettered list",
+          "restarted list",
+          "hyperlink",
+          "bookmarked heading",
+          "internal link",
+          "Cambria heading style"
+        ],
+        "probes": [
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Tomatoes are in"
+          },
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Stake the beans"
+          },
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Club site"
+          },
+          {
+            "dimension": "content",
+            "kind": "footnote",
+            "value": "Planted in May"
+          },
+          {
+            "dimension": "layout",
+            "kind": "header",
+            "value": "Garden club report"
+          },
+          {
+            "dimension": "layout",
+            "kind": "header",
+            "value": "Appendix header"
+          },
+          {
+            "dimension": "layout",
+            "kind": "sections",
+            "count": 2
+          },
+          {
+            "dimension": "objects",
+            "kind": "internal-link",
+            "value": "the plan"
+          },
+          {
+            "dimension": "fonts",
+            "kind": "font",
+            "value": "Cambria"
+          },
+          {
+            "dimension": "fonts",
+            "kind": "font",
+            "value": "Times New Roman"
+          },
+          {
+            "dimension": "content",
+            "kind": "numbered",
+            "value": "2 Stake the beans"
+          },
+          {
+            "dimension": "content",
+            "kind": "numbered",
+            "value": "b Mulch after"
+          },
+          {
+            "dimension": "content",
+            "kind": "numbered",
+            "value": "1 Weed the paths"
+          }
+        ],
+        "specHash": "83e1a6c37efb99f7",
+        "sha256": "797f41644dd1f99d4ef9e8180d832326c2b83314aade0f012a84ae8da4c2edb1",
+        "bytes": 12467
+      },
+      {
+        "id": "docx-citations",
+        "source": "fixtures/docx-citations.docx",
+        "format": "docx",
+        "generator": "docx@9.10.0 + jszip@3 (citation fields and customXml sources)",
+        "license": "Generated in this repository; no third-party document content.",
+        "classification": "supported",
+        "features": [
+          "CITATION complex field",
+          "CITATION simple field",
+          "non-ASCII source tag",
+          "bibliography sources"
+        ],
+        "probes": [
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Beds drain well"
+          },
+          {
+            "dimension": "content",
+            "kind": "citation",
+            "value": "D\u00eda19"
+          },
+          {
+            "dimension": "content",
+            "kind": "citation",
+            "value": "Smi20"
+          },
+          {
+            "dimension": "content",
+            "kind": "source",
+            "value": "D\u00eda19"
+          },
+          {
+            "dimension": "content",
+            "kind": "source",
+            "value": "Smi20"
+          }
+        ],
+        "specHash": "68e549f43dc4de96",
+        "sha256": "f8379562004fdca26600a4fd1f33bc9dd6382cea850c59bb01f5efbb89f225be",
+        "bytes": 35056
+      },
+      {
+        "id": "xlsx-budget",
+        "source": "fixtures/xlsx-budget.xlsx",
+        "format": "xlsx",
+        "generator": "xlsx@0.20.3",
+        "license": "Generated in this repository; no third-party document content.",
+        "classification": "supported",
+        "features": [
+          "two sheets",
+          "numbers",
+          "SUM formula",
+          "cross-sheet formula",
+          "cell comment",
+          "Calibri"
+        ],
+        "probes": [
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "North"
+          },
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Plot fees"
+          },
+          {
+            "dimension": "formulas",
+            "kind": "formula",
+            "sheet": "Costs",
+            "cell": "B5",
+            "formula": "SUM(B2:B4)",
+            "value": 60
+          },
+          {
+            "dimension": "formulas",
+            "kind": "formula",
+            "sheet": "Summary",
+            "cell": "B1",
+            "formula": "Costs!B5*2",
+            "value": 120
+          },
+          {
+            "dimension": "review",
+            "kind": "comment",
+            "value": "Check the totals"
+          },
+          {
+            "dimension": "fonts",
+            "kind": "font",
+            "value": "Calibri"
+          }
+        ],
+        "specHash": "2a396ed2d823900f",
+        "sha256": "73ea7b4f6776ad698378889d37f44cb9d61d175e536dae8a5c8bd6459b697979",
+        "bytes": 19515
+      },
+      {
+        "id": "pptx-plan",
+        "source": "fixtures/pptx-plan.pptx",
+        "format": "pptx",
+        "generator": "pptxgenjs@4.0.1",
+        "license": "Generated in this repository; no third-party document content.",
+        "classification": "supported",
+        "features": [
+          "two slides",
+          "title",
+          "Calibri",
+          "table",
+          "picture",
+          "speaker notes"
+        ],
+        "probes": [
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Garden plan"
+          },
+          {
+            "dimension": "content",
+            "kind": "text",
+            "value": "Second slide"
+          },
+          {
+            "dimension": "content",
+            "kind": "notes",
+            "value": "Remember the hose"
+          },
+          {
+            "dimension": "objects",
+            "kind": "table",
+            "count": 1
+          },
+          {
+            "dimension": "objects",
+            "kind": "cell",
+            "value": "Beans"
+          },
+          {
+            "dimension": "fonts",
+            "kind": "font",
+            "value": "Calibri"
+          },
+          {
+            "dimension": "media",
+            "kind": "image",
+            "sha256": "886eca293713dd0dc77ee8c492c64e81359f6e0286b79d5f6df20c506466d1e2"
+          },
+          {
+            "dimension": "layout",
+            "kind": "pages",
+            "count": 2
+          }
+        ],
+        "specHash": "424b981f49a10ef7",
+        "sha256": "9be862f4bbcf64d404234b7974a52c74cb22c84472c0abd24141f5773528b4e7",
+        "bytes": 55289
+      }
+    ]
+  },
+  "results": [
+    {
+      "fixture": "docx-report",
+      "format": "docx",
+      "sha256": "1289e1056ca09a8901198bf107d4ca74ca59077c05dee5b7c9495e1e5175d2b2",
+      "specHash": "94ca72b7f22910c6",
+      "fingerprint": "fc200d26c9ab0c22",
+      "outcome": "completed",
+      "reference": {
+        "status": "unavailable",
+        "detail": "No reference application was configured."
+      },
+      "dimensions": [
+        {
+          "dimension": "content",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Garden report"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Tomatoes are in"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Second page"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "footnote",
+                "value": "Planted in spring"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "citation",
+                "value": "D\u00eda19"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "source",
+                "value": "D\u00eda19"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "SuiteLeaf edit marker"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "formulas",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "review",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "review",
+                "kind": "comment",
+                "value": "Check the stakes"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "review",
+                "kind": "revision",
+                "value": "Paths are swept"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "objects",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "objects",
+                "kind": "table",
+                "count": 1
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "objects",
+                "kind": "cell",
+                "value": "Beans"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "fonts",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "fonts",
+                "kind": "font",
+                "value": "Calibri"
+              },
+              "unmeasured": [
+                "import",
+                "edit",
+                "native",
+                "reimport",
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "layout",
+          "outcome": "unavailable-reference",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "layout",
+                "kind": "header",
+                "value": "Garden report header"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "layout",
+                "kind": "sections",
+                "count": 2
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "layout",
+                "kind": "pages",
+                "count": 2
+              },
+              "unmeasured": [
+                "source",
+                "import",
+                "edit",
+                "native",
+                "export",
+                "reimport",
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "media",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "media",
+                "kind": "image",
+                "sha256": "886eca293713dd0dc77ee8c492c64e81359f6e0286b79d5f6df20c506466d1e2"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "docx-sections",
+      "format": "docx",
+      "sha256": "797f41644dd1f99d4ef9e8180d832326c2b83314aade0f012a84ae8da4c2edb1",
+      "specHash": "83e1a6c37efb99f7",
+      "fingerprint": "fc200d26c9ab0c22",
+      "outcome": "completed",
+      "reference": {
+        "status": "unavailable",
+        "detail": "No reference application was configured."
+      },
+      "dimensions": [
+        {
+          "dimension": "content",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Tomatoes are in"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Stake the beans"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Club site"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "footnote",
+                "value": "Planted in May"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "numbered",
+                "value": "2 Stake the beans"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "numbered",
+                "value": "b Mulch after"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "numbered",
+                "value": "1 Weed the paths"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "SuiteLeaf edit marker"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "formulas",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "review",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "objects",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "objects",
+                "kind": "internal-link",
+                "value": "the plan"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "fonts",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "fonts",
+                "kind": "font",
+                "value": "Cambria"
+              },
+              "unmeasured": [
+                "import",
+                "edit",
+                "native",
+                "reimport",
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "fonts",
+                "kind": "font",
+                "value": "Times New Roman"
+              },
+              "unmeasured": [
+                "import",
+                "edit",
+                "native",
+                "reimport",
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "layout",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "layout",
+                "kind": "header",
+                "value": "Garden club report"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "layout",
+                "kind": "header",
+                "value": "Appendix header"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "layout",
+                "kind": "sections",
+                "count": 2
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "media",
+          "outcome": "not-measured",
+          "probes": []
+        }
+      ]
+    },
+    {
+      "fixture": "docx-citations",
+      "format": "docx",
+      "sha256": "f8379562004fdca26600a4fd1f33bc9dd6382cea850c59bb01f5efbb89f225be",
+      "specHash": "68e549f43dc4de96",
+      "fingerprint": "fc200d26c9ab0c22",
+      "outcome": "completed",
+      "reference": {
+        "status": "unavailable",
+        "detail": "No reference application was configured."
+      },
+      "dimensions": [
+        {
+          "dimension": "content",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Beds drain well"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "citation",
+                "value": "D\u00eda19"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "citation",
+                "value": "Smi20"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "source",
+                "value": "D\u00eda19"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "source",
+                "value": "Smi20"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "SuiteLeaf edit marker"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "formulas",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "review",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "objects",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "fonts",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "layout",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "media",
+          "outcome": "not-measured",
+          "probes": []
+        }
+      ]
+    },
+    {
+      "fixture": "xlsx-budget",
+      "format": "xlsx",
+      "sha256": "73ea7b4f6776ad698378889d37f44cb9d61d175e536dae8a5c8bd6459b697979",
+      "specHash": "2a396ed2d823900f",
+      "fingerprint": "fc200d26c9ab0c22",
+      "outcome": "completed",
+      "reference": {
+        "status": "unavailable",
+        "detail": "No reference application was configured."
+      },
+      "dimensions": [
+        {
+          "dimension": "content",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "North"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Plot fees"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "SuiteLeaf edit marker"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "formulas",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "formulas",
+                "kind": "formula",
+                "sheet": "Costs",
+                "cell": "B5",
+                "formula": "SUM(B2:B4)",
+                "value": 60
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "formulas",
+                "kind": "formula",
+                "sheet": "Summary",
+                "cell": "B1",
+                "formula": "Costs!B5*2",
+                "value": 120
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "review",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "review",
+                "kind": "comment",
+                "value": "Check the totals"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "objects",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "fonts",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "fonts",
+                "kind": "font",
+                "value": "Calibri"
+              },
+              "unmeasured": [
+                "import",
+                "edit",
+                "native",
+                "reimport",
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "layout",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "media",
+          "outcome": "not-measured",
+          "probes": []
+        }
+      ]
+    },
+    {
+      "fixture": "pptx-plan",
+      "format": "pptx",
+      "sha256": "9be862f4bbcf64d404234b7974a52c74cb22c84472c0abd24141f5773528b4e7",
+      "specHash": "424b981f49a10ef7",
+      "fingerprint": "fc200d26c9ab0c22",
+      "outcome": "completed",
+      "reference": {
+        "status": "unavailable",
+        "detail": "No reference application was configured."
+      },
+      "dimensions": [
+        {
+          "dimension": "content",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Garden plan"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "Second slide"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "notes",
+                "value": "Remember the hose"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "content",
+                "kind": "text",
+                "value": "SuiteLeaf edit marker"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "formulas",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "review",
+          "outcome": "not-measured",
+          "probes": []
+        },
+        {
+          "dimension": "objects",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "objects",
+                "kind": "table",
+                "count": 1
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            },
+            {
+              "probe": {
+                "dimension": "objects",
+                "kind": "cell",
+                "value": "Beans"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "fonts",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "fonts",
+                "kind": "font",
+                "value": "Calibri"
+              },
+              "unmeasured": [
+                "import",
+                "edit",
+                "native",
+                "reimport",
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "layout",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "layout",
+                "kind": "pages",
+                "count": 2
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        },
+        {
+          "dimension": "media",
+          "outcome": "pass",
+          "probes": [
+            {
+              "probe": {
+                "dimension": "media",
+                "kind": "image",
+                "sha256": "886eca293713dd0dc77ee8c492c64e81359f6e0286b79d5f6df20c506466d1e2"
+              },
+              "unmeasured": [
+                "reference"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

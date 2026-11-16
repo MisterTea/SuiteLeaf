@@ -104,3 +104,46 @@ test("slide text scales with the slide and controls hide until the mouse moves",
   await page.mouse.move(320, 320);
   await expect(controls).toHaveClass(/visible/);
 });
+
+test("text selection in presentation mode is disabled to prevent shadow text", async ({
+  page,
+}) => {
+  await twoSlideDeck(page);
+  await page.locator(".thumbnail-row").nth(0).click();
+  await page.getByRole("button", { name: "Slideshow", exact: true }).click();
+  const show = page.locator(".presenter-overlay");
+  await expect(show).toBeVisible();
+
+  const userSelect = await page.evaluate(() => {
+    const slideBox = document.querySelector(".presenter-slide-box") as HTMLElement;
+    const textEl = document.querySelector(".presenter-overlay .slide-text") as HTMLElement;
+    return {
+      slideBox: window.getComputedStyle(slideBox).userSelect,
+      textEl: textEl ? window.getComputedStyle(textEl).userSelect : null,
+    };
+  });
+  expect(userSelect.slideBox).toBe("none");
+  expect(userSelect.textEl).toBe("none");
+
+  const slideBox = page.locator(".presenter-slide-box");
+  const box = await slideBox.boundingBox();
+  expect(box).not.toBeNull();
+  if (box) {
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.3);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.3, { steps: 5 });
+    await page.mouse.up();
+  }
+  const selectedText = await page.evaluate(() => window.getSelection()?.toString() || "");
+  expect(selectedText).toBe("");
+
+  // Notes panel retains selectable text for speaker copying
+  await page.keyboard.press("s");
+  const notesPanel = page.locator(".presenter-notes-panel");
+  await expect(notesPanel).toBeVisible();
+  const notesUserSelect = await page.evaluate(() => {
+    const notes = document.querySelector(".presenter-notes-panel") as HTMLElement;
+    return notes ? window.getComputedStyle(notes).userSelect : null;
+  });
+  expect(notesUserSelect).toBe("text");
+});

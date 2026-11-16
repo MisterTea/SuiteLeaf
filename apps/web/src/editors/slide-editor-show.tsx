@@ -45,6 +45,7 @@ export function useShowControls(
 
   const beginShow = useCallback((fromIndex: number, withNotes?: boolean, fullscreen = true) => {
     marpDraft.current?.flush();
+    window.getSelection()?.removeAllRanges();
     const order = deckRef.current.slideOrder;
     const shown = (index: number) => deckRef.current.slides[order[index]]?.hidden !== true;
     const next = startOfShow(shownSlideIndex(fromIndex, order.length, 1, shown) ?? fromIndex);
@@ -79,6 +80,7 @@ export function useShowControls(
   const casting = useSlideCast(state, marpPages, beginShow);
 
   moveShowRef.current = (where) => {
+    window.getSelection()?.removeAllRanges();
     setBlankScreen(null);
     const order = deckRef.current.slideOrder;
     const current = showCursorRef.current;
@@ -99,6 +101,7 @@ export function useShowControls(
   };
 
   const endShow = useCallback(() => {
+    window.getSelection()?.removeAllRanges();
     casting.stopCast();
     const recorder = recorderRef.current;
     recorderRef.current = null;
@@ -156,7 +159,7 @@ export function useShowPlayback(
   > & { activeSlide: Slide; marpPages?: MarpPages | null },
 ) {
   const {
-    deck, deckRef, presenting, setPresenting, presentSlideIndex, showCursor, blankScreen,
+    deck, deckRef, presenting, presentSlideIndex, showCursor, blankScreen,
     setBlankScreen, timerPaused, setShowSpeakerNotes, showSpeakerNotes, setClock, clock,
     showStartedAt, frozenElapsedMs, showMotion, setShowMotion, reducedMotion, recording,
     recorderRef, audiencePopup, moveShowRef,
@@ -182,7 +185,16 @@ export function useShowPlayback(
     const toggleBlank = (color: string) =>
       setBlankScreen((prev) => (prev === color ? null : color));
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) {
+        if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+          const target = e.target as HTMLElement | null;
+          if (!target?.closest(".presenter-notes-panel")) {
+            e.preventDefault();
+            window.getSelection()?.removeAllRanges();
+          }
+        }
+        return;
+      }
       switch (e.key) {
         case "ArrowRight":
         case "ArrowDown":
@@ -249,14 +261,15 @@ export function useShowPlayback(
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable
   }, [presenting, endShow]);
 
-  // Leaving fullscreen (the browser's own Esc or exit button) ends the show
+  // Fullscreen can be lost without an exit command (for example, when the
+  // browser or OS changes windows). Keep the show and its cursor alive;
+  // only Escape or the explicit Exit action should end the presentation.
   useEffect(() => {
     if (!presenting) return;
     overlayRef.current?.focus();
     const onFullscreenChange = () => {
       if (!document.fullscreenElement && showFullscreenRef.current) {
         showFullscreenRef.current = false;
-        setPresenting(false);
       }
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);

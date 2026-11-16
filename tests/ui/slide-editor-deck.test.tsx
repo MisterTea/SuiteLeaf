@@ -194,6 +194,20 @@ describe("the keyboard", () => {
     expect(editor.active()).toBe("b");
   });
 
+  it("presents from the current slide with the presentation button and from the beginning via the drop-down", async () => {
+    const editor = openSlides();
+    press("ArrowRight");
+    expect(editor.active()).toBe("b");
+    fireEvent.click(screen.getByRole("button", { name: "Slideshow" }));
+    expect(screen.getByRole("dialog", { name: "Slideshow" }).textContent).toContain("Slide 2 of 3");
+    press("Escape");
+    expect(screen.queryByRole("dialog", { name: "Slideshow" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Slideshow options" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Present from beginning/ }));
+    expect(screen.getByRole("dialog", { name: "Slideshow" }).textContent).toContain("Slide 1 of 3");
+  });
+
   it("leaves typing in a box with Escape", () => {
     openSlides();
     pick("a-words");

@@ -7,6 +7,11 @@ directories:
 files:
   - out/**/*
   - package.json
+publish:
+  provider: github
+  owner: MisterTea
+  repo: SuiteLeaf
+  releaseType: release
 extraResources:
   - from: resources/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt

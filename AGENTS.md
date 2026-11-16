@@ -1,5 +1,7 @@
 # Agent notes
 
+See `docs/sourcemap.md` for how the code is organized across the repository.
+
 If a source code file is over 1000 lines, try to refactor it into semantically distinct, smaller files.  One exception are files that are really datasets (such as word lists in a ts file).
 
 ## Building

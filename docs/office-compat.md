@@ -116,3 +116,7 @@ SuiteLeaf convert ./decks --to pdf --report ./reports/summary.json
 - Layout is measured as a page or slide count, not by comparing rendered pages.
 - The large external corpora in `datasets/` still go through `scripts/office-roundtrip-report.mjs`, which reports features by owner but not these dimensions.
 - XLSX pictures and PPTX comments are not in the fixtures, because the generators used cannot write them.
+
+## Reproducible source files
+
+Each run writes its generated inputs under `datasets/validation/office-compat/fixtures/`. The manifest records their relative paths and SHA-256 hashes so a reference operator can open the exact input files. A summary with unavailable reference results explicitly warns that conversion checks do not establish Office parity. These inputs are a small starter corpus, not the planned comprehensive reference suite.

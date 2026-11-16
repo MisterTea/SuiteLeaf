@@ -118,6 +118,8 @@
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .slide-still-live {
   pointer-events: auto;
@@ -146,6 +148,14 @@
   text-shadow: none !important;
   background: transparent !important;
   border-color: transparent !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.slide-surface.marp-painted .slide-element:not(.marp-live):not(.marp-html):not(.slide-video):not(.slide-audio)::selection,
+.slide-surface.marp-painted .slide-element:not(.marp-live):not(.marp-html):not(.slide-video):not(.slide-audio) *::selection {
+  background: transparent !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
 }
 .slide-surface.marp-painted .slide-element:not(.marp-live):not(.marp-html):not(.slide-video):not(.slide-audio) :is(img, video, svg, canvas) {
   opacity: 0;

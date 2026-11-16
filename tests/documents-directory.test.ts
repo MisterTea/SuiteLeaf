@@ -54,6 +54,7 @@ it("watches cloud file replacements and switches subscriptions to a new director
     });
   } finally {
     watcher.close();
+    store.close();
     await rm(root, { recursive: true, force: true });
   }
 });
