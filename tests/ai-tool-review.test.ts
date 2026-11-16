@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { expect, it } from "vitest";
+import { beforeEach, expect, it } from "vitest";
+import { setAssistantFileRole } from "../apps/web/src/ai/tool-permission";
+beforeEach(() => setAssistantFileRole("local", "test-file"));
 import { registerAgentHost, toAgentTool, type SuiteTool } from "../apps/web/src/ai/host";
 import { reloadAiPreferences, writeAiPreferences } from "../apps/web/src/ai/preferences";
 import { acceptHeldEdits, clearHeldEdits, holdToolEdit, rejectHeldEdits, toolEditWaits } from "../apps/web/src/ai/tool-review";
@@ -26,6 +28,7 @@ function memoryStorage() {
 function editingTool(name: string, onRun: () => void): SuiteTool {
   return {
     name,
+    authorize: () => {},
     label: "Type text",
     description: "Type",
     parameters: { type: "object", properties: {} } as never,
@@ -283,6 +286,7 @@ it("holds opening a sample until Accept", async () => {
   });
   const read: SuiteTool = {
     name: "list_files",
+    authorize: () => {},
     label: "List",
     description: "List",
     parameters: { type: "object", properties: {} } as never,

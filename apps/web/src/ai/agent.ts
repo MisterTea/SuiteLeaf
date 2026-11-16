@@ -9,7 +9,6 @@ import { cancelApproval, currentRequest, startRequest, takeCheckpoint, type Chec
 import { activeHost, currentReview, currentSnapshot, currentSuiteTools, registerToolEverywhere, toAgentTool, toolScreen } from "./host";
 import { clearTodos, formatTodos, multiPart, openTodos, todoStore, todoTool } from "./todo";
 import { quoteRetrievedText } from "./retrieved-text";
-import { assistantAccessNow, assistantTargetAllowed } from "./tool-permission";
 
 export const SYSTEM_PROMPT = `You are the assistant built into SuiteLeaf, an office suite with documents, spreadsheets and presentations. You do the user's task yourself by calling tools; each tool acts in the app the user is looking at, and they watch you work.
 
@@ -306,12 +305,11 @@ class AgentSession {
         context: { ...context, tools: currentSuiteTools().map(toAgentTool) },
       }),
       beforeToolCall: async ({ toolCall, args }) => {
-        // The file list has no open file whose access could refuse the call.
-        const permission =
-          activeHost()?.kind === "home"
-            ? { ok: true as const }
-            : assistantTargetAllowed(await assistantAccessNow(), toolCall.name, args);
-        if (!permission.ok) return { block: true, reason: permission.reason };
+        try {
+          await currentSuiteTools().find(tool => tool.name === toolCall.name)?.authorize?.(args as never);
+        } catch (error) {
+          return { block: true, reason: error instanceof Error ? error.message : "Permission could not be verified." };
+        }
         const key = toolCall.name + JSON.stringify(args);
         // Gemma rarely writes the checklist on its own: hold the first other call of a multi-part request until it has.
         if (

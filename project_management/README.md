@@ -1,116 +1,73 @@
----
-id: "PM-INDEX"
-title: "SuiteLeaf work-package portfolio"
-type: "index"
-status: "planning"
-created: "2026-10-29"
-updated: "2026-11-04"
-blocked: false
-blocked_on: []
----
+# SuiteLeaf to Microsoft Office: work portfolio
 
-# SuiteLeaf work-package portfolio
+Rebuilt 2026-11-15 from the current worktree at base commit `40ac7ee2` and Microsoft documentation. This replaces the previous planning content and completion claims. Existing package IDs and filenames are retained because application capability records, documentation and tests reference them. Historical implementation remains in the repository; historical planning is available through Git.
 
-This directory translates a source-based SuiteLeaf assessment and research into Microsoft Office/Google Workspace capabilities and customer complaints into **38 implementation work packages**. No chat history is required. Each package explains the problem, current implementation, code entry points, requirements, dependencies, acceptance criteria, verification, and boundaries. [ROADMAP.md](ROADMAP.md) explains delivery order and coverage; [SOURCES.md](SOURCES.md) preserves research links and caveats.
+**Conclusion:** SuiteLeaf has a substantial editor and workspace foundation. The most consequential remaining work is measured Office fidelity, calculation correctness, dependable save/collaboration, and completion of professional workflows. Existing helpers and passing historical unit tests do not establish end-to-end parity.
 
-## Product direction
+Start with [the comparison](COMPARISON.md), then [the delivery roadmap](ROADMAP.md). [Sources](SOURCES.md) records the Microsoft benchmark and local evidence. This is a planning/source-review deliverable, not a live Office benchmark or a claim that the app currently passes these gates.
 
-First make SuiteLeaf a trustworthy documents/spreadsheets/presentations/files replacement: preserve work, explain sharing and sync, support Office exchange, and remain usable locally. Then make it adoptable by organizations through identity, migration, recovery, and operations. Expand advanced editing and adjacent workspace services in measured steps.
+## Scope
 
-Two parity targets must remain distinct:
+The primary target is Word, Excel and PowerPoint in Microsoft 365 desktop on Windows, with Mac and web differences recorded separately. Cluster features are compared with relevant Microsoft 365 services, not assumed to come with an Apps-only subscription. Outlook and the wider ecosystem have explicit packages and exclusions. No platform-wide or percentage parity claim is made.
 
-1. **Editor parity:** everyday and professional document, spreadsheet, presentation, offline, print, and interchange workflows.
-2. **Workspace parity:** editors plus shared storage, identity, administration, governance, integrations, and communications/knowledge applications.
+All 38 packages are newly planned acceptance work. `ready` means sufficiently described for triage; dependencies still gate integration. It does not mean implementation is absent, dependencies are complete, or historical work has been undone. Owners are unassigned. Effort is provisional. The catalog's historical phases/statuses are not rewritten by this documentation reset; WP-001 reconciles those against fresh evidence.
 
-Microsoft and Google capabilities vary by edition, platform, and date. Full desktop Excel/VBA/Power Pivot, complete native email/conferencing, arbitrary Office add-ins, and legal compliance certifications are not implied by an everyday-editor parity claim. Packages explicitly identify where a supported subset, integration, or later product decision is required.
+## Work packages
 
-## Baseline and evidence
-
-The source review was performed against the working tree on October 29, 2026, including existing uncommitted work. It was not an end-to-end certification. The README lags source capabilities: suggestions, citations, mail merge, document structure, presentation masters/animations/recording/PPTX export, admin tools, templates, forms, and partial collaboration already exist. Extend and validate them rather than creating duplicate systems.
-
-Known audit leads include incomplete-looking spreadsheet/presentation inbound collaboration, sheet cell keys without worksheet identity, text-based collaboration compaction, and a simplified presentation-recording renderer. Reproduce and resolve these with tests; do not treat source inspection alone as a proven incident.
-
-## Metadata contract
-
-Every work package starts with YAML front matter:
-
-- `id`: stable `WP-NNN` identifier; never reuse an ID for unrelated work.
-- `title`, `area`, `type`: human title, primary domain, and `work_package`.
-- `status`: `ready`, `blocked`, `in_progress`, `in_review`, or `done`; `ready` means ready to start, not implemented.
-- `priority`: `P0` adoption/reliability blocker, `P1` next competitive capability, `P2` deep parity/platform expansion.
-- `phase`: `1` trust the work, `2` adopt as a team, `3` daily professional workflows, `4` expand the platform.
-- `owner`: initially `unassigned`; replace with an accountable person/team.
-- `created`, `updated`: ISO dates.
-- `blocked`: whether unmet hard dependencies currently prevent completion/delivery.
-- `blocked_on`: IDs of currently unmet hard dependencies; initially all prerequisites are unmet. Clear a prerequisite only after its relevant contract and acceptance evidence are accepted. Keep the original dependency history in the package's Dependencies section or a decision note.
-- `related_sources`: IDs in SOURCES.md; repository-only packages can use an empty list.
-
-Initial state (2026-10-29): 16 ready packages and 22 blocked packages. Current state (2026-11-04): **38 done, 0 in progress, 0 ready, 0 blocked (100% complete)**. `status` and `blocked` are independent: a package can be `in_progress` while `blocked: true`, meaning isolated work is under way but it cannot be completed or integrated until `blocked_on` clears. Use `status: "blocked"` only when no work has started because of a dependency. The index lists initial dependencies and current status; update it alongside front matter as work progresses. Dependencies gate completion/integration, not necessarily research or isolated implementation. A related package mentioned in prose is not automatically a hard blocker: parallel implementation can proceed against an agreed interface. Product-owner scope decisions are described as such, not represented as nonexistent work-package IDs.
-
-## Work-package index
-
-| ID | Work package | Priority | Phase | Initially blocked on | Status |
+| Package | Outcome | Priority | Wave | Effort | Dependencies |
 | --- | --- | --- | --- | --- | --- |
-| [WP-001](WP-001-capability-baseline.md) | Capability inventory and parity release gates | P0 | 1 | None | done |
-| [WP-002](WP-002-collaboration-foundation.md) | Durable document collaboration and session protocol | P0 | 1 | None | done |
-| [WP-003](WP-003-sheet-collaboration.md) | Bidirectional spreadsheet collaboration | P0 | 1 | WP-002 | done |
-| [WP-004](WP-004-slide-collaboration.md) | Bidirectional presentation collaboration | P0 | 1 | WP-002 | done |
-| [WP-005](WP-005-save-sync-recovery.md) | Explainable saving, synchronization, and conflict recovery | P0 | 1 | None | done |
-| [WP-006](WP-006-offline-readiness.md) | Verified offline work and portable presentation bundles | P1 | 1 | WP-005 | done |
-| [WP-007](WP-007-permission-explanations.md) | Explainable sharing and safe permission changes | P0 | 2 | None | done |
-| [WP-008](WP-008-enterprise-identity.md) | Enterprise sign-in, MFA, and session policy | P0 | 2 | None | done |
-| [WP-009](WP-009-provisioning-offboarding.md) | Provisioning and safe employee offboarding | P1 | 2 | None | done |
-| [WP-010](WP-010-backup-restore.md) | Independent backups and disaster recovery | P0 | 1 | None | done |
-| [WP-011](WP-011-managed-releases.md) | Signed releases and managed updates | P0 | 1 | None | done |
-| [WP-012](WP-012-compatibility-corpus.md) | Office compatibility corpus and differential verification | P0 | 1 | WP-001 | done |
-| [WP-013](WP-013-compatibility-reports.md) | User-visible compatibility reports and safe export | P0 | 1 | WP-012 | done |
-| [WP-014](WP-014-word-roundtrip.md) | Word document round-trip fidelity | P0 | 1 | WP-012 | done |
-| [WP-015](WP-015-excel-compatibility.md) | Excel formula and workbook compatibility | P0 | 1 | WP-012 | done |
-| [WP-016](WP-016-powerpoint-roundtrip.md) | PowerPoint object and media round-trip fidelity | P0 | 1 | WP-012 | done |
-| [WP-017](WP-017-document-publishing.md) | Professional document styles, fields, and structure | P1 | 3 | None | done |
-| [WP-018](WP-018-document-review.md) | Document review, comparison, and approvals | P1 | 3 | WP-002 | done |
-| [WP-019](WP-019-research-proofing-merge.md) | Research, multilingual proofing, and mail-merge depth | P1 | 3 | None | done |
-| [WP-020](WP-020-sheet-data-preparation.md) | Spreadsheet queries, connectors, and refresh | P1 | 3 | None | done |
-| [WP-021](WP-021-sheet-advanced-analysis.md) | Advanced spreadsheet analysis and visualization | P1 | 3 | None | done |
-| [WP-022](WP-022-sheet-performance.md) | Spreadsheet performance diagnostics and capacity | P1 | 3 | None | done |
-| [WP-023](WP-023-presentation-authoring.md) | Professional presentation authoring and accessible design | P1 | 3 | None | done |
-| [WP-024](WP-024-presentation-recording.md) | Faithful presentation recording and portable video | P1 | 3 | WP-023 | done |
-| [WP-025](WP-025-production-forms.md) | Production Forms and response workflows | P1 | 3 | WP-007 | done |
-| [WP-026](WP-026-workspace-search.md) | Permission-aware workspace search and discovery | P1 | 2 | None | done |
-| [WP-027](WP-027-team-workflows.md) | Notifications, assigned work, and approvals | P1 | 2 | None | done |
-| [WP-028](WP-028-migration-tools.md) | Resumable Office and Workspace migration | P1 | 2 | None | done |
-| [WP-029](WP-029-accessibility.md) | Accessible editors and exported artifacts | P1 | 3 | None | done |
-| [WP-030](WP-030-mobile-workflows.md) | Complete mobile and touch workflows | P1 | 3 | WP-029 | done |
-| [WP-031](WP-031-automation-platform.md) | Public APIs, webhooks, and safe automation | P2 | 4 | None | done |
-| [WP-032](WP-032-governance.md) | Retention, discovery, and organizational data policy | P2 | 4 | None | done |
-| [WP-033](WP-033-operations-support.md) | Operational visibility and actionable support | P1 | 2 | None | done |
-| [WP-034](WP-034-controlled-ai.md) | Optional private AI with reviewable edits | P1 | 2 | None | done |
-| [WP-035](WP-035-commercial-transparency.md) | Transparent packaging, ownership, and exit | P1 | 2 | None | done |
-| [WP-036](WP-036-shared-templates.md) | Shared templates and organization branding | P1 | 2 | None | done |
-| [WP-037](WP-037-communications-integrations.md) | Email, calendar, contacts, chat, and meeting integrations | P2 | 4 | None | done |
-| [WP-038](WP-038-knowledge-planning-integrations.md) | Tasks, notebooks, portals, and structured-work integrations | P2 | 4 | None | done |
-
-## Shared implementation requirements
-
-These requirements apply to every package and are intentionally repeated in condensed form in individual files:
-
-- Follow root `AGENTS.md`. Keep every TypeScript file under 1,000 lines; extract focused modules when working near an oversized existing file. Do not turn a feature package into an unrelated repository-wide refactor.
-- Preserve users' files and existing repository changes. Inspect current implementations before replacing them. Use versioned native schemas/migrations and explicit compatibility limits for new persisted fields.
-- Keep permission enforcement server-side. A disabled control, local sheet protection, or AI guard alone is not authorization.
-- Keep local, server-synced, backed-up, and retained states distinct. A replica is not a backup; a backup is not a legal hold; a downloaded file cannot be remotely recalled by ordinary ACL revocation.
-- Use Vitest for TypeScript behavior, persistence, conversions, and jsdom UI. Keep unit coverage **above 90%** and report measured scope; do not exclude new code to meet the gate. Use Rust tests for Rust behavior.
-- Use Playwright for layout/overlap/scrolling, painted grids/canvases, real document typing/caret/selection/browser-specific keys, or storyboard recordings. Do not add browser tests that only read dialog text already covered by unit tests.
-- Add deterministic failure cases, not only happy paths. Reference-app unavailability, skipped tests, and unreviewed visual evidence are not passes.
-- Update relevant user/admin documentation and the capability catalog. Record tested platforms, modes, formats, limitations, and migration/rollback consequences.
-- Check signing, export, and dependency licensing where relevant. Do not redistribute private corpus documents, books, proprietary fonts, or provider credentials.
-- No effort estimates or dates are promises in this portfolio. Size packages after the initial investigation and divide into issues while retaining the package-level acceptance gate.
+| [WP-001](WP-001-capability-baseline.md) | Reconcile the Office parity baseline | P0 | 1 | S | None |
+| [WP-002](WP-002-collaboration-foundation.md) | Prove document collaboration under failure | P0 | 1 | L | WP-001 |
+| [WP-003](WP-003-sheet-collaboration.md) | Complete spreadsheet collaboration semantics | P0 | 1 | XL | WP-002 |
+| [WP-004](WP-004-slide-collaboration.md) | Complete presentation collaboration semantics | P0 | 1 | L | WP-002 |
+| [WP-005](WP-005-save-sync-recovery.md) | Make save and recovery dependable | P0 | 1 | L | WP-001 |
+| [WP-006](WP-006-offline-readiness.md) | Complete the offline working trip | P0 | 1 | L | WP-005 |
+| [WP-007](WP-007-permission-explanations.md) | Enforce and explain sharing permissions | P0 | 2 | M | WP-002 |
+| [WP-008](WP-008-enterprise-identity.md) | Deliver enterprise identity integration | P1 | 2 | L | WP-007 |
+| [WP-009](WP-009-provisioning-offboarding.md) | Complete employee onboarding and departure | P1 | 2 | L | WP-008 |
+| [WP-010](WP-010-backup-restore.md) | Demonstrate independent disaster recovery | P0 | 1 | L | WP-005 |
+| [WP-011](WP-011-managed-releases.md) | Ship trusted desktop updates | P0 | 1 | L | WP-005 |
+| [WP-012](WP-012-compatibility-corpus.md) | Measure Office round trips against Office | P0 | 1 | L | WP-001 |
+| [WP-013](WP-013-compatibility-reports.md) | Make conversion losses visible and recoverable | P0 | 1 | M | WP-012 |
+| [WP-014](WP-014-word-roundtrip.md) | Close DOCX fidelity gaps | P0 | 1 | XL | WP-012 |
+| [WP-015](WP-015-excel-compatibility.md) | Match Excel workbook and calculation semantics | P0 | 1 | XL | WP-012 |
+| [WP-016](WP-016-powerpoint-roundtrip.md) | Close PPTX visual and editable-object gaps | P0 | 1 | XL | WP-012 |
+| [WP-017](WP-017-document-publishing.md) | Finish professional document layout and print | P1 | 3 | XL | WP-014 |
+| [WP-018](WP-018-document-review.md) | Finish Word-compatible review workflows | P1 | 3 | L | WP-014, WP-002 |
+| [WP-019](WP-019-research-proofing-merge.md) | Complete research, language and mail merge | P1 | 3 | L | WP-017 |
+| [WP-020](WP-020-sheet-data-preparation.md) | Turn sheet queries into dependable data preparation | P1 | 3 | XL | WP-015 |
+| [WP-021](WP-021-sheet-advanced-analysis.md) | Complete analytical spreadsheet workflows | P1 | 3 | XL | WP-015, WP-020 |
+| [WP-022](WP-022-sheet-performance.md) | Make large workbooks responsive and printable | P1 | 3 | L | WP-015 |
+| [WP-023](WP-023-presentation-authoring.md) | Finish professional slide authoring | P1 | 3 | XL | WP-016 |
+| [WP-024](WP-024-presentation-recording.md) | Complete presenting, media and recording | P1 | 3 | L | WP-023 |
+| [WP-025](WP-025-production-forms.md) | Finish reliable forms and responses | P2 | 3 | L | WP-007, WP-005 |
+| [WP-026](WP-026-workspace-search.md) | Deliver permission-aware workspace discovery | P1 | 2 | L | WP-007 |
+| [WP-027](WP-027-team-workflows.md) | Complete review assignments and approvals | P2 | 2 | M | WP-007, WP-018 |
+| [WP-028](WP-028-migration-tools.md) | Make Office migration resumable and reversible | P1 | 2 | L | WP-013, WP-007 |
+| [WP-029](WP-029-accessibility.md) | Make all editors usable with assistive technology | P0 | 3 | L | WP-001 |
+| [WP-030](WP-030-mobile-workflows.md) | Complete touch and mobile lifecycle workflows | P2 | 3 | L | WP-005, WP-029 |
+| [WP-031](WP-031-automation-platform.md) | Deliver safe automation and a macro migration path | P2 | 4 | XL | WP-007, WP-015 |
+| [WP-032](WP-032-governance.md) | Enforce governance across actual data paths | P2 | 4 | XL | WP-007, WP-010 |
+| [WP-033](WP-033-operations-support.md) | Make cluster operations supportable | P1 | 2 | L | WP-010, WP-011 |
+| [WP-034](WP-034-controlled-ai.md) | Make the assistant reliable and permission-correct | P1 | 2 | L | WP-007, WP-005 |
+| [WP-035](WP-035-commercial-transparency.md) | Publish an honest feature and support matrix | P2 | 2 | S | WP-001 |
+| [WP-036](WP-036-shared-templates.md) | Deliver reusable organization templates | P1 | 2 | M | WP-007, WP-014, WP-016 |
+| [WP-037](WP-037-communications-integrations.md) | Close Outlook mail, calendar and contact workflows | P2 | 4 | XL | WP-008, WP-007 |
+| [WP-038](WP-038-knowledge-planning-integrations.md) | Define the broader Office replacement boundary | P2 | 4 | XL | WP-007, WP-026, WP-031 |
 
 ## Definition of done
 
-A package is done when its stated user outcome works on its declared target matrix, every acceptance criterion has evidence, required tests and coverage pass, migrations and recovery paths are documented/tested, meaningful risks/limits are disclosed, and documentation/catalog entries are updated. Partial implementation stays `in_progress` or is explicitly split into separately accepted scope; do not close it based on a menu item or a mock.
+- Reproduce the named user workflow in SuiteLeaf and the relevant Office reference. Record fixture hashes, app versions, OS/hardware, runtime mode, dates and commands. Report observed results, failures, unavailable references and exclusions separately.
+- Demonstrate create/import, meaningful edit, undo where applicable, save, close/reopen and export. Test negative and recovery paths as well as the successful path. Native preservation, conversion, rendered fidelity and calculation correctness require separate evidence.
+- Use Vitest for behavior, dialog text, page rules, import/export and saved state; jsdom for component behavior. Use Rust/API integration tests for backend semantics. Playwright is reserved for layout, painted sheet/slide surfaces, real document typing and storyboards. Use external-provider and native-app checks when needed; do not duplicate a string assertion in a browser test.
+- Keep unit coverage above 90%. The current repository gate enforces lines/statements at 90%; that floor is not proof of branch coverage or a reason to lower existing coverage. Report all metrics and current coverage rather than copying historical totals. Run relevant tests, type/lint checks for implementation changes, and `npm run check:capabilities` when capability claims change.
+- Before creating a PR or pushing to main, run local CI with `nektos/act` and resolve failures, as required by AGENTS.md. This planning task does neither. Building/installing the app is outside this task.
+- Update capability status and user documentation to the demonstrated scope. Do not mark a package complete because its helper exists or a mocked test passes. Attach actual evidence and list remaining limitations.
+- For Office-font mismatches, investigate shared import, inheritance, autofit, measurement and font data. Fix a proven metric mismatch in the SuiteLeaf counterpart font. Do not add named-font spacing/offset overrides. No font mismatch is claimed to have been reproduced by this review.
+- Split source files exceeding 1,000 lines into semantic modules when touched, except genuine datasets. Reuse existing work and preserve unrelated worktree changes.
 
-For an explicitly requested local app build, run `npm run build` and then `npm run package:desktop`; report the installed version and whether SuiteLeaf was open and needs reopening. Merely updating these planning documents does not require a build or replacement of the installed application.
+## Planning validation
 
-## Planning provenance
+The folder is documentation only. Package/link/dependency checks and the repository capability check are the relevant checks for this reset. A new full test, coverage, performance, Office or accessibility certification is not implied by this document.
 
-The initial comparison combined repository inspection with official product documentation and community reports. Complaints are qualitative signals, not prevalence estimates. Community claims about pricing, permission semantics, limits, or fixes must be rechecked against current official documentation during implementation. No commercial purchases, production migrations, external messages, or deployment actions are authorized merely by this portfolio.
+Validation on 2026-11-15: `npm run check:capabilities` passed 13 tests across 2 files. Capability-scope coverage: statements 96.87%, branches 95.83%, functions 93.75%, lines 96.73%; these are not whole-application coverage figures. All 38 package IDs, 323 relative links and dependency acyclicity were checked; `git diff --check -- project_management` passed.

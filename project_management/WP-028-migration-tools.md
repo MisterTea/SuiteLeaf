@@ -1,75 +1,39 @@
 ---
-id: "WP-028"
-title: "Resumable Office and Workspace migration"
-type: "work_package"
-status: "done"
-priority: "P1"
-phase: 2
-area: "migration"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S15", "S16", "S09", "S12"]
+id: WP-028
+status: ready
+priority: P1
+wave: 2
+effort: L
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Resumable Office and Workspace migration
+# WP-028: Make Office migration resumable and reversible
 
-## Outcome and rationale
+## Outcome and baseline
 
-Move organizations into SuiteLeaf with predictable identity, file, permission, and compatibility outcomes instead of a one-shot folder import.
+Directory import and migration components exist; repeated directory imports create additional copies.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/migration](../packages/core/src/migration); [README.md](../README.md). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-The desktop directory importer preserves folder structure but repeated runs create copies. Inspect `apps/desktop/src/directory-import.ts`, `import-cli.ts`, Office conversion helpers, SuiteDrive APIs, and existing round-trip reports.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Add Google Drive and SharePoint/OneDrive migration adapters using scoped authorization, source inventory, throttling/retry, and resumable checkpoints.
-- Provide preflight/dry-run reports for identities, groups, ownership, permissions, duplicate names, links, unsupported formats, quotas, and conversion losses.
-- Map source IDs to stable destination IDs so reruns are idempotent; preserve folder paths and supported comments/history/metadata where provider exports allow it.
-- Map users/groups and effective permissions explicitly. Block or isolate unresolvable permissions rather than broadening access to make import succeed.
-- Support staged imports, validation, delta passes, cutover, rollback/restore, and user acceptance samples; preserve source data untouched.
-- Emit a per-file manifest with hashes, source/destination links, converter version, warnings, errors, and final disposition.
-
-## Dependencies and delivery
-
-No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Add dry-run inventory, source hashes, resumable manifests, identity/share mapping and loss reports.
+- [ ] preserve source hierarchy and originals.
 
 ## Acceptance criteria
 
-- An interrupted migration resumes without duplicate files or silent skipped failures.
-- A rerun imports changed items according to documented policy and leaves unchanged items intact.
-- Permissions/ownership are validated against mapped identities; unsupported metadata is clearly reported.
-- Operators can reconcile inventory totals and inspect every rejected or changed item before cutover.
+- [ ] Migrate a 1,000-file mixed folder, interrupt and resume without duplicates.
+- [ ] report every skipped/lossy file.
+- [ ] verify hashes and ownership.
+- [ ] rollback removes only newly created destination records.
 
-## Verification
+## Dependencies and execution
 
-- Use mock provider API contract tests for pagination, rate limits, token expiration, and exports.
-- Run an authorized disposable tenant/folder pilot with generated content; compare manifest counts/hashes and access matrices.
-- Test rollback and restore using WP-010 without modifying source repositories.
+Dependencies: WP-013, WP-007. These gate final integration acceptance, not initial investigation. Wave 2; priority P1; rough effort L (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-Do not promise migration of every historical revision or comment when provider APIs cannot export it. Email/calendar migration is outside this file-migration package.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S16`, `S09`, `S12`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007", "WP-010", "WP-012", "WP-013"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-
-2026-11-04: WP-012 was accepted as done and is removed from `blocked_on`. This package is still blocked on WP-007, WP-010, and WP-013.
-2026-11-04: WP-007 completed and removed from `blocked_on`. Package remains blocked on `WP-010` and `WP-013`.
-2026-11-04: WP-010 completed and removed from `blocked_on`. Package remains blocked on `WP-013`.
-2026-11-04: WP-013 completed and removed from `blocked_on`. All prerequisites cleared; package status is `ready` and `blocked` is false.
-2026-11-04: Completed and verified. Implemented `packages/core/src/migration/` (`types.ts`, `adapters.ts`, `engine.ts`) and enhanced `apps/desktop/src/directory-import.ts` and `import-cli.ts` with `--idempotent`. Verified Google Drive & SharePoint throttling/retry with exponential backoff, token refresh, pagination, preflight audit reports for duplicate filenames, macro conversion losses, unsupported formats, permission policies (blocking or isolating unmapped identities without broadening access), resumable checkpoints across interrupted migrations, delta passes with idempotent destination ID mapping, cutover manifests, and non-destructive rollbacks. Unit test suite `tests/migration-tools.test.ts` (8 tests) and `tests/directory-import.test.ts` (7 tests) pass with >90% coverage. Package status is `done`.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

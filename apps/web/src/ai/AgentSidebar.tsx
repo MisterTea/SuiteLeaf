@@ -13,6 +13,7 @@ import { HeldEditsPrompt } from "./held-edits";
 import { agentIsActing, documentContextLabel, onHostsChanged } from "./host";
 import { clearTodos, todoStore } from "./todo";
 import { PARSE_ERROR } from "./model-stream";
+import { useAiAccess } from "./access";
 
 /** What the panel calls the assistant: FrogNano, Gemma, or the model name the user typed. */
 const assistantName = () => {
@@ -63,6 +64,8 @@ const useSession = () => {
 export function AiButton() {
   const prefs = useSyncExternalStore(onAiPreferencesChanged, readAiPreferences);
   const isOpen = usePanelOpen();
+  const canUseAi = useAiAccess();
+  if (!canUseAi) return null;
   return (
     <button
       type="button"
@@ -429,6 +432,7 @@ export function AgentCursor() {
 
 /** Mounted once at the app root: the panel (when open) and the pointer. */
 export function AgentLayer() {
+  const canUseAi = useAiAccess();
   const { mode } = useMode();
   const prefs = useSyncExternalStore(onAiPreferencesChanged, readAiPreferences);
   // The mode is known before this tree mounts, and switching modes reloads the page.
@@ -449,10 +453,14 @@ export function AgentLayer() {
     dismissAgent();
   }, [fileKey]);
   useEffect(() => {
+    if (!canUseAi) {
+      dismissAgent();
+      return;
+    }
     if (!prefs.enabled) return;
     void agentSession.resume();
-  }, [prefs.enabled]);
-  if (!prefs.enabled) return null;
+  }, [prefs.enabled, canUseAi]);
+  if (!prefs.enabled || !canUseAi) return null;
   return (
     <>
       {isOpen ? <AgentSidebar /> : null}

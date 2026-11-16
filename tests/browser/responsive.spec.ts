@@ -6,6 +6,45 @@ import { createFile, serializeFile } from "../../packages/core/src/native-file";
 import { defaultPageSettings } from "../../packages/core/src/document-layout";
 import { readFile } from "node:fs/promises";
 
+test("Slide save failure toasts stay above the carousel through rotation", async ({ page, isMobile }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^New presentation/ }).click();
+  const toast = page.locator(".slides-canvas-stage > .workspace-status-toast");
+  await page.locator(".slides-canvas-stage").waitFor();
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function(...args) {
+      if (this.name === "encoded") throw new DOMException("Disk full", "QuotaExceededError");
+      return put.apply(this, args);
+    };
+  });
+  await page.locator(".add-slide-sidebar-btn").click();
+  await expect(toast).toBeVisible();
+  await expect(toast).toHaveCSS("position", "absolute");
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 100));
+  const sizes = isMobile ? [[320, 844], [390, 844], [700, 390], [844, 390]] : [[1440, 950], [1024, 768], [700, 390]];
+  for (const [width, height] of sizes) {
+    await page.setViewportSize({ width, height });
+    await page.clock.runFor(100);
+    await expect(toast).toBeInViewport();
+    const bounds = (await toast.boundingBox())!;
+    const stage = (await page.locator(".slides-canvas-stage").boundingBox())!;
+    const sidebar = page.locator(".slides-sidebar");
+    const carousel = (await sidebar.boundingBox())!;
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(stage.y + stage.height - 7);
+    expect(stage.y + stage.height - bounds.y - bounds.height).toBeLessThanOrEqual(9);
+    expect(bounds.x).toBeGreaterThanOrEqual(stage.x);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(stage.x + stage.width);
+    if (await sidebar.evaluate(node => getComputedStyle(node).flexDirection === "row")) {
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(carousel.y - 7);
+    } else {
+      expect(bounds.x).toBeGreaterThanOrEqual(carousel.x + carousel.width);
+    }
+  }
+  await page.screenshot({ path: `test-results/slide-status-toast-${isMobile ? "mobile" : "desktop"}.png` });
+});
+
 test("Mobile shared presentation keeps upload retries visible through rotation", async ({ page, isMobile }) => {
   test.skip(!isMobile);
   const file = createFile("slide", "Shared lecture");
@@ -55,9 +94,6 @@ test("Mobile shared presentation keeps upload retries visible through rotation",
   await expect(toolbar.locator(".editor-toolbar-navigation button")).toHaveCount(1);
   await expect(toolbar.locator(".editor-toolbar-navigation button").nth(0)).toHaveAttribute("aria-label", "Back to files");
   await expect(page.locator(".star-btn")).toHaveCount(0);
-  const toast = page.locator(".workspace-status-toast");
-  await expect(toast).toBeInViewport();
-  expect((await toast.locator(".status-icon-label").boundingBox())!.width).toBeGreaterThan(80);
   expect((await page.getByRole("menubar").boundingBox())!.y).toBeLessThanOrEqual(8);
   await page.evaluate(({ itemId, revision }) => localStorage.setItem("suiteleaf.uploadQueue", JSON.stringify([{
     itemId, revision, bytes: 20, attempts: 1, nextAttemptAt: 0,

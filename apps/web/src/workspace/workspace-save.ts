@@ -131,7 +131,7 @@ export function useWorkspaceSave(ws: WorkspaceState) {
           Date.now(),
         );
         setStatus(
-          recordSaveStatus(current.current, {
+          "Save failed · " + recordSaveStatus(current.current, {
             desktop: !!window.suiteleaf,
             detail: failed.failure?.remedy ?? message(e),
           }).label,

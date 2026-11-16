@@ -1,74 +1,39 @@
 ---
-id: "WP-038"
-title: "Tasks, notebooks, portals, and structured-work integrations"
-type: "work_package"
-status: "done"
-priority: "P2"
-phase: 4
-area: "workspace-expansion"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S01", "S02"]
+id: WP-038
+status: ready
+priority: P2
+wave: 4
+effort: XL
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Tasks, notebooks, portals, and structured-work integrations
+# WP-038: Define the broader Office replacement boundary
 
-## Outcome and rationale
+## Outcome and baseline
 
-Cover adjacent knowledge and planning workflows through focused integrations and shared document primitives rather than launching several immature standalone applications.
+Knowledge/planning integration modules exist; this review does not establish OneNote, Access, Teams, Planner or Visio replacement.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/integrations/knowledge-planning](../packages/core/src/integrations/knowledge-planning); [packages/core/src/capabilities/catalog-completed.ts](../packages/core/src/capabilities/catalog-completed.ts). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-SuiteLeaf has documents, drawings, spreadsheets, forms, search foundations, and versioned files. A full task manager, notebook hierarchy, intranet portal, and Access/AppSheet-style application builder were not established as implemented.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Define pilot workflows for project task lists, linked meeting notes, a team knowledge portal, and structured records collected by forms; document which can reuse existing editors.
-- Integrate tasks with assignments/due dates/status, documents with note collections/backlinks, and team portals with permission-aware file views and search.
-- Provide structured table/view and form integration boundaries for lightweight database workflows, including record IDs, relationships, validation, access, import/export, and audit history.
-- Use public APIs/webhooks and selected external providers where native implementation is not justified; document data ownership, export, and provider outages.
-- Create a build-versus-integrate decision and separate implementation estimates before any full notebook, intranet, project-management, or database-app product commitment.
-- Keep all linked views subject to effective access and preserve useful offline snapshots where policy allows.
-
-## Dependencies and delivery
-
-Completion is blocked on `WP-026`, `WP-027`, `WP-031`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Inventory customer dependence on notebooks, relational apps, diagrams, chat/meetings and planning.
+- [ ] select native implementation, integration or explicit deferral per workflow.
+- [ ] deliver the highest-priority connector slice.
 
 ## Acceptance criteria
 
-- Each selected pilot workflow has a complete documented path using native features or explicitly supported integrations.
-- Backlinks, portal search, and linked task previews do not leak restricted file content.
-- Structured records round-trip with stable identities and declared validation/relationship limits.
-- The product matrix distinguishes delivered integration workflows from deferred standalone products.
+- [ ] Publish a decision and migration route for every named product.
+- [ ] demonstrate notebook/page and task import/export with attachments, links and permissions for the selected slice.
+- [ ] deferred products remain explicit parity exclusions.
 
-## Verification
+## Dependencies and execution
 
-- Unit/integration tests for link identity, permissions, record validation, and event-driven updates.
-- Use generated pilot datasets to demonstrate end-to-end task/notes/portal/form workflows.
-- Test disconnected providers and export without requiring the provider to remain available forever.
+Dependencies: WP-007, WP-026, WP-031. These gate final integration acceptance, not initial investigation. Wave 4; priority P2; rough effort XL (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-Do not equate a spreadsheet with a full relational database application platform or a document folder with complete OneNote parity. Native adjacent products require explicit follow-on scope.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-026", "WP-027", "WP-031"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-
-2026-11-04: WP-026 completed and removed from `blocked_on`. Package remains blocked on `WP-027` and `WP-031`.
-2026-11-04, later: WP-027 completed and removed from `blocked_on`. Package remains blocked on `WP-031`.
-2026-11-04, later: WP-031 completed and removed from `blocked_on`. All prerequisites cleared; package status is `ready` and `blocked` is false.
-2026-11-04: Completed and verified. Implemented `packages/core/src/integrations/knowledge-planning/` (`types.ts`, `product-matrix.ts`, `service.ts`). Verified permission-aware project tasks with due dates, assignments, and confidential snippet redaction preventing information leakage; bidirectional document backlinks and knowledge portal views respecting document access permissions; structured lightweight database records with schema type validation, foreign key relationships, and stable ID import/export round-tripping; and clear product matrix documentation distinguishing delivered integration workflows from deferred standalone products. Unit test suite `tests/knowledge-planning.test.ts` (4 tests) passes with >94% coverage. Package status is `done`.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

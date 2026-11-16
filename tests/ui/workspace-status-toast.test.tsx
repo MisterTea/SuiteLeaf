@@ -20,16 +20,16 @@ it("announces status changes, expires, and restarts the timer only for a new mes
   const { rerender } = render(
     <WorkspaceStatusToast
       record={record}
-      status="Saved on this device"
+      status="Save failed · Disk full"
       roomNotice={null}
     />,
   );
-  expect(screen.getByRole("status").textContent).toBe("Saved on this device");
+  expect(screen.getByRole("status").textContent).toBe("Save failed · Disk full");
   act(() => vi.advanceTimersByTime(3000));
   rerender(
     <WorkspaceStatusToast
       record={{ ...record }}
-      status="Saved on this device"
+      status="Save failed · Disk full"
       roomNotice={null}
     />,
   );
@@ -38,30 +38,30 @@ it("announces status changes, expires, and restarts the timer only for a new mes
   rerender(
     <WorkspaceStatusToast
       record={record}
-      status="Saved to SuiteDrive"
+      status="Save failed · Access denied"
       roomNotice={null}
     />,
   );
-  expect(screen.getByRole("status").textContent).toBe("Saved to SuiteDrive");
+  expect(screen.getByRole("status").textContent).toBe("Save failed · Access denied");
   act(() => vi.advanceTimersByTime(5000));
   expect(screen.queryByRole("status")).toBeNull();
 });
 
-it("dismisses a toast and shows the next room notice", () => {
+it("dismisses a failure and shows the next save failure", () => {
   const { rerender } = render(
-    <WorkspaceStatusToast record={record} status="Saved" roomNotice={null} />,
+    <WorkspaceStatusToast record={record} status="Save failed" roomNotice={null} />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Dismiss notification" }));
   expect(screen.queryByRole("status")).toBeNull();
   rerender(
     <WorkspaceStatusToast
       record={record}
-      status="Saved"
-      roomNotice="Reconnected to the room."
+      status="Save failed · Disk full"
+      roomNotice={null}
     />,
   );
   expect(screen.getByRole("status").textContent).toContain(
-    "Reconnected to the room.",
+    "Disk full",
   );
 });
 
@@ -89,6 +89,7 @@ it("keeps sync retries available until resolved, then expires normally", () => {
     />,
   );
   expect(screen.queryByRole("button", { name: "Retry sync" })).toBeNull();
+  expect(screen.queryByRole("status")).toBeNull();
   act(() => vi.advanceTimersByTime(5000));
   expect(screen.queryByRole("status")).toBeNull();
 });
@@ -98,7 +99,13 @@ it("hides empty statuses and clears pending timers on unmount", () => {
     <WorkspaceStatusToast record={record} status="" roomNotice={null} />,
   );
   expect(screen.queryByRole("status")).toBeNull();
-  expect(vi.getTimerCount()).toBe(1);
+  expect(vi.getTimerCount()).toBe(0);
   unmount();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it.each(["Saved on this device", "Saved to SuiteDrive", "Saved to file", "Saving…", "Saving to SuiteDrive…", "Editing", "Saved on this device · not yet on SuiteDrive"])("does not toast for %s or routine room notices", status => {
+  render(<WorkspaceStatusToast record={record} status={status} roomNotice="Reconnected to the room." />);
+  expect(screen.queryByRole("status")).toBeNull();
   expect(vi.getTimerCount()).toBe(0);
 });

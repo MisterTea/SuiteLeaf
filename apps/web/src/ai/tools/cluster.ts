@@ -5,6 +5,7 @@ import type { DriveItem } from "../../node-client";
 import { agentSession } from "../agent";
 import { moveCursor } from "../cursor";
 import { ToolError, currentSnapshot, tool, waitForHost, type SuiteTool } from "../host";
+import { assertDriveAccess } from "./file-authorization";
 
 type Kind = SuiteFile["kind"];
 const KINDS: Record<string, Kind> = { document: "doc", spreadsheet: "sheet", presentation: "slide" };
@@ -17,6 +18,7 @@ export function connectTools(ctx: { probe: (address: string) => Promise<string>;
   return [
     tool({
       name: "connect_to_server",
+      authorize: () => {},
       label: "Connect to a server",
       description:
         "Connect SuiteLeaf to the team's SuiteLeaf server at `address` (for example https://suiteleaf.example.org or 192.168.1.20:8787). Files then live in SuiteDrive on that server. The page reloads; the user then signs in themselves.",
@@ -44,6 +46,7 @@ export function signInTools(ctx: {
   return [
     tool({
       name: "wait_for_sign_in",
+      authorize: () => {},
       label: "Waiting for you to sign in",
       description:
         "Wait while the user signs in or creates an account on the sign-in screen (you never type passwords). Returns once they are signed in, or after a few minutes.",
@@ -71,6 +74,7 @@ export function signInTools(ctx: {
       ? [
           tool({
             name: "disconnect",
+            authorize: () => {},
             label: "Work on this computer",
             description: "Leave this server and go back to working with files on this computer. The page reloads.",
             parameters: Type.Object({}),
@@ -93,6 +97,7 @@ export interface DriveAgentContext {
   user: string;
   drive: () => DriveControl | null;
   create: (kind: Kind, title?: string) => Promise<void>;
+  authorizeCreate: () => Promise<void>;
   open: (item: DriveItem) => Promise<void>;
   signOut: () => Promise<boolean>;
   canDisconnect: boolean;
@@ -142,6 +147,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
   return [
     tool({
       name: "list_drive",
+      authorize: () => {},
       label: "SuiteDrive",
       description: "List the folders and files in the SuiteDrive folder on screen.",
       parameters: Type.Object({}),
@@ -153,6 +159,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
     }),
     tool({
       name: "open_folder",
+      authorize: () => {},
       label: "Open folder",
       description: "Open a folder in SuiteDrive. Use the name \"My Drive\" to go back to the top.",
       parameters: Type.Object({ name: Type.String() }),
@@ -174,6 +181,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
     }),
     tool({
       name: "new_folder",
+      authorize: () => ctx.authorizeCreate(),
       label: "New folder",
       description: "Make a new folder in the SuiteDrive folder on screen.",
       parameters: Type.Object({ name: Type.String() }),
@@ -185,6 +193,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
     }),
     tool({
       name: "create_file",
+      authorize: () => ctx.authorizeCreate(),
       label: "New file",
       description:
         "Create a new document, spreadsheet or presentation in SuiteDrive, in the folder on screen, and open it. Give a title if the user named it.",
@@ -208,6 +217,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
     }),
     tool({
       name: "open_file",
+      authorize: ({ name }) => assertDriveAccess(find(name).id, false),
       label: "Open file",
       description: "Open a file from the SuiteDrive folder on screen.",
       parameters: Type.Object({ name: Type.String() }),
@@ -235,6 +245,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
     }),
     tool({
       name: "sign_out",
+      authorize: () => {},
       label: "Sign out",
       description: "Sign out of this server (stay connected to it, ready for someone to sign in).",
       parameters: Type.Object({}),
@@ -248,6 +259,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
       ? [
           tool({
             name: "disconnect",
+            authorize: () => {},
             label: "Disconnect",
             description: "Sign out and disconnect from this server, going back to files on this computer. The page reloads.",
             parameters: Type.Object({}),

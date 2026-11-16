@@ -1,73 +1,38 @@
 ---
-id: "WP-009"
-title: "Provisioning and safe employee offboarding"
-type: "work_package"
-status: "done"
-priority: "P1"
-phase: 2
-area: "administration"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S12", "S13", "S14"]
+id: WP-009
+status: ready
+priority: P1
+wave: 2
+effort: L
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Provisioning and safe employee offboarding
+# WP-009: Complete employee onboarding and departure
 
-## Outcome and rationale
+## Outcome and baseline
 
-Provide one resumable lifecycle workflow that revokes access while preserving organizational records and ownership.
+Provisioning helpers and departure checks exist; the departure workflow remains inconclusive.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/provisioning](../packages/core/src/provisioning); [packages/core/src/capabilities/departure.ts](../packages/core/src/capabilities/departure.ts). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-Users, groups, sessions, role changes, and deletion already exist in `crates/suiteleaf-node/src/admin_api.rs` and `apps/web/src/admin/Admin.tsx`. Extend them with a lifecycle job rather than scattering side effects across UI buttons.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Implement SCIM user/group provisioning with stable external IDs, idempotent upserts, deactivation, pagination, and reconciliation reports.
-- Build an offboarding dry run that inventories ownership, shares, group memberships, sessions, app credentials, and pending transfers.
-- Execute suspend/revoke, transfer-or-archive, retention evaluation, verification, then optional final deletion as recorded resumable steps. Keep organizational ownership independent of an employee account.
-- Require an explicit destination owner/archive and detect inaccessible or unresolved records; never silently drop files to complete a job.
-- Produce a downloadable audit receipt and recovery instructions. Integrate legal-hold checks when WP-032 is present and fail closed on an active hold.
-
-## Dependencies and delivery
-
-Completion is blocked on `WP-008`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Integrate directory provisioning, group sync, disable/delete semantics, ownership transfer and audit.
+- [ ] make bulk actions resumable.
 
 ## Acceptance criteria
 
-- Repeated provisioning requests do not duplicate accounts/groups or restore intentionally revoked access.
-- An interrupted offboarding job resumes safely and proves all in-scope files have an owner or archive disposition.
-- A departed employee loses sessions and app access; business records remain accessible to authorized successors.
-- Final deletion is blocked for failed transfers, unresolved records, or applicable retention/hold restrictions.
+- [ ] Provision and update a test group twice without duplicates.
+- [ ] disable a live employee across nodes.
+- [ ] transfer files and revoke sessions, shares and credentials with an inspectable result.
 
-## Verification
+## Dependencies and execution
 
-- Rust integration tests for lifecycle transitions and permission effects; Vitest/jsdom for dry-run and receipts.
-- Test interruption after every step, concurrent ownership changes, nested groups, and duplicate SCIM events.
-- Restore a test employee archive using WP-010 and compare content/ownership manifests.
+Dependencies: WP-008. These gate final integration acceptance, not initial investigation. Wave 2; priority P1; rough effort L (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-SuiteLeaf cannot revoke unrelated third-party accounts without explicit connectors. Show unresolved external actions rather than claiming universal offboarding.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S12`, `S13`, `S14`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007", "WP-008", "WP-010"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-2026-11-04: WP-007 completed and removed from `blocked_on`. Package remains blocked on `WP-008` and `WP-010`.
-2026-11-04: WP-010 completed and removed from `blocked_on`. Package remains blocked on `WP-008`.
-2026-11-04, later: WP-008 completed and removed from `blocked_on`. All prerequisites cleared; package transitioned to `status: "ready"`.
-
-2026-11-04, later: Provisioning and safe employee offboarding completed and accepted. Implemented SCIM 2.0 provisioning engine (`ScimProvisioner`) with stable external IDs, idempotent upserts, active status deactivation, pagination, and reconciliation. Implemented dry-run inventory (`dryRunOffboarding`), resumable multi-step offboarding lifecycle job (`createOffboardingJob`, `executeOffboarding`) requiring explicit successor ownership, terminating active sessions, transferring all owned documents without silent data loss, evaluating active retention/legal holds (failing closed and blocking deletion if hold active), zero-ownership verification, and downloadable cryptographically signed audit receipt (`generateAuditReceipt`). Tested in `tests/provisioning-offboarding.test.ts` and `cargo test -p suitedrive --test directory administration`. Status changed to `done`.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

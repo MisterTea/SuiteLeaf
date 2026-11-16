@@ -1,73 +1,39 @@
 ---
-id: "WP-015"
-title: "Excel formula and workbook compatibility"
-type: "work_package"
-status: "done"
-priority: "P0"
-phase: 1
-area: "spreadsheets"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S03", "S18"]
+id: WP-015
+status: ready
+priority: P0
+wave: 1
+effort: XL
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Excel formula and workbook compatibility
+# WP-015: Match Excel workbook and calculation semantics
 
-## Outcome and rationale
+## Outcome and baseline
 
-Make Excel interchange trustworthy for supported formulas, workbook resources, and recalculation rather than relying on cached imported results.
+XLSX conversion and formula helpers exist; native preservation is not certified Excel calculation correctness.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/excel.ts](../packages/core/src/excel.ts); [packages/core/src/xlsx-export.ts](../packages/core/src/xlsx-export.ts); [packages/core/src/sheet-cross-calc.ts](../packages/core/src/sheet-cross-calc.ts). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-Inspect `packages/core/src/excel.ts`, `packages/core/src/excel-features.ts`, `packages/core/src/xlsx-export.ts`, `packages/core/src/sheet-links.ts`, `apps/web/src/editors/Sheets.tsx`, Univer integration, and existing Excel corpus workflows.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Publish a function/feature compatibility catalog with tested arguments, locale/date-system semantics, errors, arrays/spills, named formulas, structured references, and external-link behavior.
-- Compare imported cached values to fresh recalculation after representative edits; make stale/unsupported calculations visible.
-- Preserve styles, validation, conditional rules, names, tables, charts, drawings, hidden sheets, print settings, and supported pivot metadata through native/Office round trips.
-- Define safe handling of VBA/XLSM, external links, add-ins, and data connections. Preserve nonexecuted macro payloads only if safe and explicitly supported; otherwise warn about their loss.
-- Cover binary formats and large workbooks with explicit capacity/error handling; ensure worksheet identities survive changes and exports.
-- Expose formula auditing hooks for precedents/dependents, evaluation errors, and compatibility reports.
-
-## Dependencies and delivery
-
-Completion is blocked on `WP-012`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Build a function/behavior matrix.
+- [ ] fix dynamic arrays, names, structured references, date systems, errors and external-link handling by corpus priority.
+- [ ] preserve charts and rules.
 
 ## Acceptance criteria
 
-- Supported formula fixtures match documented reference results after changing inputs and reopening exports.
-- An unsupported function never silently appears as a trustworthy current cached result.
-- Cross-sheet references, date systems, dynamic arrays, validation, and hidden-sheet behavior have explicit verified cases.
-- Macro/external-link behavior is documented and cannot execute automatically during import or test runs.
+- [ ] Excel recalculation and SuiteLeaf match all supported numeric/error results with documented tolerances.
+- [ ] tests include spill, circular references and 1900/1904 dates.
+- [ ] unsupported functions cannot masquerade as fresh cached values.
 
-## Verification
+## Dependencies and execution
 
-- Vitest for formula semantics, serializations, rules, dates, reference relocation, and error cases.
-- Reference Excel recalculation for differential values; painted-grid tests for displayed results and charts.
-- Include large sparse workbooks and a capacity-limit case without claiming every theoretical Excel limit.
+Dependencies: WP-012. These gate final integration acceptance, not initial investigation. Wave 1; priority P0; rough effort XL (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-Power Query-like ingestion is WP-020; advanced analytical features are WP-021. Native VBA execution and COM/add-in compatibility require separately approved scope and are not implied here.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S03`, `S18`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-012"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-
-2026-11-04: WP-012 was accepted as done, so this package is no longer blocked. Status is `ready`, meaning it is ready to start; no work has begun. It was blocked on WP-012 from 2026-10-29 until then; that dependency is still listed under Dependencies.
-
-2026-11-04, later: Excel formula and workbook compatibility verification completed and accepted. Verified cross-sheet recalculation with stale/unsupported formulas held in pending/left without silent presentation of stale data, formula auditing hooks (precedents, dependents, cycles, cross-sheet targets), date system roundtripping (1900 vs 1904), sheet visibility metadata (hidden sheets), quarantined macro handling with safe cell import and no automated code execution, and capacity boundaries without silent data loss. Tested in `tests/excel-compatibility.test.ts`, `tests/office-roundtrip-xlsx.test.ts`, `tests/sheet-cross-calc.test.ts`, and `tests/compat/user-report.test.ts`. Status changed to `done`.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

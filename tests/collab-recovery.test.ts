@@ -11,7 +11,7 @@ it("names a waiting edit without the document text", () => {
   expect(roomRecoveryText("open", 0)).toBeNull();
   expect(roomRecoveryText("open", 1)).toBe("1 edit is waiting to be stored.");
   expect(roomRecoveryText("open", 2)).toBe("2 edits are waiting to be stored.");
-  expect(roomRecoveryText("joining", 0)).toBe("Joining the shared document.");
+  expect(roomRecoveryText("joining", 0)).toBeNull();
   expect(roomRecoveryText("joining", 1)).toBe("Joining. 1 edit is still on this device.");
   expect(roomRecoveryText("reconnecting", 0)).toBe("Reconnecting to the shared document.");
   expect(roomRecoveryText("reconnecting", 2)).toBe("Reconnecting. 2 edits are still on this device.");

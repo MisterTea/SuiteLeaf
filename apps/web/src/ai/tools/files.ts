@@ -18,6 +18,7 @@ import {
   type HomeAgentContext,
 } from "./file-library";
 import { templateTools } from "./file-template-tools";
+import { authorizeLibraryTool } from "./file-authorization";
 
 export { REMOVE_INTENT } from "./file-tool-kit";
 export { IMPORT_ACCEPT } from "./file-import";
@@ -431,7 +432,13 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       },
     }),
     ...templateTools({ openNew: ctx.openNew }),
-  ];
+  ].map(item => {
+    const authorize = (args: unknown) => authorizeLibraryTool(ctx, item.name, args as { name?: unknown; names?: unknown });
+    return { ...item, authorize, execute: async (args: unknown, signal?: AbortSignal) => {
+      await authorize(args);
+      return item.execute(args, signal);
+    } };
+  });
 }
 
 const VIEW: Record<string, string> = {

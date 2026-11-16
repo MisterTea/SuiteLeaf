@@ -1,73 +1,39 @@
 ---
-id: "WP-032"
-title: "Retention, discovery, and organizational data policy"
-type: "work_package"
-status: "done"
-priority: "P2"
-phase: 4
-area: "governance"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S14", "S25"]
+id: WP-032
+status: ready
+priority: P2
+wave: 4
+effort: XL
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Retention, discovery, and organizational data policy
+# WP-032: Enforce governance across actual data paths
 
-## Outcome and rationale
+## Outcome and baseline
 
-Add the policy and evidence controls required by organizations that must retain, discover, classify, or restrict business data.
+Governance policy components exist; complete retention/discovery enforcement is not established.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/governance](../packages/core/src/governance); [docs/data-governance-residency.md](../docs/data-governance-residency.md). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-SuiteLeaf has roles, groups, sharing, versioning, and audit events, but these do not establish legal retention, discovery, or tamper-resistant audit storage. Inspect SuiteDrive metadata, node admin APIs, and the full-replica architecture.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Define organization-scoped retention schedules, exceptions, legal holds, lifecycle disposition, and policy precedence, including deleted accounts/files and old versions.
-- Provide authorized discovery search/export with immutable manifests, hashes, provenance, and audit trails; coordinate indexing with WP-026 when available.
-- Implement sensitive-data labels and detection policies with explainable matches, review/override, external-sharing restrictions, and controls for export/offline/AI use.
-- Export audit events to an independently controlled append-only destination; define retention, actor attribution, clock handling, and integrity verification.
-- Document encryption/key management and administrative trust boundaries. If data residency or tenant-isolated placement is offered, replace the assumption that every node can store every account/file with explicit placement rules.
-- Build policy dry runs and impact reports before enforcement; make exceptions reviewable and expiring.
-
-## Dependencies and delivery
-
-Completion is blocked on `WP-008`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Integrate retention, legal hold, audit export, sensitivity policy and residency constraints into storage, replication, export and deletion.
+- [ ] define supported scope.
 
 ## Acceptance criteria
 
-- Active holds prevent prohibited deletion/disposition and remain effective when an employee account is removed.
-- A discovery export can be verified independently against its manifest and authorized scope.
-- Sharing/export policy decisions are explainable and logged without leaking sensitive content to unauthorized users.
-- Deployment documentation truthfully states which operators/nodes can access data and which residency guarantees are actually enforced.
+- [ ] Held content survives user deletion and remains discoverable by authorized roles.
+- [ ] expiry deletes eligible replicas/backups per documented policy.
+- [ ] unauthorized exports are blocked.
+- [ ] restore cannot silently bypass policy.
 
-## Verification
+## Dependencies and execution
 
-- Server policy-matrix tests for hold/retention/deletion/ownership interactions and cross-node enforcement.
-- Tamper-detection and audit-export verification tests; discovery isolation tests.
-- Test classification false positives, overrides, policy migration dry runs, and full restore under retention policy.
+Dependencies: WP-007, WP-010. These gate final integration acceptance, not initial investigation. Wave 4; priority P2; rough effort XL (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-Do not claim legal compliance, certification, end-to-end encryption, or regional isolation without appropriate verification. Retention is not backup, and encryption at rest does not exclude privileged server operators.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S14`, `S25`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007", "WP-008", "WP-010"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-2026-11-04: WP-007 completed and removed from `blocked_on`. Package remains blocked on `WP-008` and `WP-010`.
-2026-11-04: WP-010 completed and removed from `blocked_on`. Package remains blocked on `WP-008`.
-2026-11-04, later: WP-008 completed and removed from `blocked_on`. All prerequisites cleared; package transitioned to `status: "ready"`.
-2026-11-04: Completed and verified. Implemented `packages/core/src/governance/` (`types.ts`, `classification-engine.ts`, `retention-engine.ts`, `discovery-service.ts`, `tamper-evident-audit.ts`) and truthful trust boundary & residency documentation in `docs/data-governance-residency.md`. Verified that active legal holds fail closed and prevent deletion/purging even across account offboarding; retention schedules and dry-run impact reports; independent verification of signed e-Discovery export manifests; explainable data classification matches that restrict sharing/export without leaking secrets; and SHA-256 hash-chained append-only audit logging detecting tampering and deletions. Unit test suite `tests/governance-policy.test.ts` (5 tests) passes with >96% coverage. Package status is `done`.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

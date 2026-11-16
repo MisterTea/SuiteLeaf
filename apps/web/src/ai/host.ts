@@ -7,6 +7,7 @@ import { PARSE_ERROR } from "./model-stream";
 import { assistantBlock } from "./policy";
 import { readAiPreferences } from "./preferences";
 import { holdToolEdit, toolEditWaits } from "./tool-review";
+import { assistantAccessNow, assistantTargetAllowed, currentAssistantFileKey } from "./tool-permission";
 
 /** What a SuiteLeaf tool returns to the model. */
 export type ToolOutput = string | { text: string; details?: unknown };
@@ -23,6 +24,8 @@ export interface SuiteTool<P extends TSchema = TSchema> {
   prepare?: (args: Record<string, unknown>) => Record<string, unknown>;
   /** The same call does something new each time (e.g. the next slide), so repeating it is not a loop. */
   repeatable?: boolean;
+  /** Resolve target and destination permissions using current authoritative access. */
+  authorize?: (args: Static<P>) => Promise<void> | void;
   /**
    * For actions that destroy or overwrite the user's work: the question to ask
    * before running, or undefined when nothing would be lost. Not asked when the
@@ -153,16 +156,43 @@ export function registerToolEverywhere(t: SuiteTool) {
   changed();
 }
 
+function withAuthorization(t: SuiteTool, authorize: (args: unknown) => Promise<void>): SuiteTool {
+  return { ...t, authorize, execute: async (args, signal) => {
+    await authorize(args);
+    if (signal?.aborted) throw new ToolError("The assistant stopped. This edit was not run.");
+    return t.execute(args, signal);
+  } };
+}
+
 /** Every tool available right now, from every mounted screen. */
 export function currentSuiteTools(): SuiteTool[] {
   const seen = new Set<string>(everywhere.map((t) => t.name));
-  const list: SuiteTool[] = [...everywhere];
+  const list: SuiteTool[] = everywhere.map(t => withAuthorization(t, async args => {
+    if (!t.authorize) throw new ToolError("This tool has no permission check. This action was not run.");
+    await t.authorize(args);
+  }));
   for (const [id, h] of [...hosts.entries(), ...(globalHost ? [["global", globalHost] as const] : [])]) {
     for (const t of h.tools) {
       if (id !== "global") toolScreens.set(t.name, id === "editor" ? h.kind : id);
       if (seen.has(t.name)) continue;
       seen.add(t.name);
-      list.push(t);
+      const fileKey = currentAssistantFileKey();
+      const authorize = async (args: unknown) => {
+        const current = id === "global" ? globalHost : hosts.get(id);
+        if (current !== h) throw new ToolError("The screen changed. Request the tool again.");
+        if (h.kind !== "home" && id !== "global") {
+          if (fileKey !== currentAssistantFileKey()) throw new ToolError("The open file changed. This edit was not run.");
+          const permission = assistantTargetAllowed(await assistantAccessNow(), t.name, args, undefined, fileKey);
+          if (!permission.ok) throw new ToolError(permission.reason);
+        } else if (!t.authorize) {
+          throw new ToolError("This tool has no permission check. This action was not run.");
+        }
+        await t.authorize?.(args);
+        if ((id === "global" ? globalHost : hosts.get(id)) !== h ||
+          (h.kind !== "home" && fileKey !== currentAssistantFileKey()))
+          throw new ToolError("The open file changed. This action was not run.");
+      };
+      list.push(withAuthorization(t, authorize));
     }
   }
   return list;
@@ -242,6 +272,7 @@ export function toAgentTool(t: SuiteTool): AgentTool {
       if (signal?.aborted) return stopped;
       const live = currentSuiteTools().find((x) => x.name === t.name);
       if (!live) throw new Error(`Tool ${t.name} not found`);
+      await live.authorize?.(params as never);
       if (prefs.reviewEdits && toolEditWaits(live.name)) {
         const notice = holdToolEdit(() => live.execute(params as never, signal));
         return { content: [{ type: "text", text: notice }], details: undefined };

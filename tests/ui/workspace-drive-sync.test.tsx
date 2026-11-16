@@ -37,7 +37,7 @@ vi.mock("../../apps/web/src/templates/gallery", async () => (await import("./wor
 vi.mock("../../apps/web/src/ai/host", async () => (await import("./workspace-fakes")).aiHostModule);
 vi.mock("../../apps/web/src/ai/tools/files", async () => (await import("./workspace-fakes")).aiFilesModule);
 vi.mock("../../apps/web/src/ai/tools/cluster", async () => (await import("./workspace-fakes")).aiClusterModule);
-vi.mock("../../apps/web/src/ai/AgentSidebar", async () => (await import("./workspace-fakes")).agentSidebarModule);
+vi.mock("../../apps/web/src/ai/AgentSidebar", () => ({ AiButton: () => <button aria-label="AI assistant">AI</button> }));
 vi.mock("../../apps/web/src/collab/session", async () => (await import("./workspace-fakes")).collabSessionModule);
 vi.mock("../../apps/web/src/ai/summarize", async () => (await import("./workspace-fakes")).summarizeModule);
 vi.mock("../../apps/web/src/editors/local-versions", async () => (await import("./workspace-fakes")).localVersionsModule);
@@ -358,11 +358,18 @@ describe("a SuiteDrive file", () => {
       expect((screen.getByLabelText("File title") as HTMLInputElement).readOnly).toBe(true);
       expect(screen.getByRole("region", { name: "File comments" }).textContent).toBe(comments);
       expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "AI assistant" })).toBeNull();
       fireEvent.keyDown(screen.getByRole("button", { name: "File", exact: true }), { key: "ArrowDown" });
       expect((await screen.findByRole("menuitem", { name: "Move", exact: true })).getAttribute("aria-disabled")).toBe("true");
       expect(screen.getByRole("menuitem", { name: "Rename", exact: true }).getAttribute("aria-disabled")).toBe("true");
       cleanup();
     }
+  });
+
+  it.each(["owner", "editor"] as const)("offers AI to a file %s", async role => {
+    driveApi.get.mockImplementation(async (id: string) => driveItem(id, { role }));
+    await open(store());
+    expect(screen.getByRole("button", { name: "AI assistant" })).toBeTruthy();
   });
 
   it("mirrors a viewer's sheet edits into the live room without saving them", async () => {
@@ -792,7 +799,7 @@ describe("the live room", () => {
     noteUnackedEdits(0);
     act(() => room().onRecovery(null as never));
     expect(status()).toBe("Saved to SuiteDrive");
-    act(() => room().onRecovery("Joining the shared document."));
+    act(() => room().onRecovery("Reconnecting to the shared document."));
     expect(status()).toBe("Saved to SuiteDrive");
   });
 

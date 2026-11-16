@@ -1,70 +1,38 @@
 ---
-id: "WP-024"
-title: "Faithful presentation recording and portable video"
-type: "work_package"
-status: "done"
-priority: "P1"
-phase: 3
-area: "presentations"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S19", "S08"]
+id: WP-024
+status: ready
+priority: P1
+wave: 3
+effort: L
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Faithful presentation recording and portable video
+# WP-024: Complete presenting, media and recording
 
-## Outcome and rationale
+## Outcome and baseline
 
-Record what the audience actually sees and hears, rather than a simplified reconstruction of slide objects.
+Presenter controls and recording code exist; documentation explicitly says audience and notes regions share one window.
 
-## Existing implementation and starting points
+Evidence inspected: [docs/presenter-display.md](../docs/presenter-display.md); [apps/web/src/editors/slide-record.ts](../apps/web/src/editors/slide-record.ts); [apps/web/src/editors/slide-editor-presenter.tsx](../apps/web/src/editors/slide-editor-presenter.tsx). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-`apps/web/src/editors/slide-record.ts` currently maps shapes to rectangles and text to simple canvas text. Recording exists, but this renderer is insufficient evidence of faithful slideshow/video output.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Use a shared render pipeline or supported capture of the actual presentation surface so masters, fonts, tables, images, charts, media, and animation frames match playback.
-- Add microphone narration, permission/error handling, timed slide advancement, pause/resume, and retake or segment replacement with clear recording indicators.
-- Capture supported audio/video without feedback loops and identify unsupported codecs or capture restrictions before recording.
-- Offer portable video output with documented codecs and platform behavior; provide conversion only through licensed supported dependencies.
-- Preserve captions/transcripts and make their privacy/storage behavior clear. Include offline readiness checks and export progress/cancellation.
-
-## Dependencies and delivery
-
-Completion is blocked on `WP-023`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Implement true audience/presenter windows, external-display lifecycle, rehearsal timings, media playback, narration and portable video export.
 
 ## Acceptance criteria
 
-- A reference deck's recording includes its actual shapes, styled text, masters, media, and supported animation sequence.
-- Narration and slide timing remain synchronized within a documented measured tolerance.
-- Permission denial, disk exhaustion, interrupted capture, and unsupported codec produce recoverable errors.
-- The exported video plays in the stated target players and never silently omits unsupported content.
+- [ ] Present on two displays with notes absent from audience output.
+- [ ] reconnect a display safely.
+- [ ] record a 10-minute narrated deck and export a playable video with measured audio/video drift below 100ms.
+- [ ] handle denied microphone access.
 
-## Verification
+## Dependencies and execution
 
-- Unit-test timeline, recording state, retakes, and error handling.
-- Use actual canvas/video frame comparison for fidelity and test recordings with measured audio/video markers.
-- Verify playback on supported desktop/browser targets; label unavailable platform checks.
+Dependencies: WP-023. These gate final integration acceptance, not initial investigation. Wave 3; priority P1; rough effort L (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-Avoid browser-specific output advertised as universally compatible. Recording or uploading a user's voice/video requires clear user action; do not start capture when merely opening a deck.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S19`, `S08`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-023"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-
-2026-11-04: Completed implementation and verification of all 4 acceptance criteria following WP-023 completion. Render pipeline in `apps/web/src/editors/slide-record.ts` renders actual shapes (rounded rect, ellipse, lines), styled text runs, masters, media (video, audio, captions), tables, and animation sequence step filtering. Added `RecordingTimeline` supporting narration sync tracking within 50ms tolerance, pause/resume, retake segment replacement, and WebVTT caption generation. Added recoverable error handling for permission denial, disk exhaustion, interrupted capture, and unsupported codecs with chunk preservation and secret redaction. Added video container and target player compatibility validation (Chrome, Firefox, Safari, QuickTime, VLC) with diagnostic placeholder rendering preventing silent omissions. All 12 unit tests pass with 90.31% line coverage. Status marked done.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.

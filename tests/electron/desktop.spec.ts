@@ -31,7 +31,7 @@ test("native Save As → autosave → external conflict → recovery → reopeni
       .getByRole("textbox", { name: "Document content" })
       .fill("Desktop draft");
     await page.getByRole("button", { name: "Save As", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("Saved to file");
+    await expect(page.locator(".save-status")).toContainText("Saved to file");
     expect(
       JSON.parse(await readFile(path, "utf8")).content.content[0].content[0]
         .text,
@@ -39,7 +39,7 @@ test("native Save As → autosave → external conflict → recovery → reopeni
     await page
       .getByRole("textbox", { name: "Document content" })
       .fill("Autosaved edit");
-    await expect(page.getByRole("status")).toContainText("Saved to file");
+    await expect(page.locator(".save-status")).toContainText("Saved to file");
     expect(
       JSON.parse(await readFile(path, "utf8")).content.content[0].content[0]
         .text,
@@ -73,7 +73,7 @@ test("native Save As → autosave → external conflict → recovery → reopeni
     await expect(
       reopened.getByRole("textbox", { name: "Document content" }),
     ).toContainText("Recovery edit");
-    await expect(reopened.getByRole("status")).toContainText("Recovered draft");
+    await expect(reopened.locator(".save-status")).toContainText("Recovered draft");
     const security = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences(),
     );

@@ -15,6 +15,7 @@ import { useAgentHost } from "../ai/host";
 import { InstallButton } from "../InstallButton";
 import { AiButton } from "../ai/AgentSidebar";
 import { driveSnapshot, driveTools, type DriveAgentContext } from "../ai/tools/cluster";
+import { assertDriveCreation } from "../ai/tools/file-authorization";
 import {
   createInDrive,
   disconnectFromServer,
@@ -143,8 +144,12 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
         session?.user.email ||
         "",
       drive: () => driveControl.current,
-      create: (kind, title) =>
-        createInDrive(createFile(kind, title), folder.current, navigate),
+      authorizeCreate: () => assertDriveCreation(folder.current),
+      create: async (kind, title) => {
+        const parentId = folder.current;
+        await assertDriveCreation(parentId);
+        await createInDrive(createFile(kind, title), parentId, navigate, undefined, false);
+      },
       open: (item) => openFromDrive(item, navigate),
       signOut: async () => {
         if (!(await forgetDriveFiles())) return false;

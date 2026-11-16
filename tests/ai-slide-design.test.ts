@@ -7,12 +7,14 @@ import { THEME_LIBRARY_KEY, readThemeLibrary } from "../apps/web/src/editors/sli
 import { FADE_ON_CLICK } from "../apps/web/src/editors/slide-fade-in";
 import { deckOf, shape, slide, slidesHarness, text, threeSlides } from "./ai-slide-harness";
 import { memoryStorage } from "./ai-memory-storage";
+import { setAssistantFileRole } from "../apps/web/src/ai/tool-permission";
 
 const meadow = DECK_THEMES.find((t) => t.id === "meadow")!;
 const saved = (name: string, accent = "#2e7d32"): SlideTheme => ({ ...meadow, id: `saved:${name}`, name, accent });
 const offs: (() => void)[] = [];
 
 beforeEach(() => {
+  setAssistantFileRole("local", "test-deck");
   vi.useFakeTimers();
   memoryStorage();
   document.body.innerHTML = `<button>Theme</button><button>Background</button><div class="slide-canvas"></div><div class="thumbnail-row">1</div><div class="thumbnail-row">2</div><div class="thumbnail-row">3</div>`;
@@ -111,9 +113,10 @@ describe("the theme library", () => {
     const other = slidesHarness(deckOf([slide("o1", [text("Spring classes")])]));
     const opened: string[] = [];
     const home: SuiteTool[] = [
-      { name: "back_to_files", label: "Back", description: "", parameters: {} as never, execute: () => "Back on the file list." },
+      { name: "back_to_files", label: "Back", description: "", parameters: {} as never, authorize: () => {}, execute: () => "Back on the file list." },
       {
         name: "open_file",
+        authorize: () => {},
         label: "Open",
         description: "",
         parameters: {} as never,
@@ -139,7 +142,7 @@ describe("the theme library", () => {
     const { call } = slidesHarness(deck);
     await expect(call("save_theme", { name: "Club", apply_to: "Spring" })).rejects.toThrow('Could not leave this deck to open "Spring".');
 
-    const back: SuiteTool = { name: "back_to_files", label: "Back", description: "", parameters: {} as never, execute: () => "Back" };
+    const back: SuiteTool = { name: "back_to_files", label: "Back", description: "", parameters: {} as never, authorize: () => {}, execute: () => "Back" };
     offs.push(registerAgentHost("home", { kind: "home", snapshot: () => 'Files: "Budget"', tools: [back] }));
     await expect(call("save_theme", { name: "Club", apply_to: "Spring" })).rejects.toThrow('"Spring" is not on the file list, so it was not opened.');
     offs.splice(0).forEach((off) => off());
@@ -148,12 +151,12 @@ describe("the theme library", () => {
     await expect(call("save_theme", { name: "Club", apply_to: "Spring" })).rejects.toThrow("the file list is not ready to open");
     offs.splice(0).forEach((off) => off());
 
-    const pick: SuiteTool = { name: "open_file", label: "Open", description: "", parameters: {} as never, execute: () => "so the user was asked to pick it from their computer." };
+    const pick: SuiteTool = { name: "open_file", label: "Open", description: "", parameters: {} as never, authorize: () => {}, execute: () => "so the user was asked to pick it from their computer." };
     offs.push(registerAgentHost("home", { kind: "home", snapshot: () => 'Files: "Spring"', tools: [back, pick] }));
     await expect(call("save_theme", { name: "Club", apply_to: "Spring" })).rejects.toThrow('"Spring" was not opened from the library.');
     offs.splice(0).forEach((off) => off());
 
-    const open: SuiteTool = { name: "open_file", label: "Open", description: "", parameters: {} as never, execute: () => "Opened a document." };
+    const open: SuiteTool = { name: "open_file", label: "Open", description: "", parameters: {} as never, authorize: () => {}, execute: () => "Opened a document." };
     offs.push(registerAgentHost("home", { kind: "home", snapshot: () => 'Files: "Spring"', tools: [back, open] }));
     await expect(call("save_theme", { name: "Club", apply_to: "Spring" })).rejects.toThrow('"Spring" did not open as a presentation.');
   });

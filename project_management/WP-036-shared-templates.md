@@ -1,71 +1,38 @@
 ---
-id: "WP-036"
-title: "Shared templates and organization branding"
-type: "work_package"
-status: "done"
-priority: "P1"
-phase: 2
-area: "templates"
-created: "2026-10-29"
-updated: "2026-11-04"
-owner: "unassigned"
-blocked: false
-blocked_on: []
-related_sources: ["S01", "S02"]
+id: WP-036
+status: ready
+priority: P1
+wave: 2
+effort: M
+owner: unassigned
+updated: 2026-11-15
 ---
 
-# Shared templates and organization branding
+# WP-036: Deliver reusable organization templates
 
-## Outcome and rationale
+## Outcome and baseline
 
-Make reusable documents, workbooks, decks, and form designs centrally discoverable and maintainable while preserving users' edits.
+Template components exist; governed distribution and full Office template fidelity need validation.
 
-## Existing implementation and starting points
+Evidence inspected: [packages/core/src/templates](../packages/core/src/templates); [apps/web/src/templates](../apps/web/src/templates). This is a source/documentation assessment, not a fresh runtime pass. Existing implementations must be reused and verified before replacing them.
 
-A template model/store/gallery already exists in `apps/web/src/templates/`, and slide themes and mail merge have reusable structures. Extend current local templates with managed organization distribution.
+## Work to deliver
 
-Source observations describe the working tree inspected on October 29, 2026, not a certified released build. Recheck current behavior before replacing existing functionality. All code paths below are relative to the repository root.
-
-## Implementation requirements
-
-- Add organization template ownership, versioning, publish/retire, permissions, categories, previews, and admin curation.
-- Support style/brand bundles with approved fonts/colors/logos and editor-specific placeholders, chart styles, slide layouts, and document fields.
-- Create files as independent instances with source-template/version provenance; template updates must not silently overwrite user documents.
-- Offer an explicit update/compare workflow for supported template-linked styles and explain conflicts with local overrides.
-- Package template dependencies for offline use and verify font/image licensing and export compatibility.
-- Provide starter templates for the reference workflows without using private or unlicensed sample content.
-
-## Dependencies and delivery
-
-No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
-
-Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
+- [ ] Implement versioned document/workbook/deck templates, brand assets, permissions, preview and update policy.
+- [ ] cover DOTX/XLTX/POTX conversion boundaries.
 
 ## Acceptance criteria
 
-- Authorized users can discover and instantiate an approved template with all required assets.
-- Retiring a template prevents new use while existing documents remain intact.
-- A template version update has explicit effects and does not replace user-authored content.
-- Templates survive organization export and work offline when declared ready.
+- [ ] Publish a branded template, create independent files, update the template and retain existing files.
+- [ ] revoked templates disappear from new-file choices.
+- [ ] styles/fonts/themes survive export.
 
-## Verification
+## Dependencies and execution
 
-- Vitest template lifecycle, permission, provenance, migration, and instance independence tests.
-- Visual preview/layout checks for representative documents, sheets, and decks.
-- Verify links/assets and supported Office exports through the compatibility pipeline.
+Dependencies: WP-007, WP-014, WP-016. These gate final integration acceptance, not initial investigation. Wave 2; priority P1; rough effort M (see [roadmap](ROADMAP.md#sizing-and-staffing)). Start with a failing representative workflow, implement the smallest complete slice, then expand the fixture set. Split XL work into independently accepted issues before implementation.
 
-Use Vitest for TypeScript behavior, persistence, import/export, and jsdom UI tests; use Rust tests for node behavior. Use Playwright only for layout, painted grids/canvases, real document typing/caret/browser keys, or storyboard evidence. Keep unit test coverage above 90%, report the measured scope, and do not claim UI parity from unit tests alone. Keep each TypeScript file under 1,000 lines; extract focused modules rather than adding to oversized files. See [portfolio conventions](README.md) for shared release requirements.
+## Validation and completion
 
-## Boundaries and non-goals
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
 
-Do not recreate the existing gallery. Templates are not executable plugins; scripts require the scoped automation platform.
-
-## Research and related context
-
-Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
-
-# Progress
-
-2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
-2026-11-04: WP-007 completed. Removed from `blocked_on`; `blocked` is now false and package status is `ready`.
-2026-11-04: Completed and verified. Implemented `packages/core/src/templates/` (`types.ts`, `manager.ts`, `starter-templates.ts`). Verified organization template discovery, role and group permissions, independent cloning with immutable provenance, retirement preventing new use while preserving existing documents, explicit brand bundle version updates guaranteeing user-authored content is never replaced, and offline package readiness surviving export/import. Unit test suite `tests/shared-templates.test.ts` (4 tests) passes with >93% coverage. Package status is `done`.
+Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.
