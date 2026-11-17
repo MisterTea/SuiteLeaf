@@ -147,6 +147,14 @@ beforeEach(() => {
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 });
 
+function click(name: string | RegExp) {
+  fireEvent.click(screen.getByRole("button", { name, exact: true }));
+}
+
+function change(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
 it("downloads original mail and blocks senders through the appropriate server rule", async () => {
   const original = respond;
   respond = (b) =>

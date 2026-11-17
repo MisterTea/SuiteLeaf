@@ -45,15 +45,28 @@ describe("embedded Supermail build", () => {
       aliases.some((alias) => alias.replacement.includes("fullfat_base64.js")),
     ).toBe(true);
     const [plugin] = (await config.supermailPlugins()) as any[];
+    expect(
+      plugin.transform(
+        '@import "tailwindcss";',
+        resolve("packages/supermail/src/styles/globals.css"),
+      ),
+    ).toContain('source("../")');
+    expect(
+      plugin.transform(
+        '@import "tailwindcss";',
+        resolve("packages/supermail/src/styles/globals.css"),
+      ),
+    ).toContain('@source "../../../../apps/web/src"');
+    expect(
+      plugin.transform("body {}", resolve("apps/web/src/styles.css")),
+    ).toBeNull();
     const context = {
-      resolve: vi
-        .fn()
-        .mockResolvedValue({
-          id: resolve("packages/supermail/src/router/index.ts").replace(
-            /\\/g,
-            "/",
-          ),
-        }),
+      resolve: vi.fn().mockResolvedValue({
+        id: resolve("packages/supermail/src/router/index.ts").replace(
+          /\\/g,
+          "/",
+        ),
+      }),
     };
     const importer = resolve("packages/supermail/src/App.tsx");
     expect(await plugin.resolveId.call(context, "./router", importer, {})).toBe(

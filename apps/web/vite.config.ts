@@ -90,9 +90,12 @@ export default defineConfig(async (): Promise<UserConfig> => ({
     rollupOptions: rollupWarnings,
   },
   build: {
+    // Avoid compressing every large editor/mail chunk concurrently in CI.
+    reportCompressedSize: false,
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
       ...rollupWarnings,
+      maxParallelFileOps: 64,
       input: {
         app: resolve(import.meta.dirname, "index.html"),
         castReceiver: resolve(import.meta.dirname, "cast-receiver.html"),

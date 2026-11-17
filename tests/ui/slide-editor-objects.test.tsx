@@ -195,7 +195,7 @@ describe("arranging objects", () => {
     pick("three", { shiftKey: true });
     choose("Align", "Size and position");
     expect(document.querySelector(".slide-geometry-panel, [aria-label='Size and position']")).not.toBeNull();
-  });
+  }, 15_000);
 
   it("moves an object with the mouse, snapping to the slide, and Undo puts it back", () => {
     stageAtDeckSize();

@@ -63,6 +63,14 @@ function routerRedirect(): PluginOption {
   return {
     name: "suiteleaf-supermail-router",
     enforce: "pre",
+    transform(code, id) {
+      if (slash(id) !== slash(resolve(src, "styles/globals.css"))) return null;
+      // Include both apps' source, without scanning generated bundles on rebuild.
+      return code.replace(
+        '@import "tailwindcss";',
+        '@import "tailwindcss" source("../");\n@source "../../../../apps/web/src";',
+      );
+    },
     async resolveId(source, importer, options) {
       if (!importer || !slash(importer).startsWith(slash(src))) return null;
       if (!/router(\/index)?(\.ts)?$|^\.\/index$/.test(source)) return null;
