@@ -1,3 +1,3 @@
 [submodule "packages/supermail"]
 	path = packages/supermail
-	url = https://github.com/MisterTea/SuperMail.git
+	url = https://github.com/MisterTea/SuiteMail.git
