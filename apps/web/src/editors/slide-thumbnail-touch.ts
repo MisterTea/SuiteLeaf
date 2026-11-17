@@ -21,10 +21,10 @@ export function useSlideThumbnailTouch(
   const ignoreClick = useRef(false);
   const touchInteraction = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const releaseTouchMove = useRef<(() => void) | null>(null);
   const press = useRef<{
     x: number;
     y: number;
-    lastX: number;
     held: boolean;
   } | null>(null);
   const clearTimer = () => {
@@ -34,6 +34,7 @@ export function useSlideThumbnailTouch(
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);
+      releaseTouchMove.current?.();
     },
     [],
   );
@@ -52,10 +53,21 @@ export function useSlideThumbnailTouch(
     press.current = {
       x: e.clientX,
       y: e.clientY,
-      lastX: e.clientX,
       held: false,
     };
     const target = e.currentTarget;
+    releaseTouchMove.current?.();
+    // Native scrolling owns ordinary swipes. Once a hold selects a slide,
+    // cancel touch movement so this same gesture can reorder it. Changing
+    // touch-action after pointerdown cannot change the browser's decision.
+    const preventDragScroll = (event: TouchEvent) => {
+      if (dragRef.current && event.cancelable) event.preventDefault();
+    };
+    target.addEventListener("touchmove", preventDragScroll, { passive: false });
+    releaseTouchMove.current = () => {
+      target.removeEventListener("touchmove", preventDragScroll);
+      releaseTouchMove.current = null;
+    };
     const pointerId = e.pointerId;
     const startX = e.clientX,
       startY = e.clientY;
@@ -98,16 +110,12 @@ export function useSlideThumbnailTouch(
     ) {
       clearTimer();
       ignoreClick.current = true;
-      if (!dragRef.current) {
-        const list = e.currentTarget.closest(".thumbnails-list");
-        if (list) list.scrollLeft += start.lastX - e.clientX;
-      }
     }
-    start.lastX = e.clientX;
   };
   const onPointerUp = () => {
     clearTimer();
     if (dragRef.current?.over != null) ignoreClick.current = true;
+    releaseTouchMove.current?.();
     press.current = null;
   };
   const onPointerCancel = () => {
