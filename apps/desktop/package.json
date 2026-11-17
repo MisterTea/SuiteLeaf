@@ -11,7 +11,8 @@
   "scripts": {
     "dev": "electron-vite dev --watch",
     "build": "node --max-old-space-size=4096 ./node_modules/electron-vite/bin/electron-vite.js build",
-    "package": "electron-builder --publish never && node scripts/install-mac-app.mjs"
+    "package": "electron-builder --publish never && node scripts/install-mac-app.mjs",
+    "publish": "electron-builder --publish always"
   },
   "devDependencies": {
     "electron": "44.6.0",

@@ -32,7 +32,7 @@ End-user desktop updates are deployed through GitHub Releases using `electron-up
      repo: SuiteLeaf
      releaseType: release
    ```
-2. When packaging with `electron-builder` in CI (`--publish always` with `GH_TOKEN`), release binaries and update metadata manifests (`latest.yml`, `latest-mac.yml`, etc.) are uploaded to GitHub Releases.
+2. When packaging with `electron-builder` in CI (`npm run publish:desktop` / `--publish always` via `.github/workflows/release.yml` using `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`), release binaries and update metadata manifests (`latest.yml`, `latest-mac.yml`, etc.) are uploaded to GitHub Releases.
 3. In packaged builds, `initDesktopAutoUpdater` checks for updates on launch and every 4 hours.
 4. Users can also trigger a manual check via **SuiteLeaf > Check for Updates…**.
 5. Once downloaded, users are prompted with a dialog to restart and install now or postpone until application quit.
