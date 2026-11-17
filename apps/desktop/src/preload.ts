@@ -118,3 +118,31 @@ contextBridge.exposeInMainWorld("suiteleafPdf", {
     ipcRenderer.send("png:slide", bounds);
   },
 });
+
+contextBridge.exposeInMainWorld("supermail", {
+  isElectron: true,
+  db: {
+    select: (query: string, params: unknown[] = []) =>
+      ipcRenderer.invoke("supermail:db:select", query, params),
+    execute: (query: string, params: unknown[] = []) =>
+      ipcRenderer.invoke("supermail:db:execute", query, params),
+  },
+  openUrl: (url: string) => ipcRenderer.invoke("supermail:openUrl", url),
+  fs: {
+    mkdir: (path: string) => ipcRenderer.invoke("supermail:fs:mkdir", path),
+    writeFile: (path: string, data: Uint8Array | string) =>
+      ipcRenderer.invoke("supermail:fs:writeFile", path, data),
+    writeTextFile: (path: string, text: string) =>
+      ipcRenderer.invoke("supermail:fs:writeTextFile", path, text),
+    readFile: (path: string) => ipcRenderer.invoke("supermail:fs:readFile", path),
+    readTextFile: (path: string) => ipcRenderer.invoke("supermail:fs:readTextFile", path),
+    remove: (path: string) => ipcRenderer.invoke("supermail:fs:remove", path),
+    exists: (path: string) => ipcRenderer.invoke("supermail:fs:exists", path),
+  },
+  dialog: {
+    save: (options?: unknown) => ipcRenderer.invoke("supermail:dialog:save", options),
+    open: (options?: unknown) => ipcRenderer.invoke("supermail:dialog:open", options),
+  },
+  invoke: (cmd: string, args: Record<string, unknown> = {}) =>
+    ipcRenderer.invoke(`supermail:invoke:${cmd}`, args),
+});

@@ -24,6 +24,7 @@ import { registerFolderSelection } from "./folder-selection";
 import { convertOffice } from "./office-converter";
 import { consumeFailedStart, restartWhileDirty, startReleasePoll } from "./updates";
 import { initDesktopAutoUpdater, getDesktopAutoUpdater } from "./auto-updater";
+import { initSupermailHost } from "./supermail-host";
 
 async function ringDeviceId(userData: string): Promise<string | undefined> {
   const path = join(userData, "update-ring-id");
@@ -679,6 +680,7 @@ else {
       await migrateLocalData(app.getPath("userData"), localDirectory);
     store = new FileStore(localDirectory);
     await store.init();
+    await initSupermailHost();
     const saved = appModeSchema.safeParse((await readSettings()).mode);
     if (saved.success) mode = saved.data;
     const configured = (await readSettings()).documentsDirectory;

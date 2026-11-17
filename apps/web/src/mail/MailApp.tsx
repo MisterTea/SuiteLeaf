@@ -24,8 +24,16 @@ import { groupMailRows } from "./threading";
 import { GmailViews } from "./GmailViews";
 import { ConfidentialManager } from "./ConfidentialManager";
 
+import { SuperMailView } from "./SuperMailView";
+
 export function MailRoute() {
   const { mode } = useMode();
+  const hasSupermail = typeof window !== "undefined" && Boolean((window as unknown as { supermail?: unknown }).supermail);
+
+  if (hasSupermail) {
+    return <SuperMailView />;
+  }
+
   return mode.kind === "cluster" ? (
     <MailApp />
   ) : (

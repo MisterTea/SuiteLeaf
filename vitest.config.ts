@@ -14,6 +14,11 @@ export default defineConfig({
       react: fromHere("./node_modules/react"),
       "react-dom": fromHere("./node_modules/react-dom"),
       "dictionary-en-files": dirname(fromWeb.resolve("dictionary-en")),
+      "@supermail": fromHere("./packages/supermail/src"),
+      "@": fromHere("./packages/supermail/src"),
+      "@automerge/automerge": fromHere(
+        "./packages/supermail/node_modules/@automerge/automerge/dist/mjs/entrypoints/fullfat_base64.js",
+      ),
     },
   },
   test: {
