@@ -61,13 +61,15 @@ describe("cloud build inputs", () => {
     "tests/ui/drive.test.tsx",
     "apps/desktop/src/main.ts",
     ".github/workflows/pages.yml",
-    "packages/supermail/src/App.tsx",
-    ".gitmodules",
   ])("skips non-runtime change %s", (path) => {
     expect(affectsCloud(path)).toBe(false);
   });
   it.each([
     "apps/web/src/App.tsx",
+    "packages/supermail",
+    "packages/supermail/src/App.tsx",
+    "packages/supermail/package-lock.json",
+    ".gitmodules",
     "crates/suitedb/src/lib.rs",
     "apps/desktop/package.json",
     "Dockerfile.vercel",

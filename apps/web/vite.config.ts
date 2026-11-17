@@ -1,19 +1,22 @@
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
-import { defineConfig, type Connect } from "vite";
+import { defineConfig, type Connect, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { rollupWarnings } from "./build-warnings";
 import { offline } from "./offline";
 import { conditionalFormatDefaults } from "./conditional-format-defaults";
+import { supermailAliases, supermailPlugins } from "./supermail/vite";
 
 /** Serves ~/.cache/suiteleaf-models at /models, including the FrogNano GGUF. */
 function modelCache(): Connect.NextHandleFunction {
   const root = resolve(join(homedir(), ".cache/suiteleaf-models"));
   return (req, res, next) => {
-    const path = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+    const path = decodeURIComponent(
+      new URL(req.url ?? "/", "http://x").pathname,
+    );
     if (!path.startsWith("/models/")) return next();
     const file = resolve(join(root, path.slice("/models/".length)));
     if (!file.startsWith(root + sep)) return next();
@@ -33,7 +36,11 @@ function modelCache(): Connect.NextHandleFunction {
           if (req.method === "HEAD") return res.end();
           return createReadStream(file, { start, end }).pipe(res);
         }
-        res.writeHead(200, { "content-type": type, "content-length": size, "accept-ranges": "bytes" });
+        res.writeHead(200, {
+          "content-type": type,
+          "content-length": size,
+          "accept-ranges": "bytes",
+        });
         if (req.method === "HEAD") return res.end();
         return createReadStream(file).pipe(res);
       })
@@ -42,40 +49,16 @@ function modelCache(): Connect.NextHandleFunction {
 }
 export const dictionaryAlias = {
   // dictionary-en only exports a Node entry point; the browser reads its files.
-  "dictionary-en-files": dirname(createRequire(import.meta.url).resolve("dictionary-en")),
+  "dictionary-en-files": dirname(
+    createRequire(import.meta.url).resolve("dictionary-en"),
+  ),
 };
-const supermailAppPath = resolve(import.meta.dirname, "../../packages/supermail/src/App.tsx");
-const supermailDepsExist = existsSync(
-  resolve(import.meta.dirname, "../../packages/supermail/node_modules/@tanstack/react-router"),
+const supermailStub = resolve(
+  import.meta.dirname,
+  "src/mail/SuperMailStub.tsx",
 );
-const hasSupermailSource = existsSync(supermailAppPath) && supermailDepsExist;
 
-const supermailAliases = hasSupermailSource
-  ? [
-      {
-        find: "@supermail",
-        replacement: resolve(import.meta.dirname, "../../packages/supermail/src"),
-      },
-      {
-        find: "@",
-        replacement: resolve(import.meta.dirname, "../../packages/supermail/src"),
-      },
-      {
-        find: "@automerge/automerge",
-        replacement: resolve(
-          import.meta.dirname,
-          "../../packages/supermail/node_modules/@automerge/automerge/dist/mjs/entrypoints/fullfat_base64.js",
-        ),
-      },
-    ]
-  : [
-      {
-        find: "@supermail/App",
-        replacement: resolve(import.meta.dirname, "src/mail/SuperMailStub.tsx"),
-      },
-    ];
-
-export default defineConfig({
+export default defineConfig(async (): Promise<UserConfig> => ({
   plugins: [
     {
       name: "suiteleaf-model-cache",
@@ -89,14 +72,16 @@ export default defineConfig({
     react(),
     offline(),
     conditionalFormatDefaults(),
+    ...(await supermailPlugins()),
   ],
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: [
       ...Object.entries(dictionaryAlias).map(([find, replacement]) => ({
         find,
         replacement,
       })),
-      ...supermailAliases,
+      ...supermailAliases(supermailStub),
     ],
   },
   base: "./",
@@ -114,4 +99,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

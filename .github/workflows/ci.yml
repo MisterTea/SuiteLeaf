@@ -66,6 +66,8 @@ jobs:
           --health-retries=15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: docker/setup-buildx-action@v3
       - name: Build Vercel container image
         uses: docker/build-push-action@v6

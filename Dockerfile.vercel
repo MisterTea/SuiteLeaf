@@ -27,6 +27,9 @@ COPY packages/core/package.json packages/core/package.json
 COPY services/ai/package.json services/ai/package.json
 COPY services/auth/package.json services/auth/package.json
 RUN npm ci --no-audit --no-fund --workspace=@suiteleaf/web --workspace=@suiteleaf/core --workspace=@suiteleaf/auth --include-workspace-root && npm cache clean --force
+COPY packages/supermail/package.json packages/supermail/package-lock.json packages/supermail/
+# SuiteMail has an independent lockfile; install outside the root workspaces.
+RUN npm ci --prefix packages/supermail --workspaces=false --no-audit --no-fund && npm cache clean --force
 COPY apps apps
 COPY packages packages
 COPY services services
