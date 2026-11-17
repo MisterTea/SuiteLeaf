@@ -8,6 +8,8 @@ export function affectsCloud(path) {
     /^(docs|tests|storyboards|project_management|\.github)\//.test(path) ||
     /^[^/]+\.md$/i.test(path) ||
     /^apps\/desktop\/(?!package\.json$)/.test(path) ||
+    /^packages\/supermail(\/|$)/.test(path) ||
+    /^\.gitmodules$/.test(path) ||
     /\.(test|spec)\.[cm]?[jt]sx?$/.test(path)
   );
 }

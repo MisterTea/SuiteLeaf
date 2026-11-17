@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { MailRoute } from "../../apps/web/src/mail/MailApp";
 import { ModeContext } from "../../apps/web/src/mode";
-import { SuperMailView } from "../../apps/web/src/mail/SuperMailView";
 
 describe("SuperMail Integration in SuiteLeaf", () => {
   beforeEach(() => {

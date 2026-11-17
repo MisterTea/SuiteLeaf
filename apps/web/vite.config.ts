@@ -43,13 +43,8 @@ function modelCache(): Connect.NextHandleFunction {
 export const dictionaryAlias = {
   // dictionary-en only exports a Node entry point; the browser reads its files.
   "dictionary-en-files": dirname(createRequire(import.meta.url).resolve("dictionary-en")),
-  "@supermail": resolve(import.meta.dirname, "../../packages/supermail/src"),
-  "@": resolve(import.meta.dirname, "../../packages/supermail/src"),
-  "@automerge/automerge": resolve(
-    import.meta.dirname,
-    "../../packages/supermail/node_modules/@automerge/automerge/dist/mjs/entrypoints/fullfat_base64.js",
-  ),
 };
+const supermailStub = resolve(import.meta.dirname, "src/mail/SuperMailStub.tsx");
 export default defineConfig({
   plugins: [
     {
@@ -65,7 +60,12 @@ export default defineConfig({
     offline(),
     conditionalFormatDefaults(),
   ],
-  resolve: { alias: dictionaryAlias },
+  resolve: {
+    alias: {
+      ...dictionaryAlias,
+      "@supermail/App": supermailStub,
+    },
+  },
   base: "./",
   worker: {
     format: "es",

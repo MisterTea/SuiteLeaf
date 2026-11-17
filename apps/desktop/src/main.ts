@@ -24,7 +24,7 @@ import { registerFolderSelection } from "./folder-selection";
 import { convertOffice } from "./office-converter";
 import { consumeFailedStart, restartWhileDirty, startReleasePoll } from "./updates";
 import { initDesktopAutoUpdater, getDesktopAutoUpdater } from "./auto-updater";
-import { initSupermailHost } from "./supermail-host";
+import { closeSupermailHost, initSupermailHost } from "./supermail-host";
 
 async function ringDeviceId(userData: string): Promise<string | undefined> {
   const path = join(userData, "update-ring-id");
@@ -704,6 +704,7 @@ else {
     app.on("will-quit", () => {
       documentsWatcher.close();
       store.close();
+      closeSupermailHost();
     });
     registerAppProtocol();
     register("documents:get", () => documentsDirectory);

@@ -12,6 +12,7 @@ export default tseslint.config(
       "artifacts/**",
       "test-results/**",
       "playwright-report/**",
+      "packages/supermail/**",
     ],
   },
   ...tseslint.configs.recommended,

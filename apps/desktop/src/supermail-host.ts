@@ -19,6 +19,13 @@ function resolveSafePath(relPath: string): string {
   return join(supermailDataDir, relPath);
 }
 
+export function closeSupermailHost(): void {
+  if (db) {
+    db.close();
+    db = null;
+  }
+}
+
 export async function initSupermailHost(): Promise<void> {
   supermailDataDir = join(app.getPath("userData"), "supermail");
   await mkdir(supermailDataDir, { recursive: true });
@@ -28,13 +35,13 @@ export async function initSupermailHost(): Promise<void> {
   ipcMain.handle("supermail:db:select", async (_event, query: string, params: unknown[] = []) => {
     const normalized = query.replace(/\$\d+/g, "?");
     const stmt = database.prepare(normalized);
-    return stmt.all(...params);
+    return stmt.all(...(params as any[]));
   });
 
   ipcMain.handle("supermail:db:execute", async (_event, query: string, params: unknown[] = []) => {
     const normalized = query.replace(/\$\d+/g, "?");
     const stmt = database.prepare(normalized);
-    const result = stmt.run(...params);
+    const result = stmt.run(...(params as any[]));
     return {
       rowsAffected: result.changes,
       lastInsertId: Number(result.lastInsertRowid),
