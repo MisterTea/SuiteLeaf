@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { MailRoute } from "../../apps/web/src/mail/MailApp";
@@ -25,6 +25,7 @@ describe("SuperMail Integration in SuiteLeaf", () => {
   });
 
   afterEach(() => {
+    cleanup();
     delete (window as any).supermail;
   });
 
@@ -34,6 +35,27 @@ describe("SuperMail Integration in SuiteLeaf", () => {
         <ModeContext.Provider
           value={{
             mode: { kind: "single" } as any,
+            setMode: vi.fn(),
+            locked: false,
+          }}
+        >
+          <MailRoute />
+        </ModeContext.Provider>
+      </MemoryRouter>,
+    );
+
+    // It should render SuperMailView (or fallback while loading)
+    expect(screen.getByText(/loading supermail/i)).toBeDefined();
+  });
+
+  it("renders SuperMailView when in server mode (cluster mode)", async () => {
+    delete (window as any).supermail;
+
+    render(
+      <MemoryRouter>
+        <ModeContext.Provider
+          value={{
+            mode: { kind: "cluster", serverUrl: "https://suiteleaf.example" } as any,
             setMode: vi.fn(),
             locked: false,
           }}

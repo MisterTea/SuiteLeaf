@@ -7,6 +7,9 @@ declare module "@supermail/App" {
   const App: ComponentType;
   export default App;
 }
+interface Window {
+  supermail?: any;
+}
 interface ImportMetaEnv {
   readonly VITE_SUITELEAF_DEMO?: string;
   readonly VITE_SUITELEAF_FORMS?: string;

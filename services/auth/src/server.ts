@@ -10,6 +10,7 @@ import { mailRequest } from "./mail/http";
 import { startMailJobs } from "./mail/jobs";
 import { finishGoogle } from "./mail/google";
 import { confidentialRequest } from "./mail/confidential";
+import { handleSupermailRequest } from "./mail/supermail-server";
 
 const env = envFromProcess();
 const internalUrl = process.env.SUITELEAF_INTERNAL_URL;
@@ -76,6 +77,20 @@ createServer(async (req, res) => {
       } catch {
         return send(res, 400, "text/html; charset=utf-8", '<!doctype html><title>Gmail connection failed</title><h1>Gmail connection failed</h1><p>Return to Mail and start Google authorization again. Check the server OAuth configuration and allowed permissions.</p>');
       }
+    }
+    if (url.pathname.startsWith("/api/auth/suiteleaf/supermail")) {
+      const session = await auth.api.getSession({
+        headers: fromNodeHeaders(req.headers),
+      });
+      if (!session?.user?.id) {
+        return send(
+          res,
+          401,
+          "application/json",
+          JSON.stringify({ error: "Unauthorized: Sign in required for SuperMail." }),
+        );
+      }
+      return await handleSupermailRequest(req, res, session.user.id, url);
     }
     if (url.pathname === "/api/auth/suiteleaf/mail") {
       const session = await auth.api.getSession({

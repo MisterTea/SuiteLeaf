@@ -1,4 +1,4 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -44,7 +44,37 @@ export const dictionaryAlias = {
   // dictionary-en only exports a Node entry point; the browser reads its files.
   "dictionary-en-files": dirname(createRequire(import.meta.url).resolve("dictionary-en")),
 };
-const supermailStub = resolve(import.meta.dirname, "src/mail/SuperMailStub.tsx");
+const supermailAppPath = resolve(import.meta.dirname, "../../packages/supermail/src/App.tsx");
+const supermailDepsExist = existsSync(
+  resolve(import.meta.dirname, "../../packages/supermail/node_modules/@tanstack/react-router"),
+);
+const hasSupermailSource = existsSync(supermailAppPath) && supermailDepsExist;
+
+const supermailAliases = hasSupermailSource
+  ? [
+      {
+        find: "@supermail",
+        replacement: resolve(import.meta.dirname, "../../packages/supermail/src"),
+      },
+      {
+        find: "@",
+        replacement: resolve(import.meta.dirname, "../../packages/supermail/src"),
+      },
+      {
+        find: "@automerge/automerge",
+        replacement: resolve(
+          import.meta.dirname,
+          "../../packages/supermail/node_modules/@automerge/automerge/dist/mjs/entrypoints/fullfat_base64.js",
+        ),
+      },
+    ]
+  : [
+      {
+        find: "@supermail/App",
+        replacement: resolve(import.meta.dirname, "src/mail/SuperMailStub.tsx"),
+      },
+    ];
+
 export default defineConfig({
   plugins: [
     {
@@ -61,10 +91,13 @@ export default defineConfig({
     conditionalFormatDefaults(),
   ],
   resolve: {
-    alias: {
-      ...dictionaryAlias,
-      "@supermail/App": supermailStub,
-    },
+    alias: [
+      ...Object.entries(dictionaryAlias).map(([find, replacement]) => ({
+        find,
+        replacement,
+      })),
+      ...supermailAliases,
+    ],
   },
   base: "./",
   worker: {
