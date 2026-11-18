@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 import { beat, caption, expect, test, typeSlowly } from "./harness";
+import { editSlideText } from "../../tests/browser/slide-text-helpers";
+import { expectSourceValue } from "../../tests/browser/source-editor-helpers";
 
 const markdown = `---
 marp: true
@@ -49,11 +51,9 @@ test("154-edit-marp-presentation", async ({ page }) => {
     "Double-click the heading to edit in place directly on the slide.",
     1500,
   );
-  const heading = page.locator(".slide-canvas .slide-element.slide-text").filter({ hasText: "Launch plan" });
-  await heading.dblclick();
-
-  const editor = heading.locator(".ProseMirror, .element-editor");
-  await expect(editor).toHaveAttribute("contenteditable", "true");
+  const heading = canvas.locator(".slide-text").filter({ hasText: "Launch plan" });
+  const editor = await editSlideText(heading);
+  await expect(editor).toBeVisible();
   await beat(page, 600);
 
   await caption(
@@ -72,7 +72,7 @@ test("154-edit-marp-presentation", async ({ page }) => {
   );
   await page.locator(".slide-stage-viewport").click({ position: { x: 20, y: 20 } });
   await expect(heading).toContainText("Launch plan 2026");
-  await expect(mdPane).toHaveValue(/# Launch plan 2026/);
+  await expectSourceValue(mdPane, /# Launch plan 2026/);
   await beat(page, 1000);
 
   await caption(

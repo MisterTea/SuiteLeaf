@@ -155,7 +155,7 @@ export function useSlidesEditorState({
   const pendingFocus = useRef<string | null>(null);
   /** A press that started in a text box. A click must not drop the selection. */
   const textPress = useRef(false);
-  const ignoreCanvasClick = useRef(false);
+  const ignoreCanvasClick = useRef<boolean | { x: number; y: number }>(false);
   const dragMoved = useRef(false);
   const [spellCaret, setSpellCaret] = useState<{ id: string; at: number } | null>(
     null,

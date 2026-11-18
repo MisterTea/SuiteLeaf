@@ -142,7 +142,7 @@ describe("a MARP deck in the editor", () => {
     expect(editor.active()).toBe(editor.order()[0]);
   }));
 
-  it("only commits MARP textbox edits after finishing editing by tapping away", async () => {
+  it("only commits MARP textbox edits after finishing editing by tapping away", () => onPhone(async () => {
     const editor = openMarp();
     await fitted(editor);
     const body = editor.elements().find((el) => el.content?.includes("Ship"))!;
@@ -184,7 +184,7 @@ describe("a MARP deck in the editor", () => {
     expect(editor.onChange).toHaveBeenCalledTimes(1);
     const updated = editor.deck().marpSource!;
     expect(updated).toContain("Ship the beta in May. Really now");
-  });
+  }));
 
   it("adds a three-column slide from the New slide menu", async () => {
     const editor = openMarp();

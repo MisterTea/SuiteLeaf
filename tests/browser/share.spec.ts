@@ -177,10 +177,10 @@ test("sharing suggests accounts, enforces commenter and viewer, and updates Shar
     await undo.click();
     await expect(dialog.getByText("Sam Okafor", { exact: true })).toBeVisible();
 
-    await expect(samPage.getByRole("button", { name: "Watering rota.sldoc" })).toContainText("Rosa Diaz", {
+    await expect(samPage.getByRole("button", { name: "Watering rota.sldoc", exact: true })).toContainText("Rosa Diaz", {
       timeout: 15000,
     });
-    await expect(samPage.getByRole("button", { name: "Watering rota.sldoc" })).toContainText(/Can (edit|comment|view)/);
+    await expect(samPage.getByRole("button", { name: "Watering rota.sldoc", exact: true })).toContainText(/Can (edit|comment|view)/);
     expect(samPage.url()).not.toContain("reload");
 
     await dialog.getByRole("button", { name: "Role for Sam Okafor" }).click();
@@ -198,7 +198,7 @@ test("sharing suggests accounts, enforces commenter and viewer, and updates Shar
     await viewer.goto(`${node.url}/#/`);
     await viewer.getByRole("heading", { name: "SuiteDrive" }).scrollIntoViewIfNeeded();
     await viewer.getByRole("tab", { name: "Shared with me" }).click();
-    await viewer.getByRole("button", { name: "Watering rota.sldoc" }).click();
+    await viewer.getByRole("button", { name: "Watering rota.sldoc", exact: true }).click();
     await expect(viewer.getByText("View only")).toBeVisible();
     await expect(viewer.getByRole("button", { name: "Bold" })).toBeDisabled();
     const editor = viewer.getByRole("textbox", { name: "Document content" });

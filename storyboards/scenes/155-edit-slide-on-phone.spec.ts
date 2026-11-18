@@ -1,4 +1,3 @@
-import type { Page } from "@playwright/test";
 import { beat, caption, expect, test, typeSlowly } from "./harness";
 
 function mobileDeck() {
@@ -61,25 +60,14 @@ test("155-edit-slide-on-phone", async ({ page }) => {
     1600,
   );
   await page.goto("/");
-  const chooser = page.waitForEvent("filechooser");
-  const openBtn = page.getByRole("button", { name: /Open|import/i });
-  if (await openBtn.isVisible()) {
-    await openBtn.click();
-    await (await chooser).setFiles({
+  await page
+    .locator('input[type="file"]:not([webkitdirectory])')
+    .first()
+    .setInputFiles({
       name: "Quarterly review.slslides",
       mimeType: "application/json",
       buffer: Buffer.from(mobileDeck()),
     });
-  } else {
-    await page
-      .locator('input[type="file"]:not([webkitdirectory])')
-      .first()
-      .setInputFiles({
-        name: "Quarterly review.slslides",
-        mimeType: "application/json",
-        buffer: Buffer.from(mobileDeck()),
-      });
-  }
 
   const canvas = page.locator(".slide-canvas");
   await canvas.waitFor();
@@ -91,13 +79,14 @@ test("155-edit-slide-on-phone", async ({ page }) => {
     "Tapping a text box centers and zooms it smoothly for phone reading.",
     1600,
   );
-  const bodyBox = page.locator('.slide-element[data-element-id="body-line"]');
+  const bodyBox = page.locator('.slide-canvas .slide-element[data-element-id="body-line"]');
   await bodyBox.click();
-  await beat(page, 600);
+  await expect(bodyBox).toHaveClass(/selected/);
+  await beat(page, 400);
 
-  // Double click / tap to start editing
-  await bodyBox.dblclick();
-  const editor = bodyBox.locator("textarea, .element-editor, .ProseMirror").first();
+  // Enter editing mode
+  await bodyBox.locator(".element-textarea").first().dblclick();
+  const editor = bodyBox.locator('.element-editor[contenteditable="true"], textarea').first();
   await expect(editor).toBeVisible();
   await beat(page, 700);
 

@@ -20,6 +20,7 @@ import type { Slide, SlideElement } from "@suiteleaf/core";
 import { Menu, MenuItem, Tool } from "../ui";
 import { FontControls } from "./font-controls";
 import { applyBackground } from "./slide-layouts";
+import { SlideLayoutThumbnail } from "./slide-layout-thumbnail";
 import { THEME_FONTS, handStyle } from "./slide-theme";
 import { hasTextRuns } from "./slide-runs";
 import { isMarpChrome, isMarpTitle } from "./slide-marp";
@@ -235,9 +236,13 @@ export function SlideFormatTools({
         ).map(([layout, label]) => (
           <MenuItem
             key={layout}
+            searchLabel={label}
             onSelect={() => applyLayoutToSlide(layout)}
           >
-            {label}
+            <span className="layout-menu-item">
+              <SlideLayoutThumbnail layout={layout} />
+              <span className="layout-menu-label">{label}</span>
+            </span>
           </MenuItem>
         ))}
       </Menu>

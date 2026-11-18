@@ -54,6 +54,9 @@ export function useElementDrag(
     handle?: ResizeHandle,
   ) => {
     e.stopPropagation();
+    if (e.clientX !== 0 || e.clientY !== 0) {
+      state.ignoreCanvasClick.current = { x: e.clientX, y: e.clientY };
+    }
     textPress.current = !!(e.target as HTMLElement).closest?.(
       ".element-textarea, .element-editor",
     );

@@ -1,5 +1,5 @@
 import { marpAudienceDocument, marpFragmentStep, showBuildIds } from "./slide-marp-fragments";
-import { ChevronLeft, ChevronRight, StickyNote, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Monitor, Pause, Play, StickyNote, Video, X } from "lucide-react";
 import { useSlideMobileSwipe } from "./slide-mobile-swipe";
 import { useState } from "react";
 import { filename, type SlideFile } from "@suiteleaf/core";
@@ -128,7 +128,10 @@ export function SlideShowOverlay({
       {showSpeakerNotes ? (
         <aside className="presenter-notes-panel" aria-label="Speaker notes">
           <div className="presenter-notes-header">
-            <span>Speaker notes</span>
+            <div className="presenter-notes-heading">
+              <StickyNote size={14} aria-hidden="true" />
+              <span>Speaker notes</span>
+            </div>
             <span
               className="presenter-timer"
               title="Time since the show started"
@@ -137,6 +140,7 @@ export function SlideShowOverlay({
             </span>
             <button
               type="button"
+              className={`presenter-timer-btn${timerPaused ? " paused" : ""}`}
               onClick={() => {
                 if (timerPaused) {
                   setShowStartedAt(Date.now() - frozenElapsedMs);
@@ -147,8 +151,10 @@ export function SlideShowOverlay({
                 setFrozenElapsedMs(Math.max(0, clock - showStartedAt));
                 setTimerPaused(true);
               }}
+              title={timerPaused ? "Resume presentation timer" : "Pause presentation timer"}
             >
-              {timerPaused ? "Resume timer" : "Pause timer"}
+              {timerPaused ? <Play size={11} aria-hidden="true" /> : <Pause size={11} aria-hidden="true" />}
+              <span>{timerPaused ? "Resume timer" : "Pause timer"}</span>
             </button>
           </div>
           <div className="presenter-notes-text">
@@ -161,7 +167,9 @@ export function SlideShowOverlay({
           <div className="presenter-next">
             {frame.presenter.nextTitle ? (
               <>
-                <span>Next: {frame.presenter.nextTitle}</span>
+                <div className="presenter-next-header">
+                  <span>Next: {frame.presenter.nextTitle}</span>
+                </div>
                 <PresenterNextSlide deck={deck}>
                   <SlideStill
                     deck={deck}
@@ -172,7 +180,9 @@ export function SlideShowOverlay({
                 </PresenterNextSlide>
               </>
             ) : (
-              <span>End of presentation</span>
+              <div className="presenter-next-end">
+                <span>End of presentation</span>
+              </div>
             )}
           </div>
         </aside>
@@ -199,13 +209,16 @@ export function SlideShowOverlay({
           }
         >
           <ChevronLeft size={16} />
-          Previous
+          <span>Previous</span>
+          <kbd className="presenter-key-badge" aria-hidden="true">←</kbd>
         </button>
         <span className="presenter-counter">
           Slide {presentSlideIndex + 1} of {deck.slideOrder.length}
         </span>
         <button
           type="button"
+          className="presenter-audience-btn"
+          title="Audience display screen"
           onClick={() => {
             setAudienceError("");
             // Switching to a second window can leave fullscreen. It must not end the show.
@@ -234,7 +247,8 @@ export function SlideShowOverlay({
             }
           }}
         >
-          Audience screen
+          <Monitor size={14} aria-hidden="true" />
+          <span>Audience screen</span>
         </button>
         <button
           type="button"
@@ -244,13 +258,15 @@ export function SlideShowOverlay({
             fadeWaiting ? "Fade in (Right arrow)" : "Next slide (Right arrow)"
           }
         >
-          Next
+          <span>Next</span>
           <ChevronRight size={16} />
+          <kbd className="presenter-key-badge" aria-hidden="true">→</kbd>
         </button>
         <button
           type="button"
-          className="presenter-notes-btn"
+          className="presenter-notes-btn presenter-record-btn"
           aria-pressed={recording}
+          title={recording ? "Stop recording presentation" : "Record presentation video"}
           onClick={() => {
             if (recording) {
               const recorder = recorderRef.current;
@@ -285,7 +301,8 @@ export function SlideShowOverlay({
             setRecording(true);
           }}
         >
-          {recording ? "Stop recording" : "Record"}
+          <Video size={14} aria-hidden="true" />
+          <span>{recording ? "Stop recording" : "Record"}</span>
         </button>
         <button
           type="button"
@@ -294,7 +311,9 @@ export function SlideShowOverlay({
           onClick={() => setShowSpeakerNotes((prev) => !prev)}
           title="Show or hide speaker notes (S)"
         >
-          <StickyNote size={15} /> Notes
+          <StickyNote size={15} />
+          <span>Notes</span>
+          <kbd className="presenter-key-badge" aria-hidden="true">S</kbd>
         </button>
         <button
           type="button"
@@ -302,7 +321,9 @@ export function SlideShowOverlay({
           onClick={endShow}
           title="Exit presentation (Esc)"
         >
-          <X size={15} /> Exit
+          <X size={15} />
+          <span>Exit</span>
+          <kbd className="presenter-key-badge" aria-hidden="true">Esc</kbd>
         </button>
         {controls.castConnected ? <button type="button" onClick={controls.stopCast}>Stop casting</button> : null}
       </div>

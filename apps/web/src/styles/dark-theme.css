@@ -245,6 +245,14 @@
 :root[data-theme="dark"] .notes-drag-handle {
   background: #000;
 }
+:root.dark-theme .notes-drag-handle:hover,
+:root[data-theme="dark"] .notes-drag-handle:hover {
+  background: #1a1a1a;
+}
+:root.dark-theme .notes-drag-bar,
+:root[data-theme="dark"] .notes-drag-bar {
+  background: #5f6368;
+}
 :root.dark-theme .notes-textarea,
 :root[data-theme="dark"] .notes-textarea {
   color: #fff;
