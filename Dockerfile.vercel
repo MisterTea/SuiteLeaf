@@ -15,7 +15,9 @@ RUN cargo chef cook --locked --release --package suiteleaf-node --recipe-path re
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 COPY services/auth/schema.json services/auth/schema.json
-RUN cargo build --locked --release -p suiteleaf-node
+# The stamp lets the web stage wait until this compile exits.
+RUN cargo build --locked --release -p suiteleaf-node \
+ && touch /tmp/suiteleaf-node-built
 
 FROM node:24-bookworm-slim AS web
 WORKDIR /src
@@ -35,10 +37,12 @@ COPY packages/core packages/core
 COPY packages/supermail/src packages/supermail/src
 COPY services services
 ENV VITE_SUITELEAF_SERVER=1
-# V8 otherwise defaults to a 2 GiB heap in the Standard builder's container.
-# Cap the V8 heap at 3.5 GiB and expose GC so Vite reclaims transform ASTs
-# before Rollup and esbuild render and minify chunks in the 8 GiB builder.
-RUN GOMAXPROCS=2 NODE_OPTIONS="--max-old-space-size=3584 --expose-gc" npm run build:web
+# Vite's live set reaches about 3.3 GiB. A 3.5 GiB cap aborts Node (exit 134)
+# while BuildKit is still running the release compile on the same 16 GB runner.
+# Wait for that compile, then allow a 6 GiB heap and expose GC.
+COPY --from=rust /tmp/suiteleaf-node-built /tmp/suiteleaf-node-built
+RUN GOMAXPROCS=2 NODE_OPTIONS="--max-old-space-size=6144 --expose-gc" npm run build:web \
+ && rm -f /tmp/suiteleaf-node-built
 RUN npm run build:auth
 
 FROM node:24-bookworm-slim
