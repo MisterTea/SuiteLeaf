@@ -2,5 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "container",
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
-  "regions": ["cle1"]
+  "regions": ["cle1"],
+  "git": {
+    "deploymentEnabled": false
+  }
 }

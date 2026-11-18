@@ -41,58 +41,64 @@ It preserves the generated authentication secret when rerun.
 
 ## Automatic deployments
 
-The Aquinas `suiteleaf` project is connected to `MisterTea/SuiteLeaf` on GitHub.
-Its production branch is `main`: every push starts a production deployment and
-assigns the production domain after a successful build. `vercel.json` selects
-the container runtime and Ohio region; `Dockerfile.vercel` builds the server,
-auth sidecar, and web app together. Keep these cloud sources in main.
+The Aquinas `suiteleaf` project stays connected to `MisterTea/SuiteLeaf` on
+GitHub, and its production branch is `main`. `vercel.json` sets
+`git.deploymentEnabled` to false, so a push does not start a Vercel build
+machine. GitHub Actions builds `Dockerfile.vercel` on a standard runner, which
+is free for this public repository, then `vercel deploy --prebuilt` uploads
+that result. The container still runs in Ohio. Keep these cloud sources in main.
+
+`.github/workflows/vercel-preview.yml` has two jobs. A pull request builds and
+deploys a preview, then checks it. A push to `main` builds and deploys
+production and assigns the production domain. Docs, tests, workflow files, and
+desktop source changes skip both jobs. Run the workflow manually with
+**workflow_dispatch** on `main` to build and deploy production anyway. The
+container smoke test in `ci.yml` still runs.
 
 Production secrets remain in Vercel project settings. Do not commit environment
 files. Schema changes still require a separately reviewed migration before the
-new server is released; ordinary application pushes need no manual deployment.
+new server is released. Do not deploy with `vercel deploy --prod` without
+`--prebuilt`: that command builds on Vercel again.
 
 ### PR deployment check
 
-`.github/workflows/vercel-preview.yml` waits for the existing Vercel Git preview
-of the exact PR head commit, then checks the web app, `/api/node/info`, and the
-auth providers endpoint. It verifies cloud mode, Postgres, Blob configuration,
-and invite-only authentication. Failed, canceled, blocked, missing, and unhealthy
-deployments fail the check. Updates cancel the older check for that PR. Changes
-that do not affect the cloud artifact skip the live check; the container smoke
-test in `ci.yml` continues to run.
+The preview job checks out the PR head commit, not GitHub's synthetic merge
+commit. It runs `vercel pull`, `vercel build`, and `vercel deploy --prebuilt`,
+then checks the web app, `/api/node/info`, and the auth providers endpoint. It
+verifies cloud mode, Postgres, Blob configuration, and invite-only
+authentication. Failed, canceled, blocked, missing, and unhealthy deployments
+fail the check. Updates cancel the older check for that PR.
 
 Enable it as follows:
 
-1. Enable Git preview deployments for this repository in the `suiteleaf` project.
-   Set `VERCEL_FORCE_BUILD=1` for Preview so each PR revision gets a deployment,
-   including a docs-only follow-up to an earlier application change. The check
-   deliberately rejects an older commit's preview.
-   Configure Preview variables with a **testing** Neon database, private Blob
-   store, auth secret, and bootstrap token hash. Migrate that testing database
-   separately. Do not inherit production database or storage credentials. Avoid
-   a production `SUITELEAF_PUBLIC_URL` override in Preview.
-2. Create the GitHub environment `vercel-preview` with required reviewers. Review
-   the exact PR revision before approving the job: it runs the PR's test harness
-   with environment credentials. Configure Vercel fork deployment authorization
-   as well; approval in GitHub does not approve a fork deployment in Vercel.
-3. In that environment, set variables `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` to
-   the intended team and project IDs. Add environment secrets `VERCEL_TOKEN`
-   (least access needed to read project/deployment status) and
-   `VERCEL_AUTOMATION_BYPASS_SECRET` (the project's Protection Bypass for Automation
-   secret). Set values directly in GitHub; never commit them. Missing credentials
-   fail a cloud-changing PR rather than silently passing it.
+1. Configure Vercel Preview variables with a **testing** Neon database, private
+   Blob store, auth secret, and bootstrap token hash. Migrate that testing
+   database separately. Do not inherit production database or storage
+   credentials. Avoid a production `SUITELEAF_PUBLIC_URL` override in Preview.
+2. Keep the GitHub environment `vercel-preview` with required reviewers. Review
+   the exact PR revision before approving the job: it builds that revision and
+   deploys it with environment credentials. Fork pull requests do not receive
+   these credentials.
+3. In `vercel-preview`, store secrets `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`,
+   `VERCEL_TOKEN`, and `VERCEL_AUTOMATION_BYPASS_SECRET`. The token must be
+   allowed to read project environment variables and create deployments. Store
+   the same three Vercel values in the `vercel-production` environment, which
+   has no reviewer gate, so pushes to `main` deploy on their own. The bypass
+   secret is only needed for the preview check. Set values directly in GitHub;
+   never commit them. Missing credentials fail a cloud-changing PR rather than
+   silently passing it.
 4. After the first successful run, require **Vercel preview smoke test** in the
    `main` branch ruleset, alongside the existing CI checks. Require branches to
-   be up to date before merging: Vercel's Git preview tests the PR head commit,
-   rather than GitHub's synthetic merge commit. This is a preview smoke check;
-   production-only configuration and full data operations need separate tests.
+   be up to date before merging. This is a preview smoke check; production-only
+   configuration and full data operations need separate tests.
 
-The action does not create deployments, so it adds no duplicate previews. Vercel
-still retains its normal Git previews. Set a short Preview retention policy in
-**Project Settings → Build and Deployment → Deployment Retention Policy** to
-bound older deployment storage. Retention has exceptions for recent deployments,
-custom aliases, and active PR branches; deletion also has a recovery period, so
-it is not immediate. See [Vercel's retention policy documentation](https://vercel.com/docs/deployment-retention).
+Creating a deployment from a Git reference in the Vercel dashboard still builds
+on a Vercel machine. Use the GitHub workflow instead. Set a short Preview
+retention policy in **Project Settings → Build and Deployment → Deployment
+Retention Policy** to bound older deployment storage. Retention has exceptions
+for recent deployments, custom aliases, and active PR branches; deletion also
+has a recovery period, so it is not immediate. See [Vercel's retention policy
+documentation](https://vercel.com/docs/deployment-retention).
 
 ### Database credentials
 
@@ -131,7 +137,15 @@ cargo build -p suiteleaf-node
 npm run build:auth
 vercel env pull .env.cloud.production.local --environment production --scope aquinas
 node scripts/migrate-cloud.mjs .env.cloud.production.local
-vercel deploy --prod --skip-domain --scope aquinas
+```
+
+A normal push to `main` is deployed by GitHub Actions. For a staged manual
+deploy, build the image locally with Docker and upload only the prebuilt output:
+
+```sh
+vercel pull --yes --environment=production --scope aquinas
+vercel build --prod --yes
+vercel deploy --prebuilt --prod --skip-domain --archive=tgz --scope aquinas
 ```
 
 `Dockerfile.vercel` builds the web application with `VITE_SUITELEAF_SERVER=1`,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -7,6 +7,10 @@ import { spawnSync } from "node:child_process";
 import { affectsCloud, ignoreBuild } from "../scripts/vercel-ignore-build.mjs";
 
 describe("cloud build inputs", () => {
+  it("keeps Vercel from building pushes so GitHub Actions compiles the image", () => {
+    const config = JSON.parse(readFileSync("vercel.json", "utf8"));
+    expect(config.git.deploymentEnabled).toBe(false);
+  });
   it("compares all commits since deployment and skips a subsequent docs-only change", () => {
     const repo = mkdtempSync(join(tmpdir(), "suiteleaf-build-inputs-"));
     const git = (...args: string[]) => {

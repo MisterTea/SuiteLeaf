@@ -3,25 +3,30 @@ name: Vercel preview
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: vercel-preview-${{ github.event.pull_request.number }}
+  group: vercel-${{ github.event_name == 'pull_request' && format('preview-{0}', github.event.pull_request.number) || 'production' }}
   cancel-in-progress: true
 
 jobs:
   smoke:
+    if: github.event_name == 'pull_request'
     name: Vercel preview smoke test
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    # Configure required reviewers: this job executes the reviewed PR code.
+    timeout-minutes: 120
+    # Configure required reviewers: this job builds and deploys the reviewed PR.
     environment: vercel-preview
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -38,15 +43,73 @@ jobs:
             const paths = readFileSync(0, "utf8").split("\0").filter(Boolean);
             appendFileSync(process.env.GITHUB_OUTPUT, `cloud=${paths.some(affectsCloud)}\n`);
           '
+      - uses: docker/setup-buildx-action@v3
+        if: steps.changes.outputs.cloud == 'true'
+      - name: Build on GitHub and deploy the preview
+        if: steps.changes.outputs.cloud == 'true'
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes vercel@65.12.1 pull --yes --environment=preview
+          npx --yes vercel@65.12.1 build --yes
+          npx --yes vercel@65.12.1 deploy --prebuilt --archive=tgz --yes \
+            --meta "githubCommitSha=${{ github.event.pull_request.head.sha }}" \
+            --meta "githubCommitRef=${{ github.event.pull_request.head.ref }}"
       - name: Verify deployed PR preview
         if: steps.changes.outputs.cloud == 'true'
         run: node scripts/check-vercel-preview.mjs
         env:
           PREVIEW_SHA: ${{ github.event.pull_request.head.sha }}
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Explain skipped deployment check
         if: steps.changes.outputs.cloud != 'true'
         run: echo 'No cloud artifact changes; the local container checks remain in CI.'
+  production:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    name: Vercel production deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: vercel-production
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Skip unchanged cloud artifacts
+        id: gate
+        env:
+          VERCEL_GIT_PREVIOUS_SHA: ${{ github.event.before }}
+          VERCEL_FORCE_BUILD: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+        run: |
+          set +e
+          node scripts/vercel-ignore-build.mjs
+          code=$?
+          if [ "$code" -eq 0 ]; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          elif [ "$code" -eq 1 ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            exit "$code"
+          fi
+      - uses: docker/setup-buildx-action@v3
+        if: steps.gate.outputs.deploy == 'true'
+      - name: Build on GitHub and deploy production
+        if: steps.gate.outputs.deploy == 'true'
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes vercel@65.12.1 pull --yes --environment=production
+          npx --yes vercel@65.12.1 build --prod --yes
+          npx --yes vercel@65.12.1 deploy --prebuilt --prod --archive=tgz --yes \
+            --meta "githubCommitSha=${{ github.sha }}" \
+            --meta "githubCommitRef=${{ github.ref_name }}"
