@@ -13,6 +13,9 @@ export function affectsCloud(path) {
 }
 
 export function ignoreBuild(env = process.env) {
+  // The PR smoke check verifies the exact head SHA, including test-only fixes.
+  if (env.VERCEL_ENV === "preview" && /^[1-9]\d*$/.test(env.VERCEL_GIT_PULL_REQUEST_ID ?? ""))
+    return false;
   // Compare with the previous deployment, not HEAD^: a deployment may contain
   // multiple commits. Missing history and first deployments must still build.
   const previous = env.VERCEL_GIT_PREVIOUS_SHA;

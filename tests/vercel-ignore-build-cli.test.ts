@@ -13,6 +13,20 @@ afterEach(() => {
 
 describe("cloud build command", () => {
   it.each([
+    ["preview", "29", false],
+    ["production", "29", true],
+    ["preview", "", true],
+    ["preview", "invalid", true],
+  ])("keeps exact-commit PR previews for %s / %s", async (environment, pr, ignored) => {
+    vi.mocked(spawnSync).mockReturnValue({ status: 0, stdout: "tests/fixture.test.ts\0" } as never);
+    const { ignoreBuild } = await import("../scripts/vercel-ignore-build.mjs");
+    expect(ignoreBuild({
+      VERCEL_ENV: environment,
+      VERCEL_GIT_PULL_REQUEST_ID: pr,
+      VERCEL_GIT_PREVIOUS_SHA: "a".repeat(40),
+    })).toBe(ignored);
+  });
+  it.each([
     ["docs/guide.md\0", 0],
     ["packages/supermail\0", 1],
     [".gitmodules\0", 1],

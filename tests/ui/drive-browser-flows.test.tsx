@@ -17,7 +17,7 @@ const state = vi.hoisted(() => ({
 const drive = vi.hoisted(() => ({
   list: vi.fn(async (parentId: string | null) => {
     if (state.failList) throw new Error(state.failList);
-    return state.items.filter((i) => i.parentId === parentId && !i.trashed);
+    return state.items.filter((i) => i.parentId === parentId && !i.trashed).map((i) => ({ ...i }));
   }),
   listTrashed: vi.fn(async () => state.items.filter((i) => i.trashed)),
   shared: vi.fn(async () => state.items.filter((i) => i.role !== "owner" && !i.trashed)),
@@ -457,15 +457,20 @@ describe("DriveBrowser", () => {
   });
 
   it("flashes a row whose last editor changed", async () => {
+    vi.useFakeTimers();
     render(<DriveBrowser mode="open" onOpen={vi.fn()} />);
-    await waitFor(() => expect(rows()).toContain("Plan.sldoc"));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(rows()).toContain("Plan.sldoc");
     expect(document.querySelector(".just-edited")).toBeNull();
     Object.assign(state.items.find((i) => i.id === "doc")!, {
       lastAuthorName: "Sam",
       lastEditedAt: "2026-10-02T10:00:00.000Z",
     });
-    act(() => void window.dispatchEvent(new Event(DRIVE_SAVED)));
-    await waitFor(() => expect(document.querySelector(".just-edited")).toBeTruthy());
+    await act(async () => {
+      window.dispatchEvent(new Event(DRIVE_SAVED));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(document.querySelector(".just-edited")).toBeTruthy();
     const row = document.querySelector(".just-edited")!;
     expect(row.querySelector(".drive-editor")?.textContent).toBe("Sam · ");
     expect(row.querySelector("button")?.getAttribute("aria-description")).toMatch(/^Last edited by Sam, /);
