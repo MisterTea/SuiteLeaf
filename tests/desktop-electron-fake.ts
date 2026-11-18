@@ -164,6 +164,10 @@ export function electronModule() {
       get: () =>
         (fakeElectron().electron as Record<string, unknown>)[name],
     });
+  Object.defineProperty(module, "default", {
+    enumerable: true,
+    get: () => fakeElectron().electron,
+  });
   return module;
 }
 

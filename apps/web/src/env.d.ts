@@ -2,6 +2,14 @@ declare module "dictionary-en-files/*?raw" {
   const text: string;
   export default text;
 }
+declare module "@supermail/App" {
+  import type { ComponentType } from "react";
+  const App: ComponentType;
+  export default App;
+}
+interface Window {
+  supermail?: any;
+}
 interface ImportMetaEnv {
   readonly VITE_SUITELEAF_DEMO?: string;
   readonly VITE_SUITELEAF_FORMS?: string;

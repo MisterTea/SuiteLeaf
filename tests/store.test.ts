@@ -7,12 +7,19 @@ import { join } from "node:path";
 import { FileStore, atomicWrite } from "../apps/desktop/src/store";
 import { createFile, serializeFile } from "../packages/core/src";
 let dir: string, store: FileStore;
+const stores: FileStore[] = [];
+function trackedStore(path: string) {
+  const instance = new FileStore(path);
+  stores.push(instance);
+  return instance;
+}
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "suiteleaf-"));
-  store = new FileStore(join(dir, "data"));
+  store = trackedStore(join(dir, "data"));
   await store.init();
 });
 afterEach(async () => {
+  for (const instance of stores.splice(0)) instance.close();
   await rm(dir, { recursive: true, force: true });
 });
 it("keeps an on-disk document body out of the catalog", async () => {
@@ -28,7 +35,7 @@ it("keeps an on-disk document body out of the catalog", async () => {
   expect(
     (await store.list()).find((record) => record.file.id === draft.id)?.file.content,
   ).toBeUndefined();
-  const reopened = new FileStore(join(dir, "data"));
+  const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   expect(
     (await reopened.list()).find((record) => record.file.id === file.id)?.file.content,
@@ -49,7 +56,7 @@ it("trashes and restores a batch using only the catalog", async () => {
   const ids = [saved.id, draft.id];
   expect(await store.setTrashed([...ids, saved.id, "missing"], true)).toEqual(ids);
   expect(await store.setTrashed(ids, true)).toEqual([]);
-  const reopened = new FileStore(join(dir, "data"));
+  const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   const trashed = await reopened.list();
   expect(trashed.map((record) => Boolean(record.trashedAt))).toEqual([true, true]);
@@ -66,7 +73,7 @@ it("autosaves regular files and reopens from a new store", async () => {
   r.file.title = "Edited";
   r = await store.save(r);
   expect(JSON.parse(await readFile(path, "utf8")).title).toBe("Edited");
-  const reopened = new FileStore(join(dir, "data"));
+  const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   expect((await reopened.get(f.id))?.file.title).toBe("Edited");
   expect(r.recovery).toBe(false);
@@ -81,12 +88,12 @@ it("remembers which local edits were uploaded to SuiteDrive", async () => {
     name: "Untitled document.sldoc",
   };
   await store.save({ file, drive });
-  const reopened = new FileStore(join(dir, "data"));
+  const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   expect((await reopened.get(file.id))?.drive).toEqual(drive);
 });
-it("preserves external changes and retains the conflicting edit as a recovery draft", async () => {
-  const f = createFile("doc"),
+it.each(["doc", "sheet", "slide"] as const)("preserves external changes and retains the conflicting %s edit as a recovery draft", async (kind) => {
+  const f = createFile(kind),
     path = join(dir, "document.suiteleaf");
   const r = await store.saveAs({ file: f }, path);
   const external = { ...f, title: "External edit" };
@@ -94,23 +101,25 @@ it("preserves external changes and retains the conflicting edit as a recovery dr
   r.file.title = "My edit";
   await expect(store.save(r)).rejects.toThrow("outside");
   expect(JSON.parse(await readFile(path, "utf8")).title).toBe("External edit");
-  const reopened = new FileStore(join(dir, "data"));
+  const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   expect((await reopened.get(f.id))?.file.title).toBe("My edit");
   expect((await reopened.get(f.id))?.recovery).toBe(true);
   expect((await reopened.reload(f.id))?.file.title).toBe("External edit");
 });
-it("serializes concurrent saves and recovers an untitled draft", async () => {
-  const f = createFile("doc");
+it.each(["doc", "sheet", "slide"] as const)("serializes concurrent saves and recovers an untitled %s draft", async (kind) => {
+  const f = createFile(kind);
   await Promise.all(
     ["One", "Two", "Three"].map((title) =>
       store.save({ file: { ...f, title } }),
     ),
   );
   expect((await store.get(f.id))?.file.title).toBe("Three");
-  const reopened = new FileStore(join(dir, "data"));
+  const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   expect((await reopened.get(f.id))?.recovery).toBe(true);
+  expect((await reopened.get(f.id))?.file.title).toBe("Three");
+  expect((await reopened.get(f.id))?.file.content).toEqual(f.content);
 });
 it("ignores renderer-provided file paths and never deletes original files", async () => {
   const path = join(dir, "original.suiteleaf"),
@@ -178,7 +187,7 @@ it("keeps a star and Trash across a restart and never deletes the file on disk",
   const trashedAt = "2026-03-01T12:00:00.000Z";
   await store.save({ ...saved, starred: true, trashedAt });
   expect(await readFile(path, "utf8")).toBe(disk);
-  const reopened = new FileStore(join(dir, "data"));
+  const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   const again = (await reopened.get(f.id))!;
   expect(again.starred).toBe(true);
@@ -328,7 +337,7 @@ it("keeps dismissed directory files hidden until their contents change, includin
   await writeFile(path, serializeFile(file));
   await store.syncFolder(docs);
   await store.remove(file.id);
-  const reopened = new FileStore(join(dir, "data"));
+  const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   await reopened.syncFolder(docs);
   expect(await reopened.list()).toEqual([]);
@@ -482,7 +491,7 @@ it("archives complete folder trees and trashes folder records without affecting 
   expect((await store.list()).map((record) => record.file.id)).toEqual([sibling.id]);
   expect(store.folderPaths(dir)).not.toContain("Lessons");
   expect(await readFile(join(trash, "Original.pptx"))).toEqual(Buffer.from(pptx));
-  const reopened = new FileStore(join(dir, "data"));
+  const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   expect((await reopened.list()).map((record) => record.file.id)).toEqual([sibling.id]);
 });

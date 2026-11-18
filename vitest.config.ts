@@ -14,6 +14,7 @@ export default defineConfig({
       react: fromHere("./node_modules/react"),
       "react-dom": fromHere("./node_modules/react-dom"),
       "dictionary-en-files": dirname(fromWeb.resolve("dictionary-en")),
+      "@supermail/App": fromHere("./apps/web/src/mail/SuperMailStub.tsx"),
     },
   },
   test: {

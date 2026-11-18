@@ -209,7 +209,8 @@ async fn run_socket(
     let every = recheck_every(std::env::var("SUITELEAF_RECHECK_MS").ok().as_deref());
     let mut recheck = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
     let (mut sink, mut stream) = socket.split();
-    let joined = rooms.join_connection(&item, &user, role, now_ms(), &connection)?;
+    let mut joined = rooms.join_connection(&item, &user, role, now_ms(), &connection)?;
+    let mut relay = subscribe_with_snapshot(&rooms, &item, &mut joined);
     let _presence = SocketPresence {
         rooms: rooms.clone(),
         item: item.clone(),
@@ -220,10 +221,6 @@ async fn run_socket(
         joined_message(&rooms, &item, &joined)?.into(),
     ))
     .await?;
-    let mut relay = {
-        let live = rooms.live.lock().expect("rooms");
-        live.get(&item).map(|room| room.relay.subscribe())
-    };
     loop {
         let incoming = tokio::select! {
             message = stream.next() => message,
@@ -524,6 +521,27 @@ fn update_reply(outcome: Outcome, id: &str) -> Option<String> {
     Some(reply.to_string())
 }
 
+/// Snapshot and subscribe under the update lock. Otherwise an edit arriving
+/// while the joined response is sent can fall between the snapshot and relay.
+fn subscribe_with_snapshot(
+    rooms: &Rooms,
+    item: &str,
+    joined: &mut Join,
+) -> Option<tokio::sync::broadcast::Receiver<String>> {
+    use yrs::{ReadTxn, StateVector, Transact};
+
+    let live = rooms.live.lock().expect("rooms");
+    let room = live.get(item)?;
+    let relay = room.relay.subscribe();
+    let bytes = room
+        .doc
+        .transact()
+        .encode_state_as_update_v1(&StateVector::default());
+    joined.state = (bytes.len() > 2).then(|| STANDARD.encode(bytes));
+    joined.seed &= joined.state.is_none();
+    Some(relay)
+}
+
 fn joined_message(rooms: &Rooms, item: &str, joined: &Join) -> anyhow::Result<String> {
     let occupants = rooms
         .occupants(item)?
@@ -546,6 +564,86 @@ fn joined_message(rooms: &Rooms, item: &str, joined: &Join) -> anyhow::Result<St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn joining_covers_updates_before_and_after_relay_subscription() {
+        use crate::schema::node_schema;
+        use suitedb::Db;
+        use yrs::{
+            Doc, GetString, ReadTxn, StateVector, Text, Transact, Update, updates::decoder::Decode,
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(
+            Db::open_in_memory(
+                suiteleaf_net::identity::ed25519::Keypair::generate(),
+                node_schema(None).unwrap(),
+            )
+            .unwrap(),
+        );
+        let drive = Drive::open(db.clone(), &dir.path().join("blobs")).unwrap();
+        let rooms = Rooms::new(db, drive);
+        let user = AuthUser {
+            id: "ann".into(),
+            email: None,
+            name: Some("Ann".into()),
+            role: None,
+        };
+        let mut joined = rooms.join("file", &user, Role::Editor, 1).unwrap();
+        assert!(joined.state.is_none());
+        let source = Doc::new();
+        let text = source.get_or_insert_text("body");
+        let push = |bytes: &[u8]| {
+            assert!(
+                rooms
+                    .apply_update(LiveUpdate {
+                        item: "file",
+                        user_id: "ann",
+                        name: "Ann",
+                        role: Role::Editor,
+                        bytes,
+                        unit: "paragraph",
+                        key: "body",
+                        at: "2026-11-18T00:00:00.000Z",
+                    })
+                    .unwrap()
+            );
+        };
+        text.insert(&mut source.transact_mut(), 0, "hello");
+        push(
+            &source
+                .transact()
+                .encode_state_as_update_v1(&StateVector::default()),
+        );
+        let mut relay = subscribe_with_snapshot(&rooms, "file", &mut joined).unwrap();
+        let restored = Doc::new();
+        let snapshot = STANDARD.decode(joined.state.unwrap()).unwrap();
+        restored
+            .transact_mut()
+            .apply_update(Update::decode_v1(&snapshot).unwrap())
+            .unwrap();
+        assert_eq!(
+            restored
+                .get_or_insert_text("body")
+                .get_string(&restored.transact()),
+            "hello"
+        );
+        assert!(!joined.seed);
+        let before = source.transact().state_vector();
+        text.insert(&mut source.transact_mut(), 5, " world");
+        push(&source.transact().encode_state_as_update_v1(&before));
+        let delta = STANDARD.decode(relay.try_recv().unwrap()).unwrap();
+        restored
+            .transact_mut()
+            .apply_update(Update::decode_v1(&delta).unwrap())
+            .unwrap();
+        assert_eq!(
+            restored
+                .get_or_insert_text("body")
+                .get_string(&restored.transact()),
+            "hello world"
+        );
+    }
 
     #[test]
     fn an_acknowledgement_names_the_update_and_not_the_document() {

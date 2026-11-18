@@ -10,7 +10,7 @@ Start with [the comparison](COMPARISON.md), then [the delivery roadmap](ROADMAP.
 
 The primary target is Word, Excel and PowerPoint in Microsoft 365 desktop on Windows, with Mac and web differences recorded separately. Cluster features are compared with relevant Microsoft 365 services, not assumed to come with an Apps-only subscription. Outlook and the wider ecosystem have explicit packages and exclusions. No platform-wide or percentage parity claim is made.
 
-All 38 packages are newly planned acceptance work. `ready` means sufficiently described for triage; dependencies still gate integration. It does not mean implementation is absent, dependencies are complete, or historical work has been undone. Owners are unassigned. Effort is provisional. The catalog's historical phases/statuses are not rewritten by this documentation reset; WP-001 reconciles those against fresh evidence.
+The portfolio contains 38 acceptance packages. WP-001, WP-005 and WP-012 are now in progress; see [first-iteration evidence](BASELINE-2026-11-15.md). The remaining packages are planned work. `ready` means sufficiently described for triage; dependencies still gate integration. It does not mean implementation is absent, dependencies are complete, or historical work has been undone. Owners are unassigned. Effort is provisional. The catalog's historical phases/statuses are not rewritten by this documentation reset; WP-001 reconciles those against fresh evidence.
 
 ## Work packages
 

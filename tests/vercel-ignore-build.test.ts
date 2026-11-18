@@ -66,6 +66,10 @@ describe("cloud build inputs", () => {
   });
   it.each([
     "apps/web/src/App.tsx",
+    "packages/supermail",
+    "packages/supermail/src/App.tsx",
+    "packages/supermail/package-lock.json",
+    ".gitmodules",
     "crates/suitedb/src/lib.rs",
     "apps/desktop/package.json",
     "Dockerfile.vercel",

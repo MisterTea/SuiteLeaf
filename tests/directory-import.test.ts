@@ -24,6 +24,14 @@ import {
 } from "../apps/desktop/src/import-cli";
 import { FileStore } from "../apps/desktop/src/store";
 
+const stores: FileStore[] = [];
+function trackedStore(path: string) {
+  const store = new FileStore(path);
+  stores.push(store);
+  return store;
+}
+
+
 let root: string, source: string, output: string;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "suiteleaf-import-"));
@@ -32,6 +40,7 @@ beforeEach(async () => {
   await mkdir(source);
 });
 afterEach(async () => {
+  for (const store of stores.splice(0)) store.close();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -72,7 +81,7 @@ it("imports nested Office, native, HTML, text and delimited files that the regis
     sheet.content.workbook.sheets[sheet.content.workbook.sheetOrder[0]]
       .cellData?.[1]?.[1]?.v,
   ).toBe(12);
-  const store = new FileStore(join(root, "registry"));
+  const store = trackedStore(join(root, "registry"));
   await store.init();
   await store.syncFolder(output);
   expect(await store.list()).toHaveLength(5);

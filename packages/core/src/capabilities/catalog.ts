@@ -13,7 +13,7 @@ const open: Evidence = {
 
 export const capabilityCatalog: CapabilityCatalog = {
   id: "suiteleaf-capabilities",
-  updated: "2026-11-06",
+  updated: "2026-11-16",
   competitor: {
     product: "Microsoft 365 and Google Workspace",
     edition: "Microsoft 365 Apps for enterprise compared with Google Workspace Business Standard, each on its documented web and desktop clients",
@@ -124,6 +124,24 @@ export const capabilityCatalog: CapabilityCatalog = {
     mustNotExclude: ["packages/core/src/capabilities"],
   },
   baseline: [
+    {
+      name: "Windows full-suite coverage and UI timing limits",
+      command: "npm run test:coverage -- --maxWorkers=8 --coverage.reportsDirectory=.git/parity-coverage-final --coverage.reportOnFailure",
+      result: "inconclusive",
+      detail: "Run started 2026-11-15; reviewed 2026-11-16. 5,220 tests passed, 12 failed, 29 skipped. Statements 92.29%, lines 95.10%, functions 93.92%, branches 83.96%. Failures started with three UI test timeouts and subsequent missing-DOM assertions. All 66 tests in those three suites passed under coverage with two workers on rerun. This is not an entirely green single full-suite run; no thresholds or timeouts were changed.",
+    },
+    {
+      name: "First-iteration compatibility and recovery checks",
+      command: "npx vitest run tests/capabilities tests/compat tests/store.test.ts tests/store-memory.test.ts tests/save-state.test.ts tests/collab-recovery.test.ts tests/ui/collab-recovery.test.tsx tests/local-versions-store.test.ts --maxWorkers=2",
+      result: "pass",
+      detail: "2026-11-15 on Windows: 110 tests in 12 files passed. Includes conflict drafts and concurrent-save reopening for documents, sheets and slides. This is not a process-kill, disk-full, browser lifecycle or live-cluster certification.",
+    },
+    {
+      name: "Office reference baseline",
+      command: "npm run test:office-compat -- --force",
+      result: "inconclusive",
+      detail: "2026-11-15: five generated fixtures completed SuiteLeaf stages, with 19 passing dimensions, zero losses, one unavailable-reference dimension and 15 unmeasured dimensions. All five external reference results were unavailable. Exact source files and hashes are saved in the generated manifest; no Office fidelity or calculation parity is certified.",
+    },
     {
       name: "Full Vitest suite with coverage",
       command: "npx vitest run --coverage",

@@ -37,6 +37,8 @@ async function fingerprint(reference: string): Promise<string> {
 }
 
 await mkdir(out, { recursive: true });
+const fixtureDir = resolve(out, "fixtures");
+await mkdir(fixtureDir, { recursive: true });
 // Microsoft Office opens files only from folders it was granted. This folder needs that one-time grant.
 const officeDir = resolve(out, "msoffice");
 await mkdir(officeDir, { recursive: true });
@@ -66,8 +68,11 @@ const results: CompatResult[] = [];
 const manifest = [];
 for (const spec of FIXTURE_SPECS) {
   const fixture = await generateFixture(spec);
+  const source = `fixtures/${spec.id}.${spec.format}`;
+  await writeFile(resolve(out, source), fixture.bytes);
   manifest.push({
     id: spec.id,
+    source,
     format: spec.format,
     generator: spec.generator,
     license: "Generated in this repository; no third-party document content.",

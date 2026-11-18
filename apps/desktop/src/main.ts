@@ -23,6 +23,8 @@ import { mkdirSync } from "node:fs";
 import { registerFolderSelection } from "./folder-selection";
 import { convertOffice } from "./office-converter";
 import { consumeFailedStart, restartWhileDirty, startReleasePoll } from "./updates";
+import { initDesktopAutoUpdater, getDesktopAutoUpdater } from "./auto-updater";
+import { closeSupermailHost, initSupermailHost } from "./supermail-host";
 
 async function ringDeviceId(userData: string): Promise<string | undefined> {
   const path = join(userData, "update-ring-id");
@@ -440,6 +442,11 @@ function buildMenu() {
         label: "SuiteLeaf",
         submenu: [
           { role: "about" },
+          {
+            label: "Check for Updates…",
+            click: () =>
+              void initDesktopAutoUpdater({ getWindow: () => window }).checkForUpdates(true),
+          },
           ...(mode.kind === "single"
             ? [{ label: "Settings…", click: () => send("settings") }]
             : []),
@@ -664,11 +671,16 @@ else {
       rollbackText,
       deviceId: await ringDeviceId(app.getPath("userData")),
     });
+    if (app.isPackaged || process.env.SUITELEAF_UPDATE_DEV) {
+      initDesktopAutoUpdater({ getWindow: () => window });
+      void getDesktopAutoUpdater()?.checkForUpdates(false);
+    }
     if (hideWindows) app.dock?.hide();
     if (!process.env.SUITELEAF_TEST_DATA)
       await migrateLocalData(app.getPath("userData"), localDirectory);
     store = new FileStore(localDirectory);
     await store.init();
+    await initSupermailHost();
     const saved = appModeSchema.safeParse((await readSettings()).mode);
     if (saved.success) mode = saved.data;
     const configured = (await readSettings()).documentsDirectory;
@@ -692,6 +704,7 @@ else {
     app.on("will-quit", () => {
       documentsWatcher.close();
       store.close();
+      closeSupermailHost();
     });
     registerAppProtocol();
     register("documents:get", () => documentsDirectory);

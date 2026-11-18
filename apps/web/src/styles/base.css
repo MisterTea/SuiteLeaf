@@ -139,12 +139,12 @@
 body {
   margin: 0;
 }
-button,
-input,
-select {
+button:not(:where(.supermail-embedded *)),
+input:not(:where(.supermail-embedded *)),
+select:not(:where(.supermail-embedded *)) {
   font: inherit;
 }
-button {
+button:not(:where(.supermail-embedded *)) {
   cursor: pointer;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -156,29 +156,29 @@ button {
   justify-content: center;
   gap: 7px;
 }
-button:hover {
+button:not(:where(.supermail-embedded *)):hover {
   background: var(--surface-hover);
 }
-button:disabled {
+button:not(:where(.supermail-embedded *)):disabled {
   opacity: 0.45;
   cursor: default;
 }
-input,
-select {
+input:not(:where(.supermail-embedded *)),
+select:not(:where(.supermail-embedded *)) {
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--input-bg);
   padding: 7px 10px;
   color: inherit;
 }
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-a:focus-visible {
+button:not(:where(.supermail-embedded *)):focus-visible,
+input:not(:where(.supermail-embedded *)):focus-visible,
+select:not(:where(.supermail-embedded *)):focus-visible,
+a:not(:where(.supermail-embedded *)):focus-visible {
   outline: 2px solid #548f75;
   outline-offset: 2px;
 }
-a {
+a:not(:where(.supermail-embedded *)) {
   color: var(--green);
   text-decoration: none;
 }

@@ -1,6 +1,6 @@
 ---
 id: WP-001
-status: ready
+status: in_progress
 priority: P0
 wave: 1
 effort: S
@@ -18,7 +18,7 @@ Evidence inspected: [docs/capabilities.md](../docs/capabilities.md); [packages/c
 
 ## Work to deliver
 
-- [ ] Inventory user workflows by platform and runtime.
+- [x] Inventory user workflows by platform and runtime (catalog inventory in the first-iteration baseline; live replay remains open).
 - [ ] reconcile catalog, README and evidence.
 - [ ] record Office build, license and reference availability.
 
@@ -34,6 +34,10 @@ Dependencies: None. These gate final integration acceptance, not initial investi
 
 ## Validation and completion
 
-Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. No new acceptance run is recorded in this package.
+Use [the common evidence and test contract](README.md#definition-of-done). Add Vitest tests for behavior, serialization and permissions, and Rust tests for node behavior. Use Playwright only for layout, painted grid/canvas, real document typing or storyboards; use provider/desktop integration checks where those are required. Record reference application/build, mode, fixtures, command, actual result and remaining limits. Bounded checks are recorded in the first-iteration evidence below; full acceptance remains open.
 
 Completion requires every criterion above and the common contract. An unavailable external dependency is recorded as blocked/inconclusive, never passed. Broader Office behavior outside the accepted fixture set remains an explicit limit. See [comparison](COMPARISON.md) and [Microsoft sources](SOURCES.md) for the benchmark and edition boundaries.
+
+## First iteration evidence
+
+See [2026-11-15 baseline](BASELINE-2026-11-15.md). Work has started; the complete acceptance criteria remain open. Reference availability and runtime integration limits are recorded there.

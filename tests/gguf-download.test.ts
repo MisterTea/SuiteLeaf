@@ -18,13 +18,13 @@ it("names the GGUF each built-in model downloads", () => {
 });
 
 it("keeps an explicit quant and otherwise uses the file this app downloads", () => {
-  expect(ggufPath("muse-glimmer-30b", "/models").filePath).toBe("/models/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf");
+  expect(ggufPath("muse-glimmer-30b", "/models").filePath).toBe(join("/models", "Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf"));
   expect(ggufPath("muse-glimmer-30b", "/models").download).toBe(true);
   const custom = ggufPath("gemma-4-e4b", "/models", "/cache/gemma-4-E4B-it-Q8_0.gguf");
   expect(custom.filePath).toBe("/cache/gemma-4-E4B-it-Q8_0.gguf");
   expect(custom.download).toBe(false);
   expect(ggufPath("frognano-4b", "/models", "/cache/gemma-4-E4B-it-Q4_0.gguf").filePath).toBe(
-    "/models/FrogNano-4B-2609-Q3_K_M.gguf",
+    join("/models", "FrogNano-4B-2609-Q3_K_M.gguf"),
   );
 });
 

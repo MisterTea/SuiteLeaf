@@ -166,6 +166,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  fake.electron.app.emit("will-quit");
   process.argv = argv;
   delete process.env.SUITELEAF_TEST_DATA;
   delete process.env.SUITELEAF_SETTINGS;

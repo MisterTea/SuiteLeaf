@@ -19,3 +19,21 @@ The packaged desktop floor is Node.js 22.12.0, macOS 13, and Windows 10. Those m
 `releaseNotice` writes the offered version, the installer hash, whether the signature matched, and the document schema. Editor components are listed by name, version, and license. A model download is a later section, and each line says it is not part of the editor update. The same component cannot be both. A rejected signature is still recorded, and that notice does not name a model that was not supplied. The function does not read `node_modules` and does not replace the installed app.
 
 `dependencyNotice` lists package names and published versions from a package description. `react` at `19.0.0` stays. A version of `1.2.3 secret-value` is recorded as `1.2.3`. A version that is only `secret-value` is counted as omitted and is not written. A `.gguf` name is omitted. The note says this is not a signature and that model files are not included. The function does not read `node_modules` and does not replace the installed app.
+
+## GitHub Releases via electron-updater
+
+End-user desktop updates are deployed through GitHub Releases using `electron-updater` and `electron-builder`:
+
+1. `apps/desktop/electron-builder.yml` specifies the GitHub provider:
+   ```yaml
+   publish:
+     provider: github
+     owner: MisterTea
+     repo: SuiteLeaf
+     releaseType: release
+   ```
+2. When packaging with `electron-builder` in CI (`npm run publish:desktop` / `--publish always` via `.github/workflows/release.yml` using `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`), release binaries and update metadata manifests (`latest.yml`, `latest-mac.yml`, etc.) are uploaded to GitHub Releases.
+3. In packaged builds, `initDesktopAutoUpdater` checks for updates on launch and every 4 hours.
+4. Users can also trigger a manual check via **SuiteLeaf > Check for Updates…**.
+5. Once downloaded, users are prompted with a dialog to restart and install now or postpone until application quit.
+

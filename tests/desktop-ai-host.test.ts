@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const fake = vi.hoisted(() => {
@@ -134,7 +135,7 @@ describe("desktop model host", () => {
       state: "ready",
       message: "metal · context 64",
     });
-    expect(fake.state.loads).toEqual(["/models/gemma-4-E4B-it-Q4_0.gguf"]);
+    expect(fake.state.loads).toEqual([join("/models", "gemma-4-E4B-it-Q4_0.gguf")]);
     fake.send({ type: "load", modelId: "gemma-4-e4b" });
     await settle();
     expect(fake.state.loads).toHaveLength(1);

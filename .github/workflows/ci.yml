@@ -66,6 +66,8 @@ jobs:
           --health-retries=15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: docker/setup-buildx-action@v3
       - name: Build Vercel container image
         uses: docker/build-push-action@v6
@@ -134,11 +136,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
       # The SuiteDrive browser test runs against a real node and auth sidecar.
+      # Install the independent mail workspace after the root lockfile install.
+      - run: git submodule update --init packages/supermail
+      - run: npm ci --prefix packages/supermail --workspaces=false
       - run: cargo build -p suiteleaf-node
       - run: npm run build:auth
       # Form cards and the form editor stay behind this flag. The browser
       # specs open them from Home, so the preview build has to include them.
-      - run: npm run build
+      - run: npm run build:web
         env:
           VITE_SUITELEAF_FORMS: "1"
       - run: npx playwright install --with-deps chromium firefox

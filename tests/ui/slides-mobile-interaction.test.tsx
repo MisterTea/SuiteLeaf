@@ -168,7 +168,7 @@ it("cancels a selected slide drag without reordering", () => {
   expect(document.querySelector(".drag-source")).toBeNull();
 });
 
-it.each([false, true])("scrolls from an unselected slide without reordering (readOnly=%s)", (readOnly) => {
+it.each([false, true])("leaves unselected slide swipes to native scrolling (readOnly=%s)", (readOnly) => {
   const editor = openSlides({ readOnly });
   vi.useFakeTimers();
   const list = document.querySelector<HTMLElement>(".thumbnails-list")!;
@@ -180,7 +180,7 @@ it.each([false, true])("scrolls from an unselected slide without reordering (rea
   pointer(target, "pointermove", 50, 80);
   pointer(target, "pointerup", 50, 80);
   fireEvent.click(target);
-  expect(list.scrollLeft).toBe(50);
+  expect(list.scrollLeft).toBe(0);
   expect(editor.order()).toEqual(["a", "b", "c"]);
   expect(thumb("a").getAttribute("aria-selected")).toBe("true");
   expect(thumb("b").getAttribute("aria-selected")).toBe("false");
@@ -199,6 +199,27 @@ it("cancels a hold when the user swipes or the pointer is canceled", () => {
   pointer(thumb("a"), "pointercancel");
   act(() => vi.advanceTimersByTime(SLIDE_HOLD_MS));
   expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+});
+
+it("blocks native scrolling only while reordering and removes the listener on release", () => {
+  openSlides();
+  vi.useFakeTimers();
+  const target = thumb("a");
+  const move = () => {
+    const event = new Event("touchmove", { bubbles: true, cancelable: true });
+    fireEvent(target, event);
+    return event.defaultPrevented;
+  };
+  pointer(target, "pointerdown");
+  expect(move()).toBe(false);
+  act(() => vi.advanceTimersByTime(SLIDE_HOLD_MS));
+  expect(move()).toBe(true);
+  pointer(target, "pointerup");
+  expect(move()).toBe(false);
+  pointer(target, "pointerdown");
+  expect(move()).toBe(true);
+  pointer(target, "pointercancel");
+  expect(move()).toBe(false);
 });
 
 it.each([false, true])("toggles speaker notes from the toolbar icon, retaining saved notes (readOnly=%s)", (readOnly) => {

@@ -7,8 +7,17 @@ import { createFile } from "../packages/core/src";
 import { readDraftBackup, writeDraftBackup } from "../apps/desktop/src/draft-backup";
 import { FileStore } from "../apps/desktop/src/store";
 
+const stores: FileStore[] = [];
+function trackedStore(path: string) {
+  const store = new FileStore(path);
+  stores.push(store);
+  return store;
+}
+
+
 let dir = "";
 afterEach(async () => {
+  for (const store of stores.splice(0)) store.close();
   if (dir) await rm(dir, { recursive: true, force: true });
 });
 
@@ -46,7 +55,7 @@ it("writes recovery drafts and leaves a saved file out", async () => {
 
 it("exports drafts from the library and does not replace a saved file", async () => {
   dir = await mkdtemp(join(tmpdir(), "suiteleaf-drafts-"));
-  const library = new FileStore(join(dir, "library"));
+  const library = trackedStore(join(dir, "library"));
   await library.init();
   const draft = createFile("doc", "Beds");
   await library.save({ file: draft, recovery: true });
@@ -58,12 +67,12 @@ it("exports drafts from the library and does not replace a saved file", async ()
   expect(names).toEqual(["Beds.sldoc"]);
   expect(await readFile(join(folder, "Beds.sldoc"), "utf8")).not.toContain("secret-value");
 
-  const other = new FileStore(join(dir, "other"));
+  const other = trackedStore(join(dir, "other"));
   await other.init();
   const kept = join(dir, "kept.sldoc");
   await other.saveAs({ file: draft }, kept);
   const fresh = createFile("doc", "Notes");
-  const source = new FileStore(join(dir, "source"));
+  const source = trackedStore(join(dir, "source"));
   await source.init();
   await source.save({ file: fresh, recovery: true });
   await source.exportRecoveryDrafts(folder);

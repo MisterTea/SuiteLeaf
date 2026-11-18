@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
@@ -392,7 +393,7 @@ describe("signed updates", () => {
     expect(recovered.editsDiscarded).toBe(false);
     expect(recovered.unsavedEdits).toBe(true);
     expect(recovered.removed).toEqual([`${hash}.bin`]);
-    expect(removed).toEqual([`/tmp/suiteleaf-updates/${hash}.bin`]);
+    expect(removed).toEqual([join("/tmp/suiteleaf-updates", `${hash}.bin`)]);
     expect(restartWhileDirty(true).action).toBe("continue");
     noteUpdateDecision(decision(manifest, pilot));
     const left = await recoverPausedRollout({

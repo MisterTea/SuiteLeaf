@@ -86,6 +86,8 @@ describe("office compatibility run", () => {
     expect(blockingIssues(results, FIXTURE_SPECS), summary).toEqual([]);
     expect(unusedTolerated(results)).toEqual([]);
     expect(summary).toContain("no ref");
+    expect(summary).toContain("Reference verification incomplete: 5/5 fixtures");
+    expect(summary).toContain("does not establish Office parity");
   }, 60_000);
 
   it("reports a dropped run font under fonts, blocks it, and accepts it once tolerated with an owner", async () => {
@@ -165,6 +167,7 @@ describe("office compatibility run", () => {
     const pptx = byId("pptx-plan");
     const opened = await run(pptx, { reference: async () => ({ status: "opened", application: "Fake 1", view: { pages: 3 } }) });
     expect(outcomes(opened).layout).toBe("loss");
+    expect(summaryMarkdown([opened], FIXTURE_SPECS)).not.toContain("Reference verification incomplete");
     expect(lost(opened, "layout")).toEqual([["pages", "reference"]]);
     const failed = await run(pptx, { reference: async () => ({ status: "failed", application: "Fake 1", detail: "crash" }) });
     expect(blockingIssues([failed], FIXTURE_SPECS)).toEqual([{ fixture: "pptx-plan", reason: "Fake 1 failed" }]);

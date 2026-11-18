@@ -4,6 +4,7 @@ import {
   useEffect,
   useId,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type RefObject,
@@ -242,7 +243,8 @@ export const MentionField = forwardRef<
     };
   }, [label, listId, placeholder]);
 
-  useEffect(() => {
+  // The imperative text field and React's menu must expose one accessible state.
+  useLayoutEffect(() => {
     const el = field.current;
     if (!el) return;
     el.setAttribute("aria-expanded", open ? "true" : "false");
