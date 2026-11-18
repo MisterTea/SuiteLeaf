@@ -181,7 +181,7 @@ test("a viewer cannot edit a sheet or a deck, and a commenter can still reply", 
     const page = await openAs(alexContext, node.url, alex);
     await page.getByRole("heading", { name: "SuiteDrive" }).scrollIntoViewIfNeeded();
     await page.getByRole("tab", { name: "Shared with me" }).click();
-    await page.getByRole("button", { name: "Plot assignments.slsheet" }).click();
+    await page.getByRole("button", { name: "Plot assignments.slsheet", exact: true }).click();
     await expect(page.getByText("View only", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Bold (Cmd+B)" })).toBeDisabled();
     await expect(

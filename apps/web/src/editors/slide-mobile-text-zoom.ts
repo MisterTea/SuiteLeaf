@@ -24,13 +24,8 @@ export function useSlideMobileTextZoom(
       if (window.innerWidth > 700 || !stage.clientWidth) return;
       const normalWidth = baseWidth;
       if (!normalWidth) return;
-      const available = Math.max(1, stage.clientWidth - 24);
-
-      // Provide a comfortable reading zoom (at least ~1.55x) while scaling narrow boxes to fill the width.
-      const minComfortableZoom = normalWidth * 1.55;
-      const maxZoom = normalWidth * 2.2;
-      const fitBoxWidth = (available * deckWidth) / Math.max(1, boxWidth);
-      const width = Math.round(Math.min(maxZoom, Math.max(minComfortableZoom, fitBoxWidth)));
+      const available = Math.max(1, stage.clientWidth - 32);
+      const width = Math.max(normalWidth, Math.min(normalWidth * 3, (available * deckWidth) / Math.max(1, boxWidth)));
 
       canvas.style.transition = "width 0.22s cubic-bezier(0.16, 1, 0.3, 1), margin 0.22s cubic-bezier(0.16, 1, 0.3, 1)";
       canvas.style.width = `${width}px`;
@@ -39,20 +34,8 @@ export function useSlideMobileTextZoom(
       canvas.style.margin = "0";
 
       const scale = width / deckWidth;
-      const boxLeftInCanvas = x * scale;
-      const boxWidthInCanvas = boxWidth * scale;
-      const offsetLeft = canvas.offsetLeft;
-      const boxLeftInStage = offsetLeft + boxLeftInCanvas;
-
-      // If the box fits within the available width, center it; otherwise align its left edge with padding.
-      const targetScrollLeft = boxWidthInCanvas <= available
-        ? Math.max(0, Math.round(boxLeftInStage + boxWidthInCanvas / 2 - stage.clientWidth / 2))
-        : Math.max(0, Math.round(boxLeftInStage - 14));
-
-      // Keep the top of the box in the upper field of view above the software keyboard.
-      const offsetTop = canvas.offsetTop;
-      const boxTopInStage = offsetTop + y * scale;
-      const targetScrollTop = Math.max(0, Math.round(boxTopInStage - 20));
+      const targetScrollLeft = Math.max(0, (x + boxWidth / 2) * scale - stage.clientWidth / 2);
+      const targetScrollTop = Math.max(0, y * scale - Math.max(16, (stage.clientHeight - boxHeight * scale) / 2));
 
       if (typeof stage.scrollTo === "function") {
         stage.scrollTo({ left: targetScrollLeft, top: targetScrollTop, behavior: "smooth" });

@@ -263,7 +263,6 @@ export function editorCanvasHooks(
           },
         };
       const live = (el.type === "text" || el.type === "table") && el.id === liveId;
-      const isEditing = el.id === editingId;
       const props: SlideBoxProps = {
         ...position,
         ...editorFadeAttrs(el),
@@ -323,7 +322,7 @@ export function editorCanvasHooks(
           onElementMouseDown(e, el.id);
         };
       return {
-        className: `${isSelected ? " selected" : ""}${isEditing ? " is-editing active-editing" : ""}${live ? " marp-live" : ""}${editorFadeClass(el)}`,
+        className: `${isSelected ? " selected" : ""}${live ? " marp-live" : ""}${editorFadeClass(el)}`,
         props,
       };
     },
@@ -337,7 +336,7 @@ export function editorCanvasHooks(
     after: (el) =>
       el.type === "shape" && el.marpHtml ? (
         <span className="marp-html-label">HTML</span>
-      ) : el.id === selectedElementId && editingId !== el.id && !readOnly && !marpOpen && !deck.marp ? (
+      ) : el.id === selectedElementId && !readOnly && !marpOpen && !deck.marp ? (
         renderHandles(el.id)
       ) : null,
     cell: (el, row, col) => ({
@@ -520,10 +519,11 @@ export function SlideCanvasStage({
           if (box && box === next) return;
           if (target?.closest?.(".slides-toolbar")) return;
           if (editingRef.current && box?.getAttribute("data-element-id") === editingRef.current) {
-            // When editing is active in a textbox, do NOT exit editing on a blur with no relatedTarget
-            // (e.g. mobile virtual keyboard interactions). Editing ends when the user finishes editing
-            // by tapping away from the box (handled by pointerdown on the canvas) or focuses another element.
-            if (!target) return;
+            // When typing on a mobile on-screen keyboard, autocorrect and key touches
+            // dispatch blur with relatedTarget === null while still actively editing.
+            // On desktop or when not using a coarse pointer, exit editing immediately.
+            const isMobileTouch = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+            if (!target && isMobileTouch) return;
             editingRef.current = null;
             setEditingId(null);
             textRange.current = null;
