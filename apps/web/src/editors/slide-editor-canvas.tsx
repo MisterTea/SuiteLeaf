@@ -475,6 +475,8 @@ export function SlideCanvasStage({
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest("[data-element-id], .slides-toolbar")) return;
           if (editingRef.current || state.focusedBox) {
+            editingRef.current = null;
+            setEditingId(null);
             setFocusedBox(null);
             selectElement(null);
           }
@@ -489,6 +491,8 @@ export function SlideCanvasStage({
           if ((e.target as HTMLElement).closest?.("[data-element-id]")) {
             if (textPress.current) return;
           }
+          editingRef.current = null;
+          setEditingId(null);
           setFocusedBox(null);
           selectElement(null);
         }}
@@ -501,18 +505,18 @@ export function SlideCanvasStage({
           const target = e.relatedTarget as HTMLElement | null;
           const next = target?.closest?.("[data-element-id]");
           if (box && box === next) return;
-          // When typing on a mobile on-screen keyboard, autocorrect and key touches
-          // dispatch blur with relatedTarget === null while still actively editing.
-          // Do not exit editing or clear focus on null relatedTarget; editing ends when
-          // the user finishes editing by tapping away from the box.
-          if (!target) return;
-          if (target.closest?.(".slides-toolbar")) return;
+          if (target?.closest?.(".slides-toolbar")) return;
           if (editingRef.current && box?.getAttribute("data-element-id") === editingRef.current) {
+            // When editing is active in a textbox, do NOT exit editing on a blur with no relatedTarget
+            // (e.g. mobile virtual keyboard interactions). Editing ends when the user finishes editing
+            // by tapping away from the box (handled by pointerdown on the canvas) or focuses another element.
+            if (!target) return;
             editingRef.current = null;
             setEditingId(null);
             textRange.current = null;
           }
-          setFocusedBox(null);
+          if (box && state.focusedBox === box.getAttribute("data-element-id") && !next)
+            setFocusedBox(null);
           if (!marpStale.current) return;
           window.setTimeout(() => {
             if (marpStale.current && !typingOnCanvas()) relayoutMarp();
