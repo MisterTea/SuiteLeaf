@@ -124,4 +124,28 @@ describe("the slide drawn behind the boxes", () => {
     expect(visible()).toEqual(["shown", "shown", "shown", "shown", "shown"]);
     expect(hideRenderedLines(doc, [9, 10])).toBe(false);
   });
+
+  it("hides only a single list item without hiding its siblings", () => {
+    const doc = document.implementation.createHTMLDocument("page");
+    doc.body.innerHTML =
+      '<ul data-sl-lines="2,5"><li data-sl-lines="2,3">first</li><li data-sl-lines="3,4">second</li><li data-sl-lines="4,5">third</li></ul>';
+    const visible = () =>
+      [...doc.querySelectorAll<HTMLElement>("[data-sl-lines]")].map((node) => node.style.visibility || "shown");
+    expect(hideRenderedLines(doc, [3, 4])).toBe(true);
+    expect(visible()).toEqual(["shown", "shown", "hidden", "shown"]);
+    expect(hideRenderedLines(doc, [2, 3])).toBe(true);
+    expect(visible()).toEqual(["shown", "hidden", "shown", "shown"]);
+  });
+
+  it("hides blocks by text content fallback when source lines are missing", () => {
+    const doc = document.implementation.createHTMLDocument("page");
+    doc.body.innerHTML =
+      '<h1 data-sl-lines="0,1">Title</h1><p data-sl-lines="2,4">Some body text</p>';
+    const visible = () =>
+      [...doc.querySelectorAll<HTMLElement>("[data-sl-lines]")].map((node) => node.style.visibility || "shown");
+    expect(hideRenderedLines(doc, null, "Some body text")).toBe(true);
+    expect(visible()).toEqual(["shown", "hidden"]);
+    expect(hideRenderedLines(doc, null, null)).toBe(false);
+    expect(visible()).toEqual(["shown", "shown"]);
+  });
 });

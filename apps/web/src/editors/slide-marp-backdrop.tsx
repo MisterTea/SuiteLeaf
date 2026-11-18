@@ -11,12 +11,33 @@ export type { MarpPages };
 type FramePage = { width: number; height: number; document: string };
 
 /** Hide the rendered blocks drawn from `lines`, so the box being edited is not shown twice. */
-export function hideRenderedLines(doc: Document, lines: LineRange | null): boolean {
+export function hideRenderedLines(
+  doc: Document,
+  lines: LineRange | null,
+  text?: string | null,
+): boolean {
   let found = false;
   for (const node of doc.querySelectorAll<HTMLElement>(`[${SOURCE_LINES}]`)) {
     const match = /^(\d+),(\d+)$/.exec(node.getAttribute(SOURCE_LINES) ?? "");
-    const inside =
-      !!lines && !!match && Number(match[1]) >= lines[0] && Number(match[1]) < lines[1];
+    if (!match) continue;
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    const hasChildLines = !!node.querySelector(`[${SOURCE_LINES}]`);
+    let inside = false;
+    if (lines) {
+      inside = hasChildLines
+        ? [...node.querySelectorAll<HTMLElement>(`[${SOURCE_LINES}]`)].every((child) => {
+            const m = /^(\d+),(\d+)$/.exec(child.getAttribute(SOURCE_LINES) ?? "");
+            return !!m && Number(m[1]) >= lines[0] && Number(m[2]) <= lines[1];
+          })
+        : start < lines[1] && end > lines[0];
+    } else if (text && text.trim() && !hasChildLines) {
+      const nodeText = (node.textContent ?? "").trim();
+      inside =
+        nodeText === text.trim() ||
+        nodeText.includes(text.trim()) ||
+        text.trim().includes(nodeText);
+    }
     node.style.visibility = inside ? "hidden" : "";
     found ||= inside;
   }
@@ -151,6 +172,7 @@ export function MarpBackdrop({
   pages,
   index,
   live,
+  liveText,
   plain = false,
   fragmentStep,
   onPainted,
@@ -158,6 +180,7 @@ export function MarpBackdrop({
   pages: MarpPages | null;
   index: number;
   live: LineRange | null;
+  liveText?: string | null;
   /** Show the page without source lines, which nothing here hides. */
   plain?: boolean;
   fragmentStep?: number;
@@ -183,9 +206,9 @@ export function MarpBackdrop({
   }, [doc, fragmentStep]);
   useEffect(() => {
     if (!doc) return onPainted(false);
-    const hidden = hideRenderedLines(doc, live);
-    onPainted(!live || hidden);
-  }, [doc, live, onPainted]);
+    const hidden = hideRenderedLines(doc, live, liveText);
+    onPainted((!live && !liveText) || hidden);
+  }, [doc, live, liveText, onPainted]);
   return (
     <MarpFrame
       page={page}

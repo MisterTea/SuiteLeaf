@@ -18,17 +18,12 @@ export function useSlideMobileTextZoom(
     const savedStyle = canvas.getAttribute("style");
     const scrollLeft = stage.scrollLeft;
     const scrollTop = stage.scrollTop;
-    const restore = () => {
-      if (savedStyle === null) canvas.removeAttribute("style");
-      else canvas.setAttribute("style", savedStyle);
-      stage.scrollLeft = scrollLeft;
-      stage.scrollTop = scrollTop;
-    };
+    const baseWidth = canvas.getBoundingClientRect().width || stage.clientWidth;
+
     const fit = () => {
-      restore();
       if (window.innerWidth > 700 || !stage.clientWidth) return;
       const available = Math.max(1, stage.clientWidth - 32);
-      const normalWidth = canvas.getBoundingClientRect().width;
+      const normalWidth = baseWidth;
       if (!normalWidth) return;
       // Fit the box across the phone, with a cap for very narrow boxes.
       const width = Math.max(normalWidth, Math.min(normalWidth * 3, available * deckWidth / Math.max(1, boxWidth)));
@@ -36,12 +31,10 @@ export function useSlideMobileTextZoom(
       canvas.style.maxWidth = "none";
       canvas.style.alignSelf = "flex-start";
       canvas.style.margin = "0";
-      const rect = canvas.getBoundingClientRect();
-      const viewport = stage.getBoundingClientRect();
-      const scale = rect.width / deckWidth;
-      stage.scrollLeft += rect.left - viewport.left + (x + boxWidth / 2) * scale - stage.clientWidth / 2;
+      const scale = width / deckWidth;
+      stage.scrollLeft = Math.max(0, (x + boxWidth / 2) * scale - stage.clientWidth / 2);
       // Keep the beginning of a tall box visible above the software keyboard.
-      stage.scrollTop += rect.top - viewport.top + y * scale - Math.max(16, (stage.clientHeight - boxHeight * scale) / 2);
+      stage.scrollTop = Math.max(0, y * scale - Math.max(16, (stage.clientHeight - boxHeight * scale) / 2));
     };
     fit();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
@@ -50,7 +43,10 @@ export function useSlideMobileTextZoom(
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", fit);
-      restore();
+      if (savedStyle === null) canvas.removeAttribute("style");
+      else canvas.setAttribute("style", savedStyle);
+      stage.scrollLeft = scrollLeft;
+      stage.scrollTop = scrollTop;
     };
   }, [stageRef, slide.id, id, type, x, y, boxWidth, boxHeight, deckWidth, readOnly]);
 }

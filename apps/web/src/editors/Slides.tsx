@@ -102,11 +102,16 @@ export default function Slides({
     activeSlide?.elements.find((el) => el.id === selectedElementId) || null;
   /** The box being typed in. It shows its own words over MARP's drawing. */
   const liveId = editingId ?? focusedBox ?? tableCell?.id ?? null;
+  const liveElement =
+    (liveId &&
+      (history.displaySlide(activeSlide)?.elements.find((el) => el.id === liveId) ??
+        activeSlide?.elements.find((el) => el.id === liveId))) ||
+    null;
   const textElement = history.displaySlide(activeSlide)?.elements.find(
     (el) => el.id === (selectedElement?.id ?? editingId),
   );
-  const liveLines =
-    (liveId && activeSlide?.elements.find((el) => el.id === liveId)?.marpLines) || null;
+  const liveLines = liveElement?.marpLines || null;
+  const liveText = liveElement?.type === "text" ? liveElement.content || null : null;
   const slideComments = useSlideComments({
     deck,
     activeSlideId: activeSlide?.id ?? activeSlideId,
@@ -163,7 +168,7 @@ export default function Slides({
    * One drawing serves the editor's backdrop, the thumbnails, and the slideshow.
    * It holds still while a box on the slide is being typed in.
    */
-  const marpPages = useMarpPages(deck, { paused: !!liveLines });
+  const marpPages = useMarpPages(deck, { paused: !!(liveLines || (liveId && liveElement?.type === "text")) });
   const [marpSplit, setMarpSplit] = useMarpSplit();
   /** The slides on either side of the show stay loaded, so MARP's drawing is ready on arrival. */
   const marpShow = !!deck.marp && !!marpPages;
@@ -480,6 +485,7 @@ export default function Slides({
           fittedView={fittedView}
           showBackdrop={showBackdrop}
           liveLines={liveLines}
+          liveText={liveText}
           marpDraft={marpDraft}
           markdownSource={displayDeck.marpSource}
           typingOnCanvas={history.typingOnCanvas}

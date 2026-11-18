@@ -132,7 +132,7 @@ export function editorCanvasHooks(
           nowrap={el.nowrap}
           placeholder={el.placeholder}
           editing={editingId === el.id && !readOnly}
-          onText={(runs, opts) =>
+          onText={(runs, opts) => {
             updateElement(
               el.id,
               {
@@ -144,8 +144,8 @@ export function editorCanvasHooks(
                 ...(opts?.bullet ? { bullet: true } : {}),
               },
               { typing: true },
-            )
-          }
+            );
+          }}
           onCaret={(sel) => { rememberCaret(el.id, sel); setSpellCaret(sel ? { id: el.id, at: sel.start } : null); }}
         />
         </>
@@ -371,6 +371,7 @@ export function SlideCanvasStage({
   fittedView,
   showBackdrop,
   liveLines,
+  liveText,
   marpDraft,
   markdownSource,
   typingOnCanvas,
@@ -399,6 +400,7 @@ export function SlideCanvasStage({
     fittedView: boolean;
     showBackdrop: boolean;
     liveLines: [number, number] | null;
+    liveText?: string | null;
     marpDraft: RefObject<MarpDraft | null>;
     markdownSource?: string;
     onMarpChange: (text: string) => void;
@@ -410,7 +412,7 @@ export function SlideCanvasStage({
     canvasMotion, snapGuide, marpWarnings, marpAreaRef, showNotes, setShowNotes,
   } = state;
   const statusTarget = useContext(EditorStatusTarget);
-  useSlideMobileTextZoom(stageRef, shownSlide, state.focusedBox, deck.width || 960, readOnly);
+  useSlideMobileTextZoom(stageRef, shownSlide, state.editingId ?? state.focusedBox, deck.width || 960, readOnly);
   return (
     <div className="slides-canvas-stage" ref={statusTarget}>
       {state.masterView ? (
@@ -465,17 +467,29 @@ export function SlideCanvasStage({
         style={{ touchAction: "pan-y pinch-zoom" }}
         ref={stageRef}
         onPointerDownCapture={(event) => {
-          if (!(event.target as HTMLElement).closest("[data-element-id]"))
+          if (!(event.target as HTMLElement).closest("[data-element-id]")) {
             state.ignoreCanvasClick.current = false;
+            textPress.current = false;
+          }
         }}
-        onClick={() => {
+        onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest("[data-element-id], .slides-toolbar")) return;
+          if (editingRef.current || state.focusedBox) {
+            setFocusedBox(null);
+            selectElement(null);
+          }
+        }}
+        onClick={(e) => {
           // Selecting an object can move it below a newly opened toolbar before
           // the browser synthesizes its touch click on the canvas background.
           if (state.ignoreCanvasClick.current) {
             state.ignoreCanvasClick.current = false;
             return;
           }
-          if (textPress.current) return;
+          if ((e.target as HTMLElement).closest?.("[data-element-id]")) {
+            if (textPress.current) return;
+          }
+          setFocusedBox(null);
           selectElement(null);
         }}
         onFocusCapture={(e) => {
@@ -487,8 +501,13 @@ export function SlideCanvasStage({
           const target = e.relatedTarget as HTMLElement | null;
           const next = target?.closest?.("[data-element-id]");
           if (box && box === next) return;
-          if (editingRef.current && box?.getAttribute("data-element-id") === editingRef.current &&
-            !target?.closest?.(".slides-toolbar")) {
+          // When typing on a mobile on-screen keyboard, autocorrect and key touches
+          // dispatch blur with relatedTarget === null while still actively editing.
+          // Do not exit editing or clear focus on null relatedTarget; editing ends when
+          // the user finishes editing by tapping away from the box.
+          if (!target) return;
+          if (target.closest?.(".slides-toolbar")) return;
+          if (editingRef.current && box?.getAttribute("data-element-id") === editingRef.current) {
             editingRef.current = null;
             setEditingId(null);
             textRange.current = null;
@@ -538,6 +557,7 @@ export function SlideCanvasStage({
                 pages={marpPages}
                 index={currentSlideIndex}
                 live={liveLines}
+                liveText={liveText}
                 onPainted={setPainted}
               />
             ) : null}

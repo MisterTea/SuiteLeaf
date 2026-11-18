@@ -8,6 +8,7 @@ import { connectDocs } from "../../packages/core/src/collab";
 import { exportText } from "../../apps/web/src/storage";
 import { buildMarpFile } from "../../apps/web/src/editors/slide-marp-import";
 import { fitMarpDeck, MARP_FIT_REVISION } from "../../apps/web/src/editors/slide-marp-fit";
+import { slideTextEditor } from "../../apps/web/src/editors/slide-tiptap-selection";
 import { mirrorSlides } from "../../apps/web/src/collab/slide-room";
 import { noteSlideEdit } from "../../apps/web/src/collab/slide-undo";
 import { box, openSlides, setupSlidesDom, words, type OpenOptions, mockImageDimensions } from "./slide-editor-harness";
@@ -140,6 +141,50 @@ describe("a MARP deck in the editor", () => {
     touch(markdown(), "pointerup", 100, 150);
     expect(editor.active()).toBe(editor.order()[0]);
   }));
+
+  it("only commits MARP textbox edits after finishing editing by tapping away", async () => {
+    const editor = openMarp();
+    await fitted(editor);
+    const body = editor.elements().find((el) => el.content?.includes("Ship"))!;
+    fireEvent.doubleClick(box(body.id));
+    await waitFor(() => expect(box(body.id)?.querySelector(".ProseMirror")).toBeTruthy());
+    const text = box(body.id).querySelector<HTMLElement>(".ProseMirror")!;
+    expect(text).not.toBeNull();
+
+    editor.onChange.mockClear();
+
+    // Typing in the textbox
+    act(() => {
+      const live = slideTextEditor(text)!;
+      live.commands.focus("end");
+      live.commands.insertContent(" Really");
+    });
+
+    // Transient blur with no relatedTarget (e.g. mobile virtual keyboard key tap)
+    fireEvent.blur(text);
+
+    // Should NOT save on keystroke or transient blur
+    expect(editor.onChange).not.toHaveBeenCalled();
+
+    // Typing more
+    act(() => {
+      const live = slideTextEditor(text)!;
+      live.commands.focus("end");
+      live.commands.insertContent(" now");
+    });
+    expect(editor.onChange).not.toHaveBeenCalled();
+
+    // Tap away onto canvas background
+    const canvas = editor.container.querySelector(".slide-stage-viewport")!;
+    touch(canvas, "pointerdown", 10, 10);
+    touch(canvas, "pointerup", 10, 10);
+    fireEvent.click(canvas);
+
+    // Now it saves once with the final text
+    expect(editor.onChange).toHaveBeenCalledTimes(1);
+    const updated = editor.deck().marpSource!;
+    expect(updated).toContain("Ship the beta in May. Really now");
+  });
 
   it("adds a three-column slide from the New slide menu", async () => {
     const editor = openMarp();
