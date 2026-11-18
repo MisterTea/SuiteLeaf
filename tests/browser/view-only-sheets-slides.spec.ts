@@ -211,7 +211,7 @@ test("a viewer cannot edit a sheet or a deck, and a commenter can still reply", 
 
     await page.getByRole("button", { name: "Back to files" }).click();
     await page.getByRole("tab", { name: "Shared with me" }).click();
-    await page.getByRole("button", { name: "Spring fair.slslides" }).click();
+    await page.getByRole("button", { name: "Spring fair.slslides", exact: true }).click();
     await expect(page.getByText("View only", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Theme" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "+ New slide" })).toBeDisabled();

@@ -522,7 +522,7 @@ export function SlideCanvasStage({
             // When typing on a mobile on-screen keyboard, autocorrect and key touches
             // dispatch blur with relatedTarget === null while still actively editing.
             // On desktop or when not using a coarse pointer, exit editing immediately.
-            const isMobileTouch = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+            const isMobileTouch = typeof window !== "undefined" && (window.innerWidth <= 700 || window.matchMedia("(pointer: coarse)").matches);
             if (!target && isMobileTouch) return;
             editingRef.current = null;
             setEditingId(null);
