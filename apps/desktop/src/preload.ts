@@ -46,6 +46,7 @@ const bridge: DesktopBridge = {
   getMode: () => ipcRenderer.invoke("mode:get"),
   setMode: (mode) => ipcRenderer.invoke("mode:set", mode),
   authWindow: (url) => ipcRenderer.invoke("auth:window", url),
+  captureScreenshot: () => ipcRenderer.invoke("screenshot:capture"),
   onMenu: (callback) => {
     const listener = (_event: unknown, action: string) => callback(action);
     ipcRenderer.on("menu", listener);

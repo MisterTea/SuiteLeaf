@@ -31,8 +31,9 @@ yarn-error.log*
 .env*.local
 .env
 
-# vercel
+# vercel & cloudflare
 .vercel
+**/.wrangler/
 
 # typescript
 *.tsbuildinfo

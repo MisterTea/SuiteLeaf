@@ -14,6 +14,7 @@ import { drawingFromAction, newFile, type NewKind } from "../drawing-home";
 import { useAgentHost } from "../ai/host";
 import { InstallButton } from "../InstallButton";
 import { AiButton } from "../ai/AgentSidebar";
+import { FeedbackButton } from "../feedback/FeedbackButton";
 import { driveSnapshot, driveTools, type DriveAgentContext } from "../ai/tools/cluster";
 import { assertDriveCreation } from "../ai/tools/file-authorization";
 import {
@@ -194,6 +195,7 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
           <span className="version">OPEN SOURCE · v0.1</span>
           <div className="home-app-buttons">
             <AiButton />
+            <FeedbackButton />
             <InstallButton />
           </div>
         </header>

@@ -38,6 +38,7 @@ import { formsEnabled } from "../flags";
 import { useAgentHost } from "../ai/host";
 import { InstallButton } from "../InstallButton";
 import { AiButton } from "../ai/AgentSidebar";
+import { FeedbackButton } from "../feedback/FeedbackButton";
 import { homeSnapshot, homeTools, type HomeAgentContext } from "../ai/tools/files";
 import { connectTools } from "../ai/tools/cluster";
 import { TemplateHome } from "../templates/gallery";
@@ -552,6 +553,7 @@ export function LocalHome() {
           <span className="version">OPEN SOURCE · v0.1</span>
           <div className="home-app-buttons">
             <AiButton />
+            <FeedbackButton />
             <InstallButton />
           </div>
         </header>

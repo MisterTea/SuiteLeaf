@@ -26,6 +26,7 @@ import { driveName, openFromDrive } from "../drive/drive-files";
 import { CommandPalette } from "../command-palette";
 import { InstallButton } from "../InstallButton";
 import { AiButton } from "../ai/AgentSidebar";
+import { FeedbackButton } from "../feedback/FeedbackButton";
 import { useWorkspaceAiAccess } from "../ai/access";
 import { VersionHistory, VersionPreview } from "../editors/version-history";
 import { SheetVersionPreview, SlideVersionPreview } from "../editors/version-compare";
@@ -269,6 +270,7 @@ export function Workspace() {
               </button>
             ) : null}
             {canEdit ? <AiButton /> : null}
+            <FeedbackButton />
             <InstallButton />
             <FullscreenButton />
             {mode.kind !== "cluster" ? (
