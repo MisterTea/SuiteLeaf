@@ -7,16 +7,13 @@ import {
   type FormEvent,
   type RefObject,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   ChevronRight,
   CloudOff,
   FileText,
   Folder,
-  FolderInput,
   FolderPlus,
   MoreVertical,
-  Pencil,
   Presentation,
   Sheet,
   Trash2,
@@ -26,14 +23,12 @@ import {
 import { isNativeName, kindFromName } from "@suiteleaf/core";
 import {
   drive,
-  getSession,
   type DriveItem,
   type DriveSearchHit,
 } from "../node-client";
 import { DriveDialog } from "./drive-dialog";
 import { NameDialog } from "./name-dialog";
 export { NameDialog } from "./name-dialog";
-import { folderCrumbs } from "./folder-paths";
 import { MoveBanner, type MoveNotice } from "./file-folder";
 import { MoveDialog } from "./MoveDialog";
 import { versionWhen } from "../editors/version-history-model";
@@ -51,6 +46,11 @@ import {
   useDriveFolderRoute,
   type DriveFolderRoute,
 } from "./use-drive-folder-route";
+import { driveFileUrl } from "./drive-files";
+import { place } from "./drive-place";
+import { DriveMenuPopup } from "./DriveMenuPopup";
+export { rememberDriveFolder } from "./drive-place";
+export { DriveDialog } from "./drive-dialog";
 
 /** The visible SuiteDrive folder and what can be done in it. */
 export interface DriveControl {
@@ -59,51 +59,12 @@ export interface DriveControl {
   loading: boolean;
   /** Open a folder, or a file (in open mode), as clicking it does. */
   choose: (item: DriveItem) => void;
+  /** Open a file in a new tab. */
+  openInNewTab?: (item: DriveItem) => void;
   /** Go up to a folder in the path (1 = the top). */
   goTo: (depth: number) => void;
   switchView: (view: "mine" | "shared") => void;
   newFolder: (name: string) => Promise<void>;
-}
-
-const PLACE_KEY = "suiteleaf:drive-place";
-/** Remembers the home screen's folder for this account, so leaving a file
- * returns to the folder it was opened from. */
-const place = {
-  owner() {
-    const session = getSession();
-    return session ? `${session.url}|${session.user.id}` : "";
-  },
-  load(): Place | null {
-    try {
-      const saved = JSON.parse(sessionStorage.getItem(PLACE_KEY) ?? "null");
-      return saved?.owner === place.owner() && saved.path?.length
-        ? { view: saved.view, path: saved.path }
-        : null;
-    } catch {
-      return null;
-    }
-  },
-  save(value: Place) {
-    sessionStorage.setItem(
-      PLACE_KEY,
-      JSON.stringify({ owner: place.owner(), ...value }),
-    );
-  },
-};
-
-export { DriveDialog } from "./drive-dialog";
-
-/** Opens this folder the next time the home screen's SuiteDrive list mounts. */
-export function rememberDriveFolder(
-  parentId: string | null,
-  parentName: string,
-  folders: { id: string; name: string; parentId: string | null }[] = [],
-) {
-  if (!place.owner()) return;
-  place.save({
-    view: "mine",
-    path: folderCrumbs(parentId, parentName, folders),
-  });
 }
 
 function ItemIcon({ item }: { item: { name: string; kind: string } }) {
@@ -129,6 +90,7 @@ export function DriveBrowser({
   defaultName = "",
   inline = false,
   onOpen,
+  onOpenInNewTab,
   onSave,
   onClose,
   onFolderChange,
@@ -145,6 +107,8 @@ export function DriveBrowser({
   /** Open this folder instead of the top of My Drive. Used by the editor's Open and Save as. */
   startIn?: { id: string; name: string } | null;
   onOpen?: (item: DriveItem) => void | Promise<void>;
+  /** Open a file in a new window or tab. */
+  onOpenInNewTab?: (item: DriveItem) => void;
   onSave?: (folderId: string | null, name: string) => void | Promise<void>;
   onClose?: () => void;
   /** The folder new items should go in; `null` is the top of My Drive. */
@@ -192,6 +156,7 @@ export function DriveBrowser({
   );
   const [moving, setMoving] = useState<DriveItem | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
+  const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(null);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const menuPopup = useRef<HTMLDivElement>(null);
   const [moveNotice, setMoveNotice] = useState<
@@ -248,35 +213,53 @@ export function DriveBrowser({
   useLayoutEffect(() => {
     const trigger = menuTrigger.current;
     const popup = menuPopup.current;
-    if (!menuId || !trigger || !popup) return;
+    if (!menuId || !popup || (!trigger && !menuPoint)) return;
     const position = () => {
-      const anchor = trigger.getBoundingClientRect();
       const { width, height } = popup.getBoundingClientRect();
       const gap = 6;
-      const below = anchor.bottom + gap;
-      const above = anchor.top - height - gap;
-      const top = below + height <= window.innerHeight - gap ? below : above;
-      popup.style.top = `${Math.max(gap, top)}px`;
-      popup.style.left = `${Math.max(gap, Math.min(anchor.right - width, window.innerWidth - width - gap))}px`;
+      if (menuPoint) {
+        const top =
+          menuPoint.y + height <= window.innerHeight - gap
+            ? menuPoint.y
+            : Math.max(gap, menuPoint.y - height);
+        const left =
+          menuPoint.x + width <= window.innerWidth - gap
+            ? menuPoint.x
+            : Math.max(gap, menuPoint.x - width);
+        popup.style.top = `${top}px`;
+        popup.style.left = `${left}px`;
+      } else if (trigger) {
+        const anchor = trigger.getBoundingClientRect();
+        const below = anchor.bottom + gap;
+        const above = anchor.top - height - gap;
+        const top = below + height <= window.innerHeight - gap ? below : above;
+        popup.style.top = `${Math.max(gap, top)}px`;
+        popup.style.left = `${Math.max(gap, Math.min(anchor.right - width, window.innerWidth - width - gap))}px`;
+      }
     };
     position();
-    if (document.activeElement === trigger) popup.querySelector("button")?.focus({ preventScroll: true });
+    if (trigger && document.activeElement === trigger) popup.querySelector("button")?.focus({ preventScroll: true });
 
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as HTMLElement | null;
-      if (!trigger.contains(target) && !popup.contains(target)) {
+      if ((!trigger || !trigger.contains(target)) && !popup.contains(target)) {
         setMenuId(null);
+        setMenuPoint(null);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setMenuId(null);
-      trigger.focus({ preventScroll: true });
+      setMenuPoint(null);
+      trigger?.focus({ preventScroll: true });
     };
     const onScroll = (e: Event) => {
       if (!(e.target instanceof Node) || !popup.contains(e.target)) position();
     };
-    const onResize = () => setMenuId(null);
+    const onResize = () => {
+      setMenuId(null);
+      setMenuPoint(null);
+    };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener("scroll", onScroll, true);
@@ -287,7 +270,7 @@ export function DriveBrowser({
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
     };
-  }, [menuId, items]);
+  }, [menuId, menuPoint, items]);
   // An empty box stays on the folder. A short pause lets a recording type
   // the whole word before the list switches to results.
   useEffect(() => {
@@ -404,6 +387,13 @@ export function DriveBrowser({
       await onOpen?.(item);
     else if (mode === "save") setName(item.name);
   };
+  const openInNewTab = useCallback(
+    (target: { id: string; name: string }) => {
+      if (onOpenInNewTab) onOpenInNewTab(target as DriveItem);
+      else window.open(driveFileUrl(target.id), "_blank");
+    },
+    [onOpenInNewTab],
+  );
   const choose = (item: DriveItem) => {
     if (item.kind === "file" && mode === "open" && isNativeName(item.name)) {
       void open(item.name, () => select(item));
@@ -424,6 +414,7 @@ export function DriveBrowser({
       items: visible,
       loading: loading || routing.pending,
       choose,
+      openInNewTab,
       goTo: (depth) => setPath(path.slice(0, Math.max(1, depth))),
       switchView,
       newFolder: async (folderName) => {
@@ -579,16 +570,38 @@ export function DriveBrowser({
             </p>
           ) : (
             found.map((hit) => (
-              <div className="drive-row" role="listitem" key={hit.id}>
+              <div
+                className="drive-row"
+                role="listitem"
+                key={hit.id}
+                onContextMenu={(e) => {
+                  if (mode !== "open") return;
+                  e.preventDefault();
+                  menuTrigger.current = null;
+                  setMenuPoint({ x: e.clientX, y: e.clientY });
+                  setMenuId(hit.id);
+                }}
+              >
                 <button
                   type="button"
                   className="drive-item drive-search-hit"
                   disabled={busy}
-                  onClick={() => {
+                  onClick={(e) => {
+                    if (mode === "open" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      openInNewTab(hit);
+                      return;
+                    }
                     const resolveHit = async () => select(await drive.get(hit.id));
                     void (mode === "open" && isNativeName(hit.name)
                       ? open(hit.name, resolveHit)
                       : act(resolveHit));
+                  }}
+                  onAuxClick={(e) => {
+                    if (mode === "open" && e.button === 1) {
+                      e.preventDefault();
+                      openInNewTab(hit);
+                    }
                   }}
                 >
                   <ItemIcon item={{ name: hit.name, kind: "file" }} />
@@ -598,6 +611,19 @@ export function DriveBrowser({
                     <small className="drive-search-snippet">{hit.snippet}</small>
                   </span>
                 </button>
+                {mode === "open" && menuId === hit.id ? (
+                  <DriveMenuPopup
+                    item={hit}
+                    mode={mode}
+                    busy={busy}
+                    popupRef={menuPopup}
+                    onOpenInNewTab={() => openInNewTab(hit)}
+                    onClose={() => {
+                      setMenuId(null);
+                      setMenuPoint(null);
+                    }}
+                  />
+                ) : null}
               </div>
             ))
           )
@@ -622,14 +648,34 @@ export function DriveBrowser({
                 className={`drive-row${justEdited.has(item.id) ? " just-edited" : ""}`}
                 role="listitem"
                 key={item.id}
+                onContextMenu={(e) => {
+                  if (view === "trash") return;
+                  e.preventDefault();
+                  menuTrigger.current = null;
+                  setMenuPoint({ x: e.clientX, y: e.clientY });
+                  setMenuId(item.id);
+                }}
               >
                 <button
                   className="drive-item"
                   aria-label={item.name}
                   aria-description={edited}
                   disabled={busy}
-                  onClick={() => {
-                    if (view !== "trash") choose(item);
+                  onClick={(e) => {
+                    if (view !== "trash") {
+                      if (item.kind === "file" && mode === "open" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        openInNewTab(item);
+                        return;
+                      }
+                      choose(item);
+                    }
+                  }}
+                  onAuxClick={(e) => {
+                    if (view !== "trash" && item.kind === "file" && mode === "open" && e.button === 1) {
+                      e.preventDefault();
+                      openInNewTab(item);
+                    }
                   }}
                   title={
                     item.available
@@ -722,7 +768,7 @@ export function DriveBrowser({
                       Delete forever
                     </button>
                   </span>
-                ) : item.role === "owner" || item.role === "editor" ? (
+                ) : item.role === "owner" || item.role === "editor" || (item.kind === "file" && mode === "open") ? (
                   <span className="drive-row-actions">
                     <button
                       type="button"
@@ -734,74 +780,41 @@ export function DriveBrowser({
                       disabled={busy}
                       onClick={(e) => {
                         e.stopPropagation();
+                        setMenuPoint(null);
                         menuTrigger.current = e.currentTarget;
                         setMenuId((prev) => (prev === item.id ? null : item.id));
                       }}
                     >
                       <MoreVertical size={16} />
                     </button>
-                    {menuId === item.id ? createPortal(
-                      <div
-                        ref={menuPopup}
-                        className="drive-menu-popup"
-                        role="menu"
-                        aria-label={`Actions for ${item.name}`}
-                        onKeyDown={(e) => {
-                          if (e.key !== "Escape") return;
-                          e.stopPropagation();
+                    {menuId === item.id ? (
+                      <DriveMenuPopup
+                        item={item}
+                        mode={mode}
+                        busy={busy}
+                        popupRef={menuPopup}
+                        onOpenInNewTab={() => openInNewTab(item)}
+                        onMove={
+                          item.role === "owner" || item.role === "editor"
+                            ? () => setMoving(item)
+                            : undefined
+                        }
+                        onRename={
+                          item.role === "owner" || item.role === "editor"
+                            ? () => setAsking({ action: "rename", item })
+                            : undefined
+                        }
+                        onMoveToTrash={
+                          item.role === "owner" || item.role === "editor"
+                            ? () => moveToTrash(item)
+                            : undefined
+                        }
+                        onClose={() => {
                           setMenuId(null);
+                          setMenuPoint(null);
                           menuTrigger.current?.focus({ preventScroll: true });
                         }}
-                      >
-                        {item.kind === "file" ? (
-                          <button
-                            type="button"
-                            className="drive-menu-item"
-                            title="Move"
-                            aria-label={`Move ${item.name}`}
-                            disabled={busy}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMenuId(null);
-                              setMoving(item);
-                            }}
-                          >
-                            <FolderInput size={15} />
-                            <span>Move</span>
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="drive-menu-item"
-                          title="Rename"
-                          aria-label={`Rename ${item.name}`}
-                          disabled={busy}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuId(null);
-                            setAsking({ action: "rename", item });
-                          }}
-                        >
-                          <Pencil size={15} />
-                          <span>Rename</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="drive-menu-item drive-menu-danger"
-                          title="Move to trash"
-                          aria-label={`Move ${item.name} to trash`}
-                          disabled={busy}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuId(null);
-                            moveToTrash(item);
-                          }}
-                        >
-                          <Trash2 size={15} />
-                          <span>Move to trash</span>
-                        </button>
-                      </div>,
-                      document.body,
+                      />
                     ) : null}
                   </span>
                 ) : null}

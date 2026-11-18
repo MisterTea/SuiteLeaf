@@ -9,7 +9,12 @@ import {
 import type { NavigateFunction } from "react-router-dom";
 import { storage, SaveQueue } from "../storage";
 import { disconnect } from "../mode";
-import { openDriveFile, saveNewDriveFile, type DriveItem } from "../node-client";
+import {
+  getSession,
+  openDriveFile,
+  saveNewDriveFile,
+  type DriveItem,
+} from "../node-client";
 
 /** SuiteDrive uploads by file ID, shared by every editor of a file so one
  * opened while an earlier editor's upload is in flight reads the version that
@@ -109,3 +114,18 @@ export async function createInDrive(
   const saved = await keepCreated(file, folderId, true, onProgress, fallbackToRoot);
   navigate(`/file/${saved.file.id}`);
 }
+
+/** Hash URL that resolves and opens a SuiteDrive file across windows and tabs. */
+export function driveFileUrl(id: string): string {
+  const base =
+    typeof window !== "undefined" &&
+    window.location.href &&
+    window.location.href !== "about:blank"
+      ? window.location.href
+      : (getSession()?.url || "http://localhost/");
+  const url = new URL(base);
+  url.search = "";
+  url.hash = `/shared/${encodeURIComponent(id)}`;
+  return url.href;
+}
+

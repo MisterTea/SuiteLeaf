@@ -539,4 +539,94 @@ describe("DriveBrowser", () => {
     act(() => control.current!.switchView("shared"));
     await waitFor(() => expect(control.current!.path).toEqual(["Shared with me"]));
   });
+
+  it("opens a file in a new tab when command-clicked, ctrl-clicked, or middle-clicked", async () => {
+    const onOpen = vi.fn();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    try {
+      render(<DriveBrowser mode="open" inline onOpen={onOpen} />);
+      const docBtn = await screen.findByRole("button", { name: "Plan.sldoc" });
+
+      // Meta (command) click
+      fireEvent.click(docBtn, { metaKey: true });
+      expect(onOpen).not.toHaveBeenCalled();
+      expect(openSpy).toHaveBeenCalledWith(expect.stringContaining("#/shared/doc"), "_blank");
+      openSpy.mockClear();
+
+      // Ctrl click
+      fireEvent.click(docBtn, { ctrlKey: true });
+      expect(onOpen).not.toHaveBeenCalled();
+      expect(openSpy).toHaveBeenCalledWith(expect.stringContaining("#/shared/doc"), "_blank");
+      openSpy.mockClear();
+
+      // Middle click (auxclick with button: 1)
+      fireEvent(docBtn, new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 }));
+      expect(onOpen).not.toHaveBeenCalled();
+      expect(openSpy).toHaveBeenCalledWith(expect.stringContaining("#/shared/doc"), "_blank");
+      openSpy.mockClear();
+
+      // Normal click opens in same tab
+      fireEvent.click(docBtn);
+      expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "doc", name: "Plan.sldoc" }));
+      expect(openSpy).not.toHaveBeenCalled();
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it("shows open in new tab in the right-click menu and in the three-dots menu", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    try {
+      render(<DriveBrowser mode="open" inline onOpen={vi.fn()} />);
+      const docBtn = await screen.findByRole("button", { name: "Plan.sldoc" });
+
+      // Right-click on file row
+      fireEvent.contextMenu(docBtn, { clientX: 100, clientY: 150 });
+      const menu = await screen.findByRole("menu", { name: "Actions for Plan.sldoc" });
+      expect(menu).toBeTruthy();
+      const openInTabBtn = within(menu).getByRole("button", { name: "Open Plan.sldoc in a new tab" });
+      expect(openInTabBtn).toBeTruthy();
+
+      // Clicking "Open in new tab"
+      fireEvent.click(openInTabBtn);
+      expect(openSpy).toHaveBeenCalledWith(expect.stringContaining("#/shared/doc"), "_blank");
+      expect(screen.queryByRole("menu", { name: "Actions for Plan.sldoc" })).toBeNull();
+      openSpy.mockClear();
+
+      // Three-dot menu also has "Open in new tab"
+      const trigger = screen.getByRole("button", { name: "More actions for Plan.sldoc" });
+      fireEvent.click(trigger);
+      const menu2 = await screen.findByRole("menu", { name: "Actions for Plan.sldoc" });
+      expect(within(menu2).getByRole("button", { name: "Open Plan.sldoc in a new tab" })).toBeTruthy();
+      fireEvent.click(within(menu2).getByRole("button", { name: "Open Plan.sldoc in a new tab" }));
+      expect(openSpy).toHaveBeenCalledWith(expect.stringContaining("#/shared/doc"), "_blank");
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it("allows viewers to open in a new tab via menu and command-click", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    try {
+      render(<DriveBrowser mode="open" inline onOpen={vi.fn()} />);
+      // "Pitch.slslides" has role: "viewer"
+      const deckBtn = await screen.findByRole("button", { name: "Pitch.slslides" });
+
+      // Command-click
+      fireEvent.click(deckBtn, { metaKey: true });
+      expect(openSpy).toHaveBeenCalledWith(expect.stringContaining("#/shared/deck"), "_blank");
+      openSpy.mockClear();
+
+      // Right-click menu
+      fireEvent.contextMenu(deckBtn);
+      const menu = await screen.findByRole("menu", { name: "Actions for Pitch.slslides" });
+      expect(within(menu).getByRole("button", { name: "Open Pitch.slslides in a new tab" })).toBeTruthy();
+      // Viewers don't see Move, Rename, Trash
+      expect(within(menu).queryByRole("button", { name: "Move Pitch.slslides" })).toBeNull();
+      expect(within(menu).queryByRole("button", { name: "Rename Pitch.slslides" })).toBeNull();
+      expect(within(menu).queryByRole("button", { name: "Move Pitch.slslides to trash" })).toBeNull();
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
 });
