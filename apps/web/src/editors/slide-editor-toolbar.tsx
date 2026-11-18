@@ -24,6 +24,7 @@ import { Menu, MenuItem, Tool } from "../ui";
 import { MenuSearchPill } from "../command-palette";
 import { EditorToolbarActionsSlot, EditorToolbarNavigationSlot } from "../editor-toolbar-actions";
 import { ReleaseDropdown } from "../release-dropdown";
+import { SlideLayoutThumbnail } from "./slide-layout-thumbnail";
 import type { SlidesEditorState } from "./slide-editor-state";
 import type { DeckHistoryApi } from "./slide-editor-history";
 import type { SlideOrderActions } from "./slide-editor-commands";
@@ -188,29 +189,81 @@ export function SlidesToolbar({
         >
           {deck.marp ? (
             <>
-              <MenuItem onSelect={() => addSlide("title-body")}>
-                Single column
+              <MenuItem
+                searchLabel="Single column"
+                onSelect={() => addSlide("title-body")}
+              >
+                <span className="layout-menu-item">
+                  <SlideLayoutThumbnail layout="title-body" />
+                  <span className="layout-menu-label">Single column</span>
+                </span>
               </MenuItem>
-              <MenuItem onSelect={() => addSlide("two-column")}>
-                Two columns
+              <MenuItem
+                searchLabel="Two columns"
+                onSelect={() => addSlide("two-column")}
+              >
+                <span className="layout-menu-item">
+                  <SlideLayoutThumbnail layout="two-column" />
+                  <span className="layout-menu-label">Two columns</span>
+                </span>
               </MenuItem>
-              <MenuItem onSelect={() => addSlide("three-column")}>
-                Three columns
+              <MenuItem
+                searchLabel="Three columns"
+                onSelect={() => addSlide("three-column")}
+              >
+                <span className="layout-menu-item">
+                  <SlideLayoutThumbnail layout="three-column" />
+                  <span className="layout-menu-label">Three columns</span>
+                </span>
               </MenuItem>
             </>
           ) : (
             <>
-              <MenuItem onSelect={() => addSlide("title-body")}>
-                Title & body
+              <MenuItem
+                searchLabel="Title & body"
+                onSelect={() => addSlide("title-body")}
+              >
+                <span className="layout-menu-item">
+                  <SlideLayoutThumbnail layout="title-body" />
+                  <span className="layout-menu-label">Title & body</span>
+                </span>
               </MenuItem>
-              <MenuItem onSelect={() => addSlide("title")}>Title slide</MenuItem>
-              <MenuItem onSelect={() => addSlide("two-column")}>
-                Two columns
+              <MenuItem
+                searchLabel="Title slide"
+                onSelect={() => addSlide("title")}
+              >
+                <span className="layout-menu-item">
+                  <SlideLayoutThumbnail layout="title" />
+                  <span className="layout-menu-label">Title slide</span>
+                </span>
               </MenuItem>
-              <MenuItem onSelect={() => addSlide("section")}>
-                Section header
+              <MenuItem
+                searchLabel="Two columns"
+                onSelect={() => addSlide("two-column")}
+              >
+                <span className="layout-menu-item">
+                  <SlideLayoutThumbnail layout="two-column" />
+                  <span className="layout-menu-label">Two columns</span>
+                </span>
               </MenuItem>
-              <MenuItem onSelect={() => addSlide("blank")}>Blank slide</MenuItem>
+              <MenuItem
+                searchLabel="Section header"
+                onSelect={() => addSlide("section")}
+              >
+                <span className="layout-menu-item">
+                  <SlideLayoutThumbnail layout="section" />
+                  <span className="layout-menu-label">Section header</span>
+                </span>
+              </MenuItem>
+              <MenuItem
+                searchLabel="Blank slide"
+                onSelect={() => addSlide("blank")}
+              >
+                <span className="layout-menu-item">
+                  <SlideLayoutThumbnail layout="blank" />
+                  <span className="layout-menu-label">Blank slide</span>
+                </span>
+              </MenuItem>
             </>
           )}
         </Menu>

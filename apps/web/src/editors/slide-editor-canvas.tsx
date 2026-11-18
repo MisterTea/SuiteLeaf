@@ -263,6 +263,7 @@ export function editorCanvasHooks(
           },
         };
       const live = (el.type === "text" || el.type === "table") && el.id === liveId;
+      const isEditing = el.id === editingId;
       const props: SlideBoxProps = {
         ...position,
         ...editorFadeAttrs(el),
@@ -322,7 +323,7 @@ export function editorCanvasHooks(
           onElementMouseDown(e, el.id);
         };
       return {
-        className: `${isSelected ? " selected" : ""}${live ? " marp-live" : ""}${editorFadeClass(el)}`,
+        className: `${isSelected ? " selected" : ""}${isEditing ? " is-editing active-editing" : ""}${live ? " marp-live" : ""}${editorFadeClass(el)}`,
         props,
       };
     },
@@ -336,7 +337,7 @@ export function editorCanvasHooks(
     after: (el) =>
       el.type === "shape" && el.marpHtml ? (
         <span className="marp-html-label">HTML</span>
-      ) : el.id === selectedElementId && !readOnly && !marpOpen && !deck.marp ? (
+      ) : el.id === selectedElementId && editingId !== el.id && !readOnly && !marpOpen && !deck.marp ? (
         renderHandles(el.id)
       ) : null,
     cell: (el, row, col) => ({
@@ -415,6 +416,11 @@ export function SlideCanvasStage({
   useSlideMobileTextZoom(stageRef, shownSlide, state.editingId ?? state.focusedBox, deck.width || 960, readOnly);
   return (
     <div className="slides-canvas-stage" ref={statusTarget}>
+      {state.editingId ? (
+        <div className="slide-mobile-tap-hint" aria-hidden="true">
+          Tap outside to finish
+        </div>
+      ) : null}
       {state.masterView ? (
         <div className="master-view-bar" role="status">
           <strong>{masterPageLabel(state.activeSlideId).label}</strong>
@@ -463,7 +469,7 @@ export function SlideCanvasStage({
         style={deck.marp && marpOpen ? { ["--marp-split" as string]: marpSplit } : undefined}
       >
       <div
-        className="slide-stage-viewport"
+        className={`slide-stage-viewport${state.editingId ? " is-editing-text" : ""}`}
         style={{ touchAction: "pan-y pinch-zoom" }}
         ref={stageRef}
         onPointerDownCapture={(event) => {
@@ -484,12 +490,19 @@ export function SlideCanvasStage({
         onClick={(e) => {
           // Selecting an object can move it below a newly opened toolbar before
           // the browser synthesizes its touch click on the canvas background.
-          if (state.ignoreCanvasClick.current) {
+          const ignore = state.ignoreCanvasClick.current;
+          if (ignore) {
             state.ignoreCanvasClick.current = false;
-            return;
+            if (typeof ignore === "object") {
+              if (Math.abs(ignore.x - e.clientX) < 5 && Math.abs(ignore.y - e.clientY) < 5) {
+                return;
+              }
+            } else {
+              return;
+            }
           }
-          if ((e.target as HTMLElement).closest?.("[data-element-id]")) {
-            if (textPress.current) return;
+          if ((e.target as HTMLElement).closest?.("[data-element-id], .slides-toolbar")) {
+            return;
           }
           editingRef.current = null;
           setEditingId(null);
@@ -593,6 +606,16 @@ export function SlideCanvasStage({
       ) : null}
       {deck.marp && marpOpen ? (
         <aside className="marp-pane" aria-label="Markdown">
+          <div className="marp-pane-header">
+            <div className="marp-pane-header-title">
+              <span className="marp-pane-title-text">Markdown</span>
+              <span className="marp-pane-badge">MARP</span>
+            </div>
+            <div className="marp-pane-status" title="Changes sync live with the slide preview">
+              <span className="marp-status-dot" />
+              <span className="marp-status-label">Live Sync</span>
+            </div>
+          </div>
           {marpInvalid
             ? null
             : marpWarnings.map((warning) => (

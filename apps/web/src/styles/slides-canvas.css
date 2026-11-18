@@ -3,6 +3,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: #f1f3f4;
@@ -22,8 +23,80 @@
   min-height: 0;
   border-left: 1px solid var(--border);
   background: #fff;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.03);
+}
+.marp-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  user-select: none;
+  flex-shrink: 0;
+}
+.marp-pane-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.marp-pane-title-text {
+  font-weight: 600;
+  color: #1e293b;
+  letter-spacing: -0.01em;
+}
+.marp-pane-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: #e8f0fe;
+  color: #1a73e8;
+  letter-spacing: 0.04em;
+  border: 1px solid rgba(26, 115, 232, 0.2);
+}
+.marp-pane-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+}
+.marp-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+:root.dark-theme .marp-pane,
+:root[data-theme="dark"] .marp-pane {
+  background: #18181b;
+  border-left-color: #27272a;
+}
+:root.dark-theme .marp-pane-header,
+:root[data-theme="dark"] .marp-pane-header {
+  background: #121214;
+  border-bottom-color: #27272a;
+}
+:root.dark-theme .marp-pane-title-text,
+:root[data-theme="dark"] .marp-pane-title-text {
+  color: #f4f4f5;
+}
+:root.dark-theme .marp-pane-badge,
+:root[data-theme="dark"] .marp-pane-badge {
+  background: #1e293b;
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.3);
+}
+:root.dark-theme .marp-pane-status,
+:root[data-theme="dark"] .marp-pane-status {
+  color: #94a3b8;
 }
 .mobile-marp-view-toggle { display: none; }
+.slide-mobile-tap-hint { display: none; }
 @media screen and (max-width: 700px) {
   /* Keep menus and the canvas together above the software keyboard. The
      browser can pan the visual viewport when bringing a text caret into view. */
@@ -37,6 +110,47 @@
   }
   .slide-stage-row > .slide-stage-viewport {
     min-height: 0;
+    padding: 12px 10px;
+  }
+  .slide-stage-viewport.is-editing-text {
+    background: #f1f3f7;
+    transition: background-color 0.25s ease;
+  }
+  .slide-mobile-tap-hint {
+    display: inline-flex;
+    align-items: center;
+    position: fixed;
+    top: 130px;
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.82);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #f8fafc;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    padding: 5px 14px;
+    border-radius: 16px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+    pointer-events: none;
+    z-index: 50;
+    animation: slide-hint-fade-in 0.25s ease forwards;
+  }
+  @keyframes slide-hint-fade-in {
+    from { opacity: 0; transform: translate(-50%, -4px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+  }
+  .resize-handle {
+    width: 9px;
+    height: 9px;
+  }
+  .resize-handle::before {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    pointer-events: auto;
   }
   .mobile-marp-view-toggle {
     display: block;
@@ -64,28 +178,54 @@
 /* Straddles the markdown pane's left border and takes no room in the row. */
 .marp-split-handle {
   position: relative;
-  z-index: 3;
-  flex: 0 0 8px;
-  margin: 0 -4px;
+  z-index: 5;
+  flex: 0 0 10px;
+  margin: 0 -5px;
   cursor: col-resize;
   touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .marp-split-handle::after {
   content: "";
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 3px;
+  left: 4px;
   width: 2px;
-  transition: background-color 0.15s;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+.marp-split-grip {
+  position: relative;
+  z-index: 2;
+  width: 4px;
+  height: 32px;
+  border-radius: 4px;
+  background: #cbd5e1;
+  transition: background-color 0.15s ease, height 0.15s ease, width 0.15s ease, box-shadow 0.15s ease;
+  pointer-events: none;
 }
 .marp-split-handle:hover::after,
 .marp-split-handle:focus-visible::after,
 .marp-split-handle.dragging::after {
   background: var(--google-blue);
 }
+.marp-split-handle:hover .marp-split-grip,
+.marp-split-handle:focus-visible .marp-split-grip,
+.marp-split-handle.dragging .marp-split-grip {
+  background: var(--google-blue);
+  width: 5px;
+  height: 44px;
+  box-shadow: 0 0 8px rgba(26, 115, 232, 0.45);
+}
 .marp-split-handle:focus-visible {
   outline: none;
+}
+:root.dark-theme .marp-split-grip,
+:root[data-theme="dark"] .marp-split-grip {
+  background: #3f3f46;
 }
 .slide-stage-row.marp-resizing {
   cursor: col-resize;
@@ -110,6 +250,17 @@
 }
 .marp-frame[data-state="incoming"] {
   visibility: hidden;
+}
+.marp-backdrop-layer {
+  transition: opacity 0.12s ease;
+}
+.slide-canvas:not(.marp-painted) .marp-backdrop-layer {
+  opacity: 0;
+  visibility: hidden;
+}
+.slide-canvas.marp-painted .marp-backdrop-layer {
+  opacity: 1;
+  visibility: visible;
 }
 /* Thumbnails and the slideshow keep the slide built from boxes underneath, unseen. */
 /* Thumbnails, the slideshow, handouts, and print show the editor's drawing, scaled like a picture. */
@@ -161,7 +312,7 @@
   opacity: 0;
 }
 .slide-canvas.marp-painted .element-textarea {
-  caret-color: var(--spell-caret, #1e293b);
+  caret-color: var(--spell-caret, currentColor);
 }
 .slide-surface.marp-painted .slide-shape,
 .slide-surface.marp-painted .slide-number {
@@ -225,17 +376,31 @@
   width: 100% !important;
   height: 100% !important;
   min-height: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.6;
 }
 .marp-ace-editor .ace_gutter {
-  background: #f8f9fa;
-  color: #8c959f;
+  background: #f8fafc;
+  color: #94a3b8;
   border-right: 1px solid var(--border, #e5e7eb);
+  padding-right: 2px;
+}
+.marp-ace-editor .ace_gutter-cell {
+  padding-left: 10px;
+  padding-right: 10px;
 }
 .marp-ace-editor .ace_gutter-active-line {
   background: #edf2f7;
+  color: #1e293b;
+  font-weight: 600;
+}
+.marp-ace-editor .ace_active-line {
+  background: rgba(26, 115, 232, 0.04) !important;
+}
+.marp-ace-editor .ace_marker-layer .ace_selection {
+  background: rgba(26, 115, 232, 0.18) !important;
+  border-radius: 2px;
 }
 :root.dark-theme .marp-ace-editor,
 :root[data-theme="dark"] .marp-ace-editor {
@@ -251,6 +416,15 @@
 :root.dark-theme .marp-ace-editor .ace_gutter-active-line,
 :root[data-theme="dark"] .marp-ace-editor .ace_gutter-active-line {
   background: #27272a;
+  color: #f4f4f5;
+}
+:root.dark-theme .marp-ace-editor .ace_active-line,
+:root[data-theme="dark"] .marp-ace-editor .ace_active-line {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+:root.dark-theme .marp-ace-editor .ace_marker-layer .ace_selection,
+:root[data-theme="dark"] .marp-ace-editor .ace_marker-layer .ace_selection {
+  background: rgba(96, 165, 250, 0.25) !important;
 }
 .marp-ace-editor .ace_heading,
 .marp-ace-editor .ace_markup.ace_heading {
@@ -272,6 +446,13 @@
 .marp-ace-editor .ace_constant.ace_buildin,
 .marp-ace-editor .ace_support.ace_function {
   color: #953800;
+}
+.marp-ace-editor .ace_constant.ace_language {
+  color: #cf222e;
+  font-weight: 600;
+}
+.marp-ace-editor .ace_meta.ace_tag {
+  color: #6e7781;
 }
 :root.dark-theme .marp-ace-editor .ace_constant.ace_buildin,
 :root.dark-theme .marp-ace-editor .ace_support.ace_function,
@@ -385,6 +566,7 @@
   user-select: none;
   /* Descendants size type with cqw. The canvas itself cannot, so the fit layer does. */
   container-type: inline-size;
+  transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease;
 }
 .slide-snap-guide {
   position: absolute;
@@ -445,12 +627,37 @@
   /* PowerPoint does not apply standard OpenType ligatures (ti, fi, fl, ff) to slide text. */
   font-variant-ligatures: none;
   cursor: move;
+  transition: outline 0.2s ease, box-shadow 0.2s ease;
 }
 .slide-surface.marp-fit .slide-element {
   cursor: default;
 }
 .slide-element.selected {
   outline: 2px solid var(--google-blue);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+.slide-element.editing,
+.slide-element.is-editing {
+  outline: 2px solid var(--google-blue);
+  outline-offset: 2px;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 3.5px rgba(26, 115, 232, 0.18),
+    0 4px 14px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+  transition: box-shadow 0.15s ease, outline-color 0.15s ease;
+}
+.slide-element.editing .selection-handles,
+.slide-element.is-editing .selection-handles {
+  display: none !important;
+}
+.slide-canvas .slide-text.editing .element-textarea,
+.slide-canvas .slide-text.editing .element-editor,
+.slide-canvas .slide-text.is-editing .element-textarea,
+.slide-canvas .slide-text.is-editing .element-editor {
+  padding: max(6px, calc(6px * var(--canvas-fit, 1)));
+  caret-color: var(--spell-caret, currentColor);
 }
 .selection-handles {
   position: absolute;

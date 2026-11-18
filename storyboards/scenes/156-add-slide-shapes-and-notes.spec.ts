@@ -1,4 +1,3 @@
-import type { Page } from "@playwright/test";
 import { beat, caption, expect, test, typeSlowly } from "./harness";
 
 test("156-add-slide-shapes-and-notes", async ({ page }) => {
@@ -30,6 +29,7 @@ test("156-add-slide-shapes-and-notes", async ({ page }) => {
     1500,
   );
   await page.getByRole("button", { name: "+ New slide" }).click();
+  await beat(page, 700);
   await page.getByRole("menuitem", { name: "Title & body" }).click();
   await expect(page.locator(".thumbnail-row")).toHaveCount(2);
   await beat(page, 900);

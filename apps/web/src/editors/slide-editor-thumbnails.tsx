@@ -273,7 +273,7 @@ export function SlideThumbnails({
         <button type="button" onClick={touch.finishSelection}>Done</button>
       </div> : null}
       <div className="slides-sidebar-header">
-        <span>Slides ({deck.slideOrder.length})</span>
+        <span className="slides-sidebar-title">Slides ({deck.slideOrder.length})</span>
         <div className="sidebar-slide-actions">
           <button
             type="button"
@@ -366,7 +366,6 @@ export function SlideThumbnails({
 
           const label = `Slide ${index + 1}${slide?.transition && slide.transition.type !== "none" ? `, ${slide.transition.type} transition` : ""}${heading ? `: ${heading}` : ""}`;
           const rowProps = {
-            key: id,
             role: "option" as const,
             "data-slide-id": id,
             "aria-selected": isChosen,
@@ -463,11 +462,11 @@ export function SlideThumbnails({
               },
           };
           return fileId ? (
-            <Link {...rowProps} {...handlers} to={presentationSlidePath(fileId, id)}>
+            <Link key={id} {...rowProps} {...handlers} to={presentationSlidePath(fileId, id)}>
               {body}
             </Link>
           ) : (
-            <div {...rowProps} {...handlers}>
+            <div key={id} {...rowProps} {...handlers}>
               {body}
             </div>
           );

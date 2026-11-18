@@ -22,19 +22,44 @@ export function useSlideMobileTextZoom(
 
     const fit = () => {
       if (window.innerWidth > 700 || !stage.clientWidth) return;
-      const available = Math.max(1, stage.clientWidth - 32);
       const normalWidth = baseWidth;
       if (!normalWidth) return;
-      // Fit the box across the phone, with a cap for very narrow boxes.
-      const width = Math.max(normalWidth, Math.min(normalWidth * 3, available * deckWidth / Math.max(1, boxWidth)));
+      const available = Math.max(1, stage.clientWidth - 24);
+
+      // Provide a comfortable reading zoom (at least ~1.55x) while scaling narrow boxes to fill the width.
+      const minComfortableZoom = normalWidth * 1.55;
+      const maxZoom = normalWidth * 2.2;
+      const fitBoxWidth = (available * deckWidth) / Math.max(1, boxWidth);
+      const width = Math.round(Math.min(maxZoom, Math.max(minComfortableZoom, fitBoxWidth)));
+
+      canvas.style.transition = "width 0.22s cubic-bezier(0.16, 1, 0.3, 1), margin 0.22s cubic-bezier(0.16, 1, 0.3, 1)";
       canvas.style.width = `${width}px`;
       canvas.style.maxWidth = "none";
       canvas.style.alignSelf = "flex-start";
       canvas.style.margin = "0";
+
       const scale = width / deckWidth;
-      stage.scrollLeft = Math.max(0, (x + boxWidth / 2) * scale - stage.clientWidth / 2);
-      // Keep the beginning of a tall box visible above the software keyboard.
-      stage.scrollTop = Math.max(0, y * scale - Math.max(16, (stage.clientHeight - boxHeight * scale) / 2));
+      const boxLeftInCanvas = x * scale;
+      const boxWidthInCanvas = boxWidth * scale;
+      const offsetLeft = canvas.offsetLeft;
+      const boxLeftInStage = offsetLeft + boxLeftInCanvas;
+
+      // If the box fits within the available width, center it; otherwise align its left edge with padding.
+      const targetScrollLeft = boxWidthInCanvas <= available
+        ? Math.max(0, Math.round(boxLeftInStage + boxWidthInCanvas / 2 - stage.clientWidth / 2))
+        : Math.max(0, Math.round(boxLeftInStage - 14));
+
+      // Keep the top of the box in the upper field of view above the software keyboard.
+      const offsetTop = canvas.offsetTop;
+      const boxTopInStage = offsetTop + y * scale;
+      const targetScrollTop = Math.max(0, Math.round(boxTopInStage - 20));
+
+      if (typeof stage.scrollTo === "function") {
+        stage.scrollTo({ left: targetScrollLeft, top: targetScrollTop, behavior: "smooth" });
+      } else {
+        stage.scrollLeft = targetScrollLeft;
+        stage.scrollTop = targetScrollTop;
+      }
     };
     fit();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
@@ -45,8 +70,12 @@ export function useSlideMobileTextZoom(
       window.removeEventListener("resize", fit);
       if (savedStyle === null) canvas.removeAttribute("style");
       else canvas.setAttribute("style", savedStyle);
-      stage.scrollLeft = scrollLeft;
-      stage.scrollTop = scrollTop;
+      if (typeof stage.scrollTo === "function") {
+        stage.scrollTo({ left: scrollLeft, top: scrollTop, behavior: "smooth" });
+      } else {
+        stage.scrollLeft = scrollLeft;
+        stage.scrollTop = scrollTop;
+      }
     };
   }, [stageRef, slide.id, id, type, x, y, boxWidth, boxHeight, deckWidth, readOnly]);
 }

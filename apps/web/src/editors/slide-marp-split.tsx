@@ -114,6 +114,8 @@ export function MarpSplitHandle({
         event.preventDefault();
         onSplit(clampMarpSplit(next, width), true);
       }}
-    />
+    >
+      <div className="marp-split-grip" aria-hidden="true" />
+    </div>
   );
 }
