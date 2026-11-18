@@ -44,6 +44,9 @@ describe("embedded Supermail build", () => {
     expect(
       aliases.some((alias) => alias.replacement.includes("fullfat_base64.js")),
     ).toBe(true);
+    expect(
+      aliases.some((alias) => alias.replacement.includes("lucide-react.js")),
+    ).toBe(true);
     const [plugin] = (await config.supermailPlugins()) as any[];
     expect(
       plugin.transform(

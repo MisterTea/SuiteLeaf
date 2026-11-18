@@ -51,6 +51,13 @@ export function supermailAliases(stub: string): Alias[] {
         "@automerge/automerge/dist/mjs/entrypoints/fullfat_base64.js",
       ),
     },
+    {
+      find: /^lucide-react$/,
+      replacement: resolve(
+        modules,
+        "lucide-react/dist/esm/lucide-react.js",
+      ),
+    },
   ];
 }
 

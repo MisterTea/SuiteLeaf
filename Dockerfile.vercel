@@ -30,13 +30,16 @@ RUN npm ci --no-audit --no-fund --workspace=@suiteleaf/web --workspace=@suitelea
 COPY packages/supermail/package.json packages/supermail/package-lock.json packages/supermail/
 # SuiteMail has an independent lockfile; install outside the root workspaces.
 RUN npm ci --prefix packages/supermail --workspaces=false --no-audit --no-fund && npm cache clean --force
-COPY apps apps
-COPY packages packages
+COPY apps/web apps/web
+COPY packages/core packages/core
+COPY packages/supermail/src packages/supermail/src
 COPY services services
 ENV VITE_SUITELEAF_SERVER=1
 # V8 otherwise defaults to a 2 GiB heap in the Standard builder's container.
-# Full editor + mail builds need headroom for esbuild and Rollup's native work.
-RUN GOMAXPROCS=2 NODE_OPTIONS=--max-old-space-size=4096 npm run build:web && npm run build:auth
+# Cap the V8 heap at 3.5 GiB and expose GC so Vite reclaims transform ASTs
+# before Rollup and esbuild render and minify chunks in the 8 GiB builder.
+RUN GOMAXPROCS=2 NODE_OPTIONS="--max-old-space-size=3584 --expose-gc" npm run build:web
+RUN npm run build:auth
 
 FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*

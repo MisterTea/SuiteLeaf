@@ -1,9 +1,9 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync, readdirSync, readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
-import { defineConfig, type Connect, type UserConfig } from "vite";
+import { defineConfig, type Connect, type Plugin, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { rollupWarnings } from "./build-warnings";
 import { offline } from "./offline";
@@ -58,6 +58,89 @@ const supermailStub = resolve(
   "src/mail/SuperMailStub.tsx",
 );
 
+function collectUsedLucideIcons(dirs: string[]): Set<string> {
+  const used = new Set<string>();
+  const re = /import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+["']lucide-react["']/g;
+  const walk = (dir: string) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === "dist" || entry.name === ".git") continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.[tj]sx?$/.test(entry.name)) {
+        const text = readFileSync(full, "utf8");
+        let match: RegExpExecArray | null;
+        while ((match = re.exec(text))) {
+          for (const part of match[1].split(",")) {
+            const name = part.trim().split(/\s+as\s+/)[0].trim().replace(/^type\s+/, "");
+            if (name) used.add(name);
+          }
+        }
+      }
+    }
+  };
+  for (const dir of dirs) walk(dir);
+  return used;
+}
+
+/**
+ * Keeps container builds within Vercel's 8 GiB memory ceiling by pruning unused
+ * lucide-react barrel exports (~3,500 modules), serializing esbuild chunk
+ * minification, and reclaiming V8 transform garbage before chunk rendering.
+ */
+function buildMemoryGuard(): Plugin {
+  let usedIcons: Set<string> | null = null;
+  const gc = () => (globalThis as { gc?: () => void }).gc?.();
+  return {
+    name: "suiteleaf-build-memory-guard",
+    apply: "build",
+    enforce: "pre",
+    configResolved(config) {
+      const esb = config.plugins.find((p) => p.name === "vite:esbuild-transpile");
+      if (esb && typeof esb.renderChunk === "function") {
+        const orig = esb.renderChunk;
+        let queue = Promise.resolve();
+        esb.renderChunk = function (code, chunk, opts, meta) {
+          const run = () =>
+            Promise.resolve(orig.call(this, code, chunk, opts, meta)).finally(() => {
+              if (code.length > 200_000) gc();
+            });
+          const next = queue.then(run, run);
+          queue = next.then(
+            () => {},
+            () => {},
+          );
+          return next;
+        };
+      }
+    },
+    transform(code, id) {
+      if (!id.replace(/\\/g, "/").endsWith("lucide-react/dist/esm/lucide-react.js")) return null;
+      usedIcons ??= collectUsedLucideIcons([
+        resolve(import.meta.dirname, "src"),
+        resolve(import.meta.dirname, "../../packages/supermail/src"),
+      ]);
+      if (usedIcons.size === 0) return null;
+      return code
+        .split("\n")
+        .filter((line) => {
+          if (!line.startsWith("export {")) return false;
+          return [...line.matchAll(/\bas\s+(\w+)/g)].some((m) => usedIcons!.has(m[1]));
+        })
+        .join("\n");
+    },
+    buildEnd() {
+      gc();
+    },
+    renderStart() {
+      gc();
+    },
+    generateBundle() {
+      gc();
+    },
+  };
+}
+
 export default defineConfig(async (): Promise<UserConfig> => ({
   plugins: [
     {
@@ -69,13 +152,31 @@ export default defineConfig(async (): Promise<UserConfig> => ({
         server.middlewares.use(modelCache());
       },
     },
+    buildMemoryGuard(),
     react(),
     offline(),
     conditionalFormatDefaults(),
     ...(await supermailPlugins()),
   ],
   resolve: {
-    dedupe: ["react", "react-dom"],
+    dedupe: [
+      "react",
+      "react-dom",
+      "dompurify",
+      "openai",
+      "@anthropic-ai/sdk",
+      "zustand",
+      "@tiptap/core",
+      "@tiptap/pm",
+      "@tiptap/react",
+      "@tiptap/starter-kit",
+      "@tiptap/extension-highlight",
+      "@tiptap/extension-image",
+      "@tiptap/extension-link",
+      "@tiptap/extension-text-align",
+      "@tiptap/extension-text-style",
+      "@tiptap/extension-underline",
+    ],
     alias: [
       ...Object.entries(dictionaryAlias).map(([find, replacement]) => ({
         find,
@@ -95,7 +196,12 @@ export default defineConfig(async (): Promise<UserConfig> => ({
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
       ...rollupWarnings,
-      maxParallelFileOps: 64,
+      maxParallelFileOps: 16,
+      output: {
+        manualChunks(id) {
+          if (id.includes("automerge_wasm_bg_base64")) return "automerge-wasm";
+        },
+      },
       input: {
         app: resolve(import.meta.dirname, "index.html"),
         castReceiver: resolve(import.meta.dirname, "cast-receiver.html"),
