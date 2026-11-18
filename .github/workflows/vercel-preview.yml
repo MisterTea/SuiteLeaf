@@ -45,15 +45,36 @@ jobs:
             appendFileSync(process.env.GITHUB_OUTPUT, `cloud=${paths.some(affectsCloud)}\n`);
           '
       - uses: docker/setup-buildx-action@v3
+        id: buildx
         if: steps.changes.outputs.cloud == 'true'
-      - name: Build on GitHub and deploy the preview
+      - name: Pull preview project settings
         if: steps.changes.outputs.cloud == 'true'
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@65.12.1 pull --yes --environment=preview
+      - name: Restore and save the image layer cache
+        if: steps.changes.outputs.cloud == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.vercel
+          builder: ${{ steps.buildx.outputs.name }}
+          platforms: linux/amd64
+          outputs: type=cacheonly
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
+      - name: Build on GitHub and deploy the preview
+        if: steps.changes.outputs.cloud == 'true'
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          npx --yes vercel@65.12.1 pull --yes --environment=preview
           npx --yes vercel@65.12.1 build --yes
           npx --yes vercel@65.12.1 deploy --prebuilt --archive=tgz --yes \
             --meta "githubCommitSha=${{ github.event.pull_request.head.sha }}" \
@@ -102,15 +123,36 @@ jobs:
             exit "$code"
           fi
       - uses: docker/setup-buildx-action@v3
+        id: buildx
         if: steps.gate.outputs.deploy == 'true'
-      - name: Build on GitHub and deploy production
+      - name: Pull production project settings
         if: steps.gate.outputs.deploy == 'true'
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@65.12.1 pull --yes --environment=production
+      - name: Restore and save the image layer cache
+        if: steps.gate.outputs.deploy == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.vercel
+          builder: ${{ steps.buildx.outputs.name }}
+          platforms: linux/amd64
+          outputs: type=cacheonly
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
+      - name: Build on GitHub and deploy production
+        if: steps.gate.outputs.deploy == 'true'
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          npx --yes vercel@65.12.1 pull --yes --environment=production
           npx --yes vercel@65.12.1 build --prod --yes
           npx --yes vercel@65.12.1 deploy --prebuilt --prod --archive=tgz --yes \
             --meta "githubCommitSha=${{ github.sha }}" \
