@@ -6,7 +6,7 @@
   "type": "module",
   "workspaces": [
     "apps/*",
-    "packages/*",
+    "packages/core",
     "services/*"
   ],
   "engines": {
