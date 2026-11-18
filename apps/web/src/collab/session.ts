@@ -165,6 +165,7 @@ export function useDocumentRoom({
     let timer: ReturnType<typeof setTimeout> | undefined;
     let authed = false;
     let connecting = false;
+    let offline = navigator.onLine === false;
     /** The token this socket last signed in with. A renewal sends only a different one. */
     let sentToken: string | null = null;
     let link: RoomLink = "joining";
@@ -242,14 +243,14 @@ export function useDocumentRoom({
     };
     doc.on("update", onUpdate);
     const schedule = () => {
-      if (closed || giveUp || pausedForSignIn || idleInBackground()) return;
+      if (closed || giveUp || pausedForSignIn || offline || idleInBackground()) return;
       const delay = reconnectDelay(attempt);
       attempt += 1;
       timer = setTimeout(() => void connect(), delay);
     };
     const connect = async () => {
       const session = getSession();
-      if (!session || closed || giveUp || pausedForSignIn || connecting || idleInBackground()) return;
+      if (!session || closed || giveUp || pausedForSignIn || connecting || offline || idleInBackground()) return;
       link = attempt === 0 ? "joining" : "reconnecting";
       report();
       if (socket && socket.readyState !== WebSocket.CLOSED) return;
@@ -262,7 +263,7 @@ export function useDocumentRoom({
         schedule();
         return;
       }
-      if (closed || giveUp || pausedForSignIn || idleInBackground()) {
+      if (closed || giveUp || pausedForSignIn || offline || idleInBackground()) {
         connecting = false;
         return;
       }
@@ -276,6 +277,7 @@ export function useDocumentRoom({
         next.send(JSON.stringify(authMessage(token)));
       };
       next.onmessage = (event) => {
+        if (offline) return;
         const message = JSON.parse(String(event.data)) as {
           type?: string;
           reason?: string;
@@ -421,12 +423,15 @@ export function useDocumentRoom({
         socket.send(JSON.stringify({ type: "activity" }));
     };
     const onOffline = () => {
+      offline = true;
+      clearTimeout(timer);
       if (closed || giveUp || pausedForSignIn) return;
       link = "reconnecting";
       report();
       socket?.close();
     };
     const onOnline = () => {
+      offline = false;
       if (closed || giveUp || pausedForSignIn) return;
       if (socket?.readyState === WebSocket.OPEN && authed) {
         link = "open";

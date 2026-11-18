@@ -54,8 +54,13 @@ test("slideshow starts from the beginning, shows speaker notes, and uses real fu
   await page.keyboard.press("b");
   await expect(show.locator(".presenter-blank")).toHaveCount(0);
 
-  if (isMobile) await page.keyboard.press("Escape");
-  else await page.evaluate(() => document.exitFullscreen());
+  if (!isMobile) {
+    await page.evaluate(() => document.exitFullscreen());
+    await expect.poll(() => fullscreen(page)).toBe(false);
+    await expect(show).toBeVisible();
+    await expect(notes).toContainText("End of presentation");
+  }
+  await page.keyboard.press("Escape");
   await expect(show).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -115,8 +120,12 @@ test("text selection in presentation mode is disabled to prevent shadow text", a
   await expect(show).toBeVisible();
 
   const userSelect = await page.evaluate(() => {
-    const slideBox = document.querySelector(".presenter-slide-box") as HTMLElement;
-    const textEl = document.querySelector(".presenter-overlay .slide-text") as HTMLElement;
+    const slideBox = document.querySelector(
+      ".presenter-slide-box",
+    ) as HTMLElement;
+    const textEl = document.querySelector(
+      ".presenter-overlay .slide-text",
+    ) as HTMLElement;
     return {
       slideBox: window.getComputedStyle(slideBox).userSelect,
       textEl: textEl ? window.getComputedStyle(textEl).userSelect : null,
@@ -131,10 +140,14 @@ test("text selection in presentation mode is disabled to prevent shadow text", a
   if (box) {
     await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.3);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.3, { steps: 5 });
+    await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.3, {
+      steps: 5,
+    });
     await page.mouse.up();
   }
-  const selectedText = await page.evaluate(() => window.getSelection()?.toString() || "");
+  const selectedText = await page.evaluate(
+    () => window.getSelection()?.toString() || "",
+  );
   expect(selectedText).toBe("");
 
   // Notes panel retains selectable text for speaker copying
@@ -142,7 +155,9 @@ test("text selection in presentation mode is disabled to prevent shadow text", a
   const notesPanel = page.locator(".presenter-notes-panel");
   await expect(notesPanel).toBeVisible();
   const notesUserSelect = await page.evaluate(() => {
-    const notes = document.querySelector(".presenter-notes-panel") as HTMLElement;
+    const notes = document.querySelector(
+      ".presenter-notes-panel",
+    ) as HTMLElement;
     return notes ? window.getComputedStyle(notes).userSelect : null;
   });
   expect(notesUserSelect).toBe("text");

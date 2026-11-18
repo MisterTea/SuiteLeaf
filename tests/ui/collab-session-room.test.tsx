@@ -473,6 +473,13 @@ describe("document room", () => {
     });
     expect(socket().readyState).toBe(FakeSocket.CLOSED);
     expect(lastRecovery()).toBe("Reconnecting to the shared document.");
+    // Local sockets may remain reachable under browser offline emulation.
+    // Neither retries nor edits should reconnect until the online event.
+    const count = FakeSocket.instances.length;
+    const doc = spies.onDoc.mock.calls.at(-1)?.[0] as Y.Doc;
+    act(() => doc.getText("offline").insert(0, "queued"));
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(FakeSocket.instances).toHaveLength(count);
     act(() => {
       window.dispatchEvent(new Event("online"));
     });

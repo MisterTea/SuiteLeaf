@@ -4,7 +4,7 @@ import { X } from "lucide-react";
 import { editorSaveTitle, type SaveRecord } from "../save-state";
 import { StatusIcon, saveIconState } from "../status-icon";
 
-/** Routine saves stay quiet; failures announce themselves above the editor. */
+/** Routine saves stay quiet; failures and room recovery announce themselves. */
 export function WorkspaceStatusToast({
   status,
   record,
@@ -24,7 +24,7 @@ export function WorkspaceStatusToast({
   const failed = iconState === "error";
   useEffect(() => {
     setVisible(true);
-    if (!failed || needsRetry) return;
+    if (!failed || needsRetry || roomNotice) return;
     const timer = window.setTimeout(() => setVisible(false), 5000);
     return () => window.clearTimeout(timer);
   }, [status, roomNotice, needsRetry, failed]);
@@ -32,7 +32,7 @@ export function WorkspaceStatusToast({
   const toast = (
     <div
       className="workspace-status-toast"
-      hidden={!visible || !failed}
+      hidden={!visible || (!failed && !roomNotice)}
     >
       <div role="status" aria-live="polite" aria-atomic="true">
         <span className="save-status">
