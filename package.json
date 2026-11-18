@@ -42,6 +42,10 @@
     "build:node": "cargo build --release -p suiteleaf-node",
     "test:rust": "cargo test --workspace",
     "storyboards": "playwright test --config playwright.storyboards.config.ts",
+    "storyboards:all": "node scripts/run-storyboards.mjs",
+    "storyboards:desktop": "node scripts/run-storyboards.mjs desktop",
+    "storyboards:marp": "node scripts/run-storyboards.mjs marp",
+    "storyboards:mobile": "node scripts/run-storyboards.mjs mobile",
     "setup:test-fonts": "node scripts/setup-test-fonts.mjs"
   },
   "devDependencies": {

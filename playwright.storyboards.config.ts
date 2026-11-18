@@ -28,12 +28,17 @@ export default defineConfig({
   projects: [
     {
       name: "storyboards",
-      testIgnore: /\/ai\//,
+      testIgnore: [/\/ai\//, /marp/i],
+      use: { ...shared, launchOptions: { slowMo: Number(process.env.STORYBOARD_SLOWMO ?? 60) } },
+    },
+    {
+      name: "marp",
+      testMatch: /marp.*\.spec\.ts$/,
       use: { ...shared, launchOptions: { slowMo: Number(process.env.STORYBOARD_SLOWMO ?? 60) } },
     },
     {
       name: "mobile",
-      testIgnore: /\/ai\//,
+      testIgnore: [/\/ai\//, /marp/i],
       use: {
         ...shared,
         viewport: { width: 390, height: 844 },

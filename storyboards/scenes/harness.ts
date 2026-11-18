@@ -177,6 +177,8 @@ export const test = base.extend<{ page: Page }>({
     const video = page.video();
     await close();
     const passed = info.status === info.expectedStatus;
+    const marp = info.project.name === "marp";
+    const sub = mobile ? "mobile" : marp ? "marp" : electronMode ? "electron" : "";
     if (video && runTag)
       encode(await video.path(), join(root, "test-results/ai-videos/runs", runTag, `${info.title}.r${info.repeatEachIndex}.mp4`));
     else if (video && (passed || ai)) {
@@ -184,8 +186,8 @@ export const test = base.extend<{ page: Page }>({
       encode(
         await video.path(),
         passed
-          ? join(videos, mobile ? "mobile" : electronMode ? "electron" : "", name)
-          : join(root, "test-results/ai-videos", mobile ? "mobile" : electronMode ? "electron" : "", name),
+          ? join(videos, sub, name)
+          : join(root, "test-results/ai-videos", sub, name),
       );
     }
     rmSync(dir, { recursive: true, force: true });
