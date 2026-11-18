@@ -1,0 +1,10 @@
+name = "suiteleaf-bugcatcher"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[vars]
+GITHUB_REPO = "MisterTea/SuiteLeaf-issues"
+GITHUB_REPO_ID = "1462191815"
+
+# The GitHub token is a secret, never committed:
+#   npx wrangler secret put GITHUB_TOKEN

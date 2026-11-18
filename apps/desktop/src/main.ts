@@ -87,6 +87,7 @@ import {
   importDrawing,
 } from "../../web/src/editors/drawing-format";
 import { registerAi } from "./ai";
+import { registerIssueReporter } from "./issue-reporter";
 // Test runs need their own Electron profile and single-instance lock as well as registry.
 if (process.env.SUITELEAF_TEST_DATA) {
   mkdirSync(process.env.SUITELEAF_TEST_DATA, { recursive: true });
@@ -944,6 +945,7 @@ else {
       () => window?.webContents,
       (sender) => sender === window?.webContents,
     );
+    registerIssueReporter(register, () => window);
     ipcMain.on("dirty", (event, value) => {
       if (event.sender === window?.webContents && typeof value === "boolean")
         dirty = value;

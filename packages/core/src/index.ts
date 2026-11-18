@@ -328,6 +328,21 @@ export interface DesktopBridge {
   /** Run a social sign-in hand-off in a separate window and resolve with
    * the one-time token it returns. */
   authWindow?(startUrl: string): Promise<string | null>;
+  /** Capture a screenshot of the active application window as a data URL. */
+  captureScreenshot?(): Promise<string>;
+}
+
+export interface IssueData {
+  type: "bug" | "feature";
+  text: string;
+  screenshotDataUrl?: string;
+}
+
+export interface IssueResult {
+  success: boolean;
+  /** Issue number in the private tracker. */
+  number?: number;
+  error?: string;
 }
 /**
  * `single`: not connected to a server. In the desktop app this is single-node
