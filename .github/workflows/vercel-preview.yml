@@ -47,6 +47,9 @@ jobs:
       - uses: docker/setup-buildx-action@v3
         id: buildx
         if: steps.changes.outputs.cloud == 'true'
+        with:
+          driver-opts: |
+            default-load=true
       - name: Pull preview project settings
         if: steps.changes.outputs.cloud == 'true'
         env:
@@ -125,6 +128,9 @@ jobs:
       - uses: docker/setup-buildx-action@v3
         id: buildx
         if: steps.gate.outputs.deploy == 'true'
+        with:
+          driver-opts: |
+            default-load=true
       - name: Pull production project settings
         if: steps.gate.outputs.deploy == 'true'
         env:

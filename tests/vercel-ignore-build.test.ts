@@ -80,6 +80,7 @@ describe("cloud build inputs", () => {
     "vercel.json",
     "package-lock.json",
     "scripts/new-build-step.mjs",
+    ".github/workflows/vercel-preview.yml",
     "new-input",
   ])("builds cloud or unknown input %s", (path) => {
     expect(affectsCloud(path)).toBe(true);

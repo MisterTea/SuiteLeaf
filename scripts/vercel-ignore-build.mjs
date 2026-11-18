@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 /** Unknown paths build conservatively. Package manifests and deployment
  * configuration always build, including desktop's workspace manifest. */
 export function affectsCloud(path) {
+  if (path === ".github/workflows/vercel-preview.yml") return true;
   return !(
     /^(docs|tests|storyboards|project_management|\.github)\//.test(path) ||
     /^[^/]+\.md$/i.test(path) ||
