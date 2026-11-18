@@ -508,15 +508,15 @@ test("double-clicking an HTML block selects its markdown, and typing hides only 
   const hidden = () =>
     page
       .locator(".slide-canvas .marp-backdrop[data-state=shown]")
-      .evaluate((frame) =>
-        [
-          ...(
-            frame as HTMLIFrameElement
-          ).contentDocument!.querySelectorAll<HTMLElement>("[data-sl-lines]"),
-        ]
+      .evaluate((frame) => {
+        const document = (frame as HTMLIFrameElement).contentDocument;
+        // A redraw replaces the iframe document. Keep polling until the new
+        // drawing has loaded, rather than throwing or accepting an empty frame.
+        if (!document?.querySelector("[data-sl-lines]")) return null;
+        return [...document.querySelectorAll<HTMLElement>("[data-sl-lines]")]
           .filter((node) => node.style.visibility === "hidden")
-          .map((node) => node.textContent?.trim()),
-      );
+          .map((node) => node.textContent?.trim());
+      });
   const textBox = canvas.locator(".slide-text").nth(1);
   await editSlideText(textBox);
   await expect.poll(hidden).toEqual(["Text with H2O inside."]);
