@@ -311,13 +311,17 @@ describe("mentions in a comment", () => {
     const options = screen.getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["Dan LeeOn this computer", "Dana FoxOn this computer", "DaNo account"]);
     expect(field.getAttribute("aria-expanded")).toBe("true");
+    expect(field.getAttribute("aria-activedescendant")).toBe(options[0].id);
     fireEvent.keyDown(field, { key: "ArrowDown" });
     expect(options[1].getAttribute("aria-selected")).toBe("true");
+    expect(field.getAttribute("aria-activedescendant")).toBe(options[1].id);
     fireEvent.keyDown(field, { key: "ArrowUp" });
     fireEvent.keyDown(field, { key: "ArrowUp" });
     expect(screen.getAllByRole("option")[2].getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(field, { key: "Escape" });
     expect(list.isConnected).toBe(false);
+    expect(field.getAttribute("aria-expanded")).toBe("false");
+    expect(field.hasAttribute("aria-activedescendant")).toBe(false);
     expect(screen.getByRole("textbox", { name: "Comment" })).toBe(field);
     typeInto(field, "Hi @Dan");
     await screen.findByRole("listbox");
