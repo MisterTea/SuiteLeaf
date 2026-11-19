@@ -266,14 +266,14 @@ describe("app window", () => {
 
   it("asks before closing while a save is in progress", () => {
     const { dialog } = fake.electron;
-    fake.ipcListeners.get("dirty")!({ sender: {} }, true);
-    fake.ipcListeners.get("dirty")!({ sender: win().webContents }, "yes");
+    fake.ipcListeners.get("dirty")!({ sender: {}, senderFrame: {} }, true);
+    fake.ipcListeners.get("dirty")!({ sender: win().webContents, senderFrame: win().webContents.mainFrame }, "yes");
     const clean = { preventDefault: vi.fn() };
     win().emit("close", clean);
     expect(clean.preventDefault).not.toHaveBeenCalled();
     expect(mocks.restartWhileDirty).toHaveBeenLastCalledWith(false);
 
-    fake.ipcListeners.get("dirty")!({ sender: win().webContents }, true);
+    fake.ipcListeners.get("dirty")!({ sender: win().webContents, senderFrame: win().webContents.mainFrame }, true);
     mocks.restartWhileDirty.mockReturnValueOnce({
       action: "wait",
       reason: "An update is waiting for this save.",
@@ -300,7 +300,7 @@ describe("app window", () => {
     const unload = { preventDefault: vi.fn() };
     win().webContents.emit("will-prevent-unload", unload);
     expect(unload.preventDefault).toHaveBeenCalled();
-    fake.ipcListeners.get("dirty")!({ sender: win().webContents }, false);
+    fake.ipcListeners.get("dirty")!({ sender: win().webContents, senderFrame: win().webContents.mainFrame }, false);
   });
 
   it("brings the window forward for a second launch", () => {

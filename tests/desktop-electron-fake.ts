@@ -35,6 +35,12 @@ export class FakeContents extends Emitter {
   printers: unknown[] = [];
   printResult: [boolean, string] = [true, ""];
   reload = vi.fn();
+  focus = vi.fn();
+  close = vi.fn();
+  destroyed = false;
+  isDestroyed() {
+    return this.destroyed;
+  }
   session = {
     setPermissionRequestHandler: (handler: Listener) =>
       (this.permissionRequest = handler),
@@ -71,6 +77,7 @@ export class FakeWindow extends Emitter {
   closed = false;
   show = vi.fn();
   focus = vi.fn();
+  setTitle = vi.fn();
   setOpacity = vi.fn();
   setIgnoreMouseEvents = vi.fn();
   showInactive = vi.fn();
