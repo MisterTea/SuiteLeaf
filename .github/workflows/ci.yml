@@ -42,6 +42,18 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: node node_modules/electron/install.js
+      # GitHub's Ubuntu image ships xvfb. The smaller act image does not.
+      - name: Install xvfb when the runner does not have it
+        run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
+              sudo apt-get update
+              sudo apt-get install -y xvfb
+            else
+              apt-get update
+              apt-get install -y xvfb
+            fi
+          fi
       - run: xvfb-run --auto-servernum npm run test:electron
       - uses: actions/upload-artifact@v4
         if: failure()
