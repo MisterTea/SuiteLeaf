@@ -7,6 +7,7 @@ test("156-add-slide-shapes-and-notes", async ({ page }) => {
     1600,
   );
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
   await page.locator(".slide-canvas").waitFor();
   await beat(page, 900);

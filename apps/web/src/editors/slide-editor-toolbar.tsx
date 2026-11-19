@@ -151,7 +151,7 @@ export function SlidesToolbar({
           <MenuItem onSelect={() => distributeSelected("horizontal")}>Distribute horizontally</MenuItem>
           <MenuItem onSelect={() => distributeSelected("vertical")}>Distribute vertically</MenuItem>
           <MenuItem onSelect={toggleLock}>
-            {activeSlide.elements.find((item) => item.id === selectedElementId)?.locked
+            {activeSlide?.elements.find((item) => item.id === selectedElementId)?.locked
               ? "Unlock"
               : "Lock"}
           </MenuItem>

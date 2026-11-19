@@ -66,6 +66,7 @@ test("autofit shrinks slide text into the box and keeps it after reopen", async 
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
   await expect(page.locator(".slides-editor")).toBeVisible();
   await page.getByLabel("File title").fill("Garden autofit");

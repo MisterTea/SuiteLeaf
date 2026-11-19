@@ -10,9 +10,11 @@ import {
   Copy,
   FolderInput,
 } from "lucide-react";
-import { useId, type DragEvent, type ReactNode } from "react";
+import { useId, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { FileRecord } from "@suiteleaf/core";
+import { noteContextMenu, onDocumentTabClick, tabClickHint } from "./desktop-tab-bar";
+import { DriveMenuPopup } from "./drive/DriveMenuPopup";
 import { formatModified } from "./drive/status";
 import { recordSaveStatus, syncTargetHost } from "./save-state";
 import { DrawingIcon } from "./drawing-home";
@@ -28,6 +30,9 @@ export function FileLibraryRow({
   snippet,
   view,
   desktop,
+  onOpen,
+  onOpenInNewTab,
+  onDownload,
   onRename,
   onDuplicate,
   onMoveToTrash,
@@ -35,6 +40,7 @@ export function FileLibraryRow({
   onDeleteForever,
   onToggleStar,
   onMove,
+  onShare,
   onDragStart,
   selection,
 }: {
@@ -43,6 +49,9 @@ export function FileLibraryRow({
   selection?: { checked: boolean; control: ReactNode };
   view: LibraryFilter;
   desktop: boolean;
+  onOpen?: () => void;
+  onOpenInNewTab?: () => void;
+  onDownload?: () => void;
   onRename: () => void;
   onDuplicate: () => void;
   onMoveToTrash: () => void;
@@ -51,10 +60,31 @@ export function FileLibraryRow({
   onToggleStar: () => void;
   /** Move the file into another folder of the documents folder. */
   onMove?: () => void;
+  onShare?: () => void;
   onDragStart?: (event: DragEvent) => void;
 }) {
   const title = record.file.title;
   const trashed = !!record.trashedAt;
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const menu =
+    !trashed && menuAt && (onOpen || onOpenInNewTab || onDownload || onShare) ? (
+      <DriveMenuPopup
+        item={{ id: record.file.id, name: title, kind: "file" }}
+        mode="open"
+        busy={false}
+        popupRef={menuRef}
+        point={menuAt}
+        onOpen={onOpen}
+        onOpenInNewTab={onOpenInNewTab}
+        onDownload={onDownload}
+        onRename={onRename}
+        onMove={onMove}
+        onCopy={onDuplicate}
+        onShare={onShare}
+        onClose={() => setMenuAt(null)}
+      />
+    ) : null;
   const starred = !!record.starred;
   const saved = recordSaveStatus(record, { desktop });
   const syncHost = syncTargetHost(record.drive?.nodeUrl);
@@ -66,10 +96,30 @@ export function FileLibraryRow({
     .map((part) => `${id}-${part}`)
     .join(" ");
   return (
-    <div className={`file-row${selection?.checked ? " file-row-selected" : ""}`} draggable={!!onDragStart && !trashed} onDragStart={onDragStart}>
+    <div
+      className={`file-row${selection?.checked ? " file-row-selected" : ""}`}
+      draggable={!!onDragStart && !trashed}
+      onDragStart={onDragStart}
+      onContextMenu={(event) => {
+        if (trashed || !(onOpen || onOpenInNewTab || onDownload || onShare)) return;
+        event.preventDefault();
+        noteContextMenu();
+        setMenuAt({ x: event.clientX, y: event.clientY });
+      }}
+    >
       <div className={`file-main${selection ? " file-main-selectable" : ""}`}>
         {selection?.control}
-        <Link to={`/file/${record.file.id}`} aria-label={title} aria-describedby={described}>
+        <Link
+          to={`/file/${record.file.id}`}
+          aria-label={title}
+          aria-describedby={described}
+          title={tabClickHint()}
+          onMouseDown={(event) => {
+            if (event.button === 1 && window.suiteleaf?.tabs) event.preventDefault();
+          }}
+          onClick={(event) => onDocumentTabClick(event, `/file/${record.file.id}`, title)}
+          onAuxClick={(event) => onDocumentTabClick(event, `/file/${record.file.id}`, title)}
+        >
           <span className={`file-icon ${record.file.kind}`}>
             {record.file.kind === "doc" ? (
               <FileText size={21} />
@@ -190,6 +240,7 @@ export function FileLibraryRow({
           </>
         )}
       </div>
+      {menu}
     </div>
   );
 }

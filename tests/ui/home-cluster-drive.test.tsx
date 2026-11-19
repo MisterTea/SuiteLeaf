@@ -190,13 +190,16 @@ describe("ClusterHome", () => {
 
   it("creates new files in the open SuiteDrive folder", async () => {
     renderHome();
+    fireEvent.click(screen.getByRole("button", { name: "New", exact: true }));
     fireEvent.click(screen.getByRole("button", { name: /New document/ }));
     await waitFor(() => expect(hoisted.createInDrive).toHaveBeenCalledWith(expect.objectContaining({ kind: "doc" }), null, expect.any(Function)));
     act(() => hoisted.browser!.onFolderChange("f-work", "Work"));
     expect(screen.getAllByText("In Work").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "New", exact: true }));
     fireEvent.click(screen.getByRole("button", { name: /New spreadsheet/ }));
     await waitFor(() => expect(hoisted.createInDrive).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "sheet" }), "f-work", expect.any(Function)));
     hoisted.createInDrive.mockRejectedValueOnce(new Error("Quota reached."));
+    fireEvent.click(screen.getByRole("button", { name: "New", exact: true }));
     fireEvent.click(screen.getByRole("button", { name: /New presentation/ }));
     expect((await screen.findByRole("alert")).textContent).toContain("Quota reached.");
     act(() => hoisted.browser!.onFolderChange(null, "My Drive"));

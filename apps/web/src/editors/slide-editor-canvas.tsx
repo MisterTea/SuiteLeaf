@@ -389,7 +389,7 @@ export function SlideCanvasStage({
     readOnly: boolean;
     slideComments: { notice: ReactNode; marks: ReactNode; dock: ReactNode };
     activeSlide: Slide;
-    shownSlide: Slide;
+    shownSlide: Slide | undefined;
     currentSlideIndex: number;
     canvasHooks: SlideFaceHooks;
     marpPages: MarpPages | null;

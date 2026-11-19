@@ -27,6 +27,7 @@ async function main() {
   await page.waitForTimeout(500);
 
   // 2. Click New presentation
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
   await page.waitForTimeout(600);
 

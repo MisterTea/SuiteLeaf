@@ -94,7 +94,6 @@ vi.mock("../../apps/web/src/ai/tools/cluster", () => ({
   },
 }));
 vi.mock("../../apps/web/src/ai/AgentSidebar", () => ({ AiButton: () => null }));
-vi.mock("../../apps/web/src/templates/gallery", () => ({ TemplateHome: () => null }));
 vi.mock("../../apps/web/src/document-settings", () => ({ SettingsButton: () => null }));
 vi.mock("../../apps/web/src/home/ImportButton", () => ({
   ImportButton: (props: ImportProps) => {
@@ -219,10 +218,28 @@ describe("LocalHome in the browser", () => {
     expect(hoisted.records.get(budget.file.id)?.trashedAt).toBeUndefined();
   });
 
+  it("opens a chooser from New and closes it without creating a file", () => {
+    renderHome();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "New", exact: true }));
+    const dialog = screen.getByRole("dialog", { name: "What do you want to make?" });
+    expect(within(dialog).getByRole("button", { name: /New document/ })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: /New spreadsheet/ })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: /New presentation/ })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: /New MARP deck/ })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "New SVG drawing" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(hoisted.records.size).toBe(0);
+  });
+
   it("welcomes an empty library and opens a new file or a sample", async () => {
     renderHome();
     expect(await screen.findByText("A workspace waiting for you")).toBeTruthy();
     expect(screen.getByText("Your workspace, in this browser.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Start from template" }));
+    expect(path()).toBe("/templates");
+    fireEvent.click(screen.getByRole("button", { name: "New", exact: true }));
     fireEvent.click(screen.getByRole("button", { name: /New document/ }));
     await waitFor(() => expect(path()).toMatch(/^\/file\//));
     const id = path()!.slice("/file/".length);
@@ -234,6 +251,7 @@ describe("LocalHome in the browser", () => {
   it("shows a save failure and dismisses it", async () => {
     hoisted.failSave = "The browser is out of space.";
     renderHome();
+    fireEvent.click(screen.getByRole("button", { name: "New", exact: true }));
     fireEvent.click(await screen.findByRole("button", { name: /New spreadsheet/ }));
     expect((await screen.findByRole("alert")).textContent).toContain("The browser is out of space.");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
@@ -408,6 +426,7 @@ describe("LocalHome in the browser", () => {
     expect(screen.getByRole("heading", { name: "Recents" })).toBeTruthy();
     expect(titles()).toEqual(["Older", "Newer"]);
     fireEvent.click(screen.getByRole("button", { name: "All files" }));
+    fireEvent.click(screen.getByRole("button", { name: "New", exact: true }));
     fireEvent.click(screen.getByRole("button", { name: /New MARP deck/ }));
     await waitFor(() => expect(hoisted.records.size).toBe(3));
     const deck = [...hoisted.records.values()].find((r) => r.file.kind === "slide")!;
@@ -832,6 +851,7 @@ describe("LocalHome on the desktop", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(bridge.createFolder).toHaveBeenCalledWith("Garden/Beds", "Seeds"));
     expect(await screen.findByRole("button", { name: /^Seeds/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New", exact: true }));
     fireEvent.click(screen.getByRole("button", { name: /New presentation/ }));
     await waitFor(() => expect(bridge.moveFile).toHaveBeenCalledWith(expect.any(String), "Garden/Beds"));
     fireEvent.click(screen.getByRole("button", { name: "New folder" }));

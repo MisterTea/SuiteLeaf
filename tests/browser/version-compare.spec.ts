@@ -80,7 +80,7 @@ test("a local spreadsheet version compares cells, including format, and stays re
   const yesterday = serializeFile(rosterFile(id, yesterdayAt, ROSTER_YESTERDAY, false));
   const morning = serializeFile(rosterFile(id, morningAt, ROSTER_MORNING, true));
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "New spreadsheet" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await seedVersions(page, id, "Volunteer roster", morningAt, morning, [
     { id: "roster-morning", createdAt: morningAt, native: morning },
     { id: "roster-yesterday", createdAt: yesterdayAt, native: yesterday },
@@ -126,7 +126,7 @@ test("a local slide version shows added and removed text and a deleted slide", a
   const older = serializeFile(deckFile(id, yesterdayAt, "Fundraiser pitch", true));
   const current = serializeFile(deckFile(id, morningAt, "Spring fair", false));
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "New presentation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await seedVersions(page, id, "Fundraiser pitch", morningAt, current, [
     { id: "deck-morning", createdAt: morningAt, native: current },
     { id: "deck-yesterday", createdAt: yesterdayAt, native: older },

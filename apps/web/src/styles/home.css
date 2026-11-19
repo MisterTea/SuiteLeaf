@@ -136,6 +136,52 @@
 :root[data-theme="dark"] .version {
   color: var(--text-muted);
 }
+.home-new {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 12px;
+  margin-top: 22px;
+}
+.start-from-template {
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.home-new-where {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.new-menu-button {
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border-color: transparent;
+  background: #188038;
+  color: #fff;
+}
+.new-menu-button:hover {
+  background: #146c2e;
+}
+:root[data-theme="dark"] .new-menu-button,
+:root.dark-theme .new-menu-button {
+  background: #81c995;
+  color: #102117;
+}
+:root[data-theme="dark"] .new-menu-button:hover,
+:root.dark-theme .new-menu-button:hover {
+  background: #9ad4ad;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .new-menu-button {
+    background: #81c995;
+    color: #102117;
+  }
+  :root:not([data-theme="light"]) .new-menu-button:hover {
+    background: #9ad4ad;
+  }
+}
 .welcome {
   margin-top: 63px;
 }
@@ -157,25 +203,25 @@
   font-size: 15px;
   color: var(--text-secondary);
 }
-.new-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin: 35px 0 52px;
+.new-kind-dialog {
+  width: min(480px, calc(100vw - 32px));
 }
-@media (min-width: 1200px) {
-  .new-cards {
-    grid-template-columns: repeat(3, 1fr);
-  }
+.new-kind-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(70vh, 520px);
+  overflow: auto;
 }
 .new-card {
-  padding: 26px 24px;
+  width: 100%;
+  padding: 12px 14px;
   text-align: left;
-  justify-content: start;
+  justify-content: flex-start;
   border-radius: 10px;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
 }
 .new-card:hover {
   background: var(--surface-hover);
@@ -199,8 +245,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 62px;
-  height: 70px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
   border-radius: 9px;
   margin-right: 12px;
 }
@@ -362,6 +409,10 @@
 .folder-deck-list button {
   width: 100%;
   text-align: left;
+}
+.file-action-note {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
 }
 .file-list {
   background: var(--surface);

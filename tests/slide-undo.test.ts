@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { connectDocs } from "../packages/core/src/collab";
-import { mirrorSlides } from "../apps/web/src/collab/slide-room";
+import { mirrorSlides, seedSlideRoom } from "../apps/web/src/collab/slide-room";
 import {
   noteSlideEdit,
   redoLocalSlide,
@@ -72,5 +72,59 @@ describe("slide undo", () => {
     const stayed = undoLocalSlide(blocked);
     expect(stayed?.conflicts).toEqual(["slideElements\u001fs1\u001fb"]);
     expect(JSON.parse(blocked.getMap<string>("slideElements").get("s1\u001fb")!).text).toBe("Beans");
+  });
+
+  it("seeds an empty room so undo keeps the original slide", () => {
+    const doc = new Y.Doc();
+    const deck = {
+      slideOrder: ["only"],
+      slides: {
+        only: {
+          id: "only",
+          elements: [{ id: "w", type: "text", content: "Intro" }],
+        },
+      },
+    };
+    seedSlideRoom(doc, deck);
+    expect(undoLocalSlide(doc)).toBeNull();
+    expect(doc.getMap("slides").has("only")).toBe(true);
+    expect(JSON.parse(doc.getMap<string>("slideElements").get("only\u001fw")!).content).toBe("Intro");
+
+    const before = snap(doc);
+    mirrorSlides(doc, {
+      slideOrder: ["only"],
+      slides: {
+        only: {
+          id: "only",
+          elements: [
+            { id: "w", type: "text", content: "Intro" },
+            { id: "shape", type: "shape", shapeType: "rect" },
+          ],
+        },
+      },
+    }, { edited: ["only"] });
+    noteSlideEdit(
+      doc,
+      before.elements,
+      new Map(doc.getMap<string>("slideElements").entries()),
+      before.slides,
+      new Map(doc.getMap<string>("slides").entries()),
+    );
+    expect(undoLocalSlide(doc)?.conflicts).toEqual([]);
+    expect(doc.getMap("slides").has("only")).toBe(true);
+    expect(JSON.parse(doc.getMap<string>("slideElements").get("only\u001fw")!).content).toBe("Intro");
+    expect(doc.getMap("slideElements").has("only\u001fshape")).toBe(false);
+
+    const occupied = new Y.Doc();
+    occupied.getMap("slides").set("keep", "{}");
+    seedSlideRoom(occupied, deck);
+    expect(occupied.getMap("slides").has("only")).toBe(false);
+    const ordered = new Y.Doc();
+    ordered.getMap("slideOrder").set("order", "[]");
+    seedSlideRoom(ordered, deck);
+    expect(ordered.getMap("slides").size).toBe(0);
+    seedSlideRoom(new Y.Doc(), { slideOrder: [], slides: {} });
+    seedSlideRoom(doc, deck);
+    expect(doc.getMap("slideElements").has("only\u001fshape")).toBe(false);
   });
 });

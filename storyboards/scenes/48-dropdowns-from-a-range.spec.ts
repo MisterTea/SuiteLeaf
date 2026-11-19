@@ -25,7 +25,7 @@ async function ready(page: Page) {
 
 async function backHome(page: Page) {
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("heading", { name: "Good ideas start here." }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await beat(page, 400);
 }
 

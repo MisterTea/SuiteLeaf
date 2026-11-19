@@ -8,7 +8,7 @@ async function seedEssay(page: Page) {
   const file = createFile("doc", "Independence essay") as DocFile;
   file.content = independenceEssayContent();
   await page.goto("/");
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.evaluate(async (record) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("SuiteLeaf");
@@ -36,6 +36,7 @@ test("word count is on by default, follows the selection, and stays hidden after
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = editorOf(page);
   await editor.click();
@@ -75,6 +76,7 @@ test("spelling keeps formatting, stays on device, and the dictionary can be undo
     if (/seperate|movment|Danquah|recieve/i.test(body)) leaks.push(request.url());
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = editorOf(page);
   await editor.click();

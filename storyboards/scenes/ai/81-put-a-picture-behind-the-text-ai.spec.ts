@@ -184,7 +184,7 @@ test("81-put-a-picture-behind-the-text-ai", async ({ page }) => {
 
   await page.addInitScript(() => localStorage.setItem("suiteleaf.ai.enabled", "1"));
   await page.goto("/");
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.locator("input[type=file]").setInputFiles({
     name: "Saturday market.sldoc",
     mimeType: "application/json",

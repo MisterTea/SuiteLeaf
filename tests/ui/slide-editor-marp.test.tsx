@@ -323,6 +323,30 @@ describe("a MARP deck in the editor", () => {
     expect(editor.elements().at(-1)?.placeholder).toBeUndefined();
   });
 
+  it("pastes a clipboard picture into the markdown at the caret", async () => {
+    const editor = openMarp();
+    await fitted(editor);
+    const area = markdown();
+    const before = sourceValue(area);
+    const at = before.indexOf("Ship the beta");
+    selectSourceRange(area, at, at);
+    const file = new File(["png"], "chart.png", { type: "image/png" });
+    const event = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(event, "clipboardData", {
+      value: {
+        files: [file],
+        items: [{ kind: "file", type: file.type, getAsFile: () => file }],
+        types: ["Files"],
+        getData: () => "",
+      },
+    });
+    area.dispatchEvent(event);
+    await waitFor(() => expect(editor.deck().marpSource).toContain("![chart](media/chart.png)"));
+    expect(editor.deck().marpAssets).toContain("media/chart.png");
+    await fitted(editor);
+    expect(editor.elements().some((el) => el.type === "image" && el.src === "media/chart.png")).toBe(true);
+  });
+
   it("keeps the slide pane and the markdown at the width the border is dragged to", () => {
     openMarp();
     const handle = screen.getByRole("separator", { name: "Resize the slide and markdown panes" });

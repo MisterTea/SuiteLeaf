@@ -132,7 +132,8 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       description: `Create a new document, spreadsheet or presentation${ctx.where ? ` in ${ctx.where}` : ""} and open it. Give a title if the user named it.`,
       parameters: Type.Object({ kind: kindParam, title: Type.Optional(Type.String()) }),
       target: ({ kind }) =>
-        [...document.querySelectorAll(".new-card")].find((b) => b.textContent?.toLowerCase().includes(`new ${kind}`)),
+        [...document.querySelectorAll(".new-card")].find((b) => b.textContent?.toLowerCase().includes(`new ${kind}`)) ??
+        document.querySelector(".new-menu-button"),
       async execute({ kind, title }) {
         const k = KINDS[kind];
         if (!k) throw new ToolError(`Unknown kind "${kind}".`);

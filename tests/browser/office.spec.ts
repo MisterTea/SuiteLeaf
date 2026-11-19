@@ -106,6 +106,7 @@ test("Office failures are visible and leave existing files intact", async ({
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("button", { name: "Import", exact: true }).waitFor();

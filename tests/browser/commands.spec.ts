@@ -4,6 +4,7 @@ test("command search runs strikethrough and explains commands that cannot run", 
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();
@@ -78,6 +79,7 @@ test("the menu search opens with its top-left just below the Menus button", asyn
   };
   for (const kind of ["New document", "New spreadsheet", "New presentation"]) {
     await page.goto("/");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: kind }).click();
     await page.getByRole("button", { name: "Menus", exact: true }).waitFor();
     await opensBelow();

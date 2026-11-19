@@ -9,7 +9,7 @@ async function seedEssay(page: Page) {
   const file = createFile("doc", "Independence essay") as DocFile;
   file.content = independenceEssayContent();
   await page.goto("/");
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.evaluate(async (record) => {
     await new Promise<void>((resolve, reject) => {
       const open = indexedDB.open("SuiteLeaf");

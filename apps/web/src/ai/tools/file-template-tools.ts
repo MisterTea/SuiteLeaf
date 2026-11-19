@@ -63,7 +63,8 @@ export function templateTools(ctx: {
         "List templates a new file can be copied from. Built-in templates are Invoice, Budget, Project tracker, Meeting notes, Letter, Pitch deck, and Announcement. Templates saved with save_as_template are listed too.",
       parameters: Type.Object({}),
       repeatable: true,
-      target: () => document.querySelector(".template-band") ?? document.querySelector(".template-gallery"),
+      target: () =>
+        document.querySelector(".start-from-template") ?? document.querySelector(".template-gallery"),
       async execute() {
         const entries = await loadTemplates();
         return entries.length ? listed(entries) : "There are no templates.";

@@ -60,6 +60,7 @@ test.describe("cluster mode", () => {
       (await fetch(`${server.url}/api/auth/get-session`, { headers: { authorization: `Bearer ${token}` } })).json();
     try {
       await caption(page, "Leo keeps a personal to-do list on this computer.");
+      await page.getByRole("button", { name: "New", exact: true }).click();
       await page.getByRole("button", { name: "New document" }).click();
       await page.getByLabel("File title").fill("Personal to-do");
       await page.getByRole("textbox", { name: "Document content" }).click();

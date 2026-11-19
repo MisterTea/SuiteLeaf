@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("restoring one paragraph keeps the rest of a local document", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();

@@ -148,6 +148,7 @@ test("49-mention-someone-in-a-comment", async ({ page }) => {
     2200,
   );
 
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

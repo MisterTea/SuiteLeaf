@@ -47,7 +47,7 @@ function handoverDoc() {
 
 async function seed(page: Page) {
   await openApp(page);
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.evaluate(
     async ({ records, dictionaryKey }) => {
       localStorage.removeItem(dictionaryKey);

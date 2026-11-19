@@ -270,7 +270,8 @@ export default function Docs({
           openLink,
           insertComment,
         }),
-      handlePaste: (_view, event): boolean => docPaste(event, { editor, readOnlyRef }),
+      handlePaste: (_view, event): boolean =>
+        docPaste(event, { editor, readOnlyRef, onError }),
       handleDoubleClickOn: (_view, _pos, node, nodePos, _event, direct) => {
         const edit = direct ? docPictureToEdit(node, nodePos) : null;
         if (edit) setSvgEdit(edit);

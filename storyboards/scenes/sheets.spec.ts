@@ -19,6 +19,7 @@ import {
 test("09-household-budget-with-formulas", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Maya wants a simple monthly budget: what she planned, what she spent, and what's left.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await ready(page);
 
@@ -331,6 +332,7 @@ test("13-format-money-and-percentages", async ({ page }) => {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await caption(page, "Jess, a freelance designer, is turning last month's hours into an invoice summary.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await ready(page);
   const title = page.getByLabel("File title");

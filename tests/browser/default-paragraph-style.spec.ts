@@ -20,6 +20,7 @@ test("Normal text remembers the current font for new paragraphs and reopened fil
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByLabel("File title").fill("Style notes");
   const editor = page.getByRole("textbox", { name: "Document content" });

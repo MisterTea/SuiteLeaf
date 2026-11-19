@@ -9,6 +9,7 @@ async function snapshot(page: Page) {
 
 async function newSheet(page: Page, rows: string[][]) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await page.locator("[data-sheet-ready='true']").waitFor();
   await page.getByLabel("File title").fill("Alternating colors");

@@ -264,58 +264,67 @@ export function slideElementActions(
     insertOnActive([art]);
   };
 
-  const insertImageFile = (picked: File) => {
+  const insertImageFile = (picked: File): Promise<void> => {
     const slideId = activeDeckSlide(deckRef.current)?.id;
-    if (readOnlyRef.current || !slideId) return;
+    if (readOnlyRef.current || !slideId) return Promise.resolve();
     if (picked.size > 5 * 1024 * 1024) {
       onError("Please choose an image smaller than 5 MB.");
-      return;
+      return Promise.resolve();
     }
-    const reader = new FileReader();
-    reader.onerror = () => onError("This image could not be read.");
-    reader.onload = async () => {
-      const src = String(reader.result);
-      const picture = new Image();
-      picture.src = src;
-      try {
-        await picture.decode();
-      } catch {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => {
         onError("This image could not be read.");
-        return;
-      }
-      const { naturalWidth, naturalHeight } = picture;
-      if (!naturalWidth || !naturalHeight) {
-        onError("This image has no usable dimensions.");
-        return;
-      }
-      const prev = deckRef.current;
-      const slide = prev.slides[slideId];
-      if (readOnlyRef.current || !slide) return;
-      const image = logoImage(
-        src,
-        picked.name,
-        () => crypto.randomUUID(),
-        prev.width,
-        naturalWidth,
-        naturalHeight,
-      );
-      if (!prev.marp || prev.marpFit) {
-        commitRef.current(withElements(prev, slide.id, [image]));
-        if (activeDeckSlide(prev)?.id === slideId) selectElement(image.id);
-        return;
-      }
-      image.y = 10000;
-      const nextSlide = reflowMarp(
-        { ...slide, elements: [...slide.elements, image] },
-        prev.width,
-      );
-      commitRef.current({
-        ...prev,
-        slides: { ...prev.slides, [slide.id]: nextSlide },
-      });
-      if (activeDeckSlide(prev)?.id === slideId) selectElement(image.id);
-    };
-    reader.readAsDataURL(picked);
+        resolve();
+      };
+      reader.onload = async () => {
+        try {
+          const src = String(reader.result);
+          const picture = new Image();
+          picture.src = src;
+          try {
+            await picture.decode();
+          } catch {
+            onError("This image could not be read.");
+            return;
+          }
+          const { naturalWidth, naturalHeight } = picture;
+          if (!naturalWidth || !naturalHeight) {
+            onError("This image has no usable dimensions.");
+            return;
+          }
+          const prev = deckRef.current;
+          const slide = prev.slides[slideId];
+          if (readOnlyRef.current || !slide) return;
+          const image = logoImage(
+            src,
+            picked.name,
+            () => crypto.randomUUID(),
+            prev.width,
+            naturalWidth,
+            naturalHeight,
+          );
+          if (!prev.marp || prev.marpFit) {
+            commitRef.current(withElements(prev, slide.id, [image]));
+            if (activeDeckSlide(prev)?.id === slideId) selectElement(image.id);
+            return;
+          }
+          image.y = 10000;
+          const nextSlide = reflowMarp(
+            { ...slide, elements: [...slide.elements, image] },
+            prev.width,
+          );
+          commitRef.current({
+            ...prev,
+            slides: { ...prev.slides, [slide.id]: nextSlide },
+          });
+          if (activeDeckSlide(prev)?.id === slideId) selectElement(image.id);
+        } finally {
+          resolve();
+        }
+      };
+      reader.readAsDataURL(picked);
+    });
   };
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {

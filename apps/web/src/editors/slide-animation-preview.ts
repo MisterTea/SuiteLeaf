@@ -12,12 +12,12 @@ const PREVIEW_FINAL_HOLD_MS = 1000;
 
 export function useAnimationPreview(
   root: RefObject<HTMLDivElement | null>,
-  slide: Slide,
+  slide: Slide | undefined,
 ) {
   const [request, setRequest] = useState<{ key?: string } | null>(null);
   const animations = useRef<Animation[]>([]);
   useEffect(() => {
-    if (!request) return;
+    if (!request || !slide) return;
     const entries = animationGroups(slide).filter(
       (entry) =>
         !request.key ||

@@ -292,7 +292,7 @@ const PROMPT =
 
 test("47-save-a-theme-for-another-deck-ai", async ({ page }) => {
   await openApp(page);
-  await expect(page.getByRole("button", { name: "New presentation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await seedDecks(page);
   await expect(page.getByRole("link", { name: "Fundraiser pitch", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Spring classes", exact: true })).toBeVisible();

@@ -5,8 +5,8 @@ import {
   ipcMain,
   Menu,
   protocol,
-  shell,
   type IpcMainInvokeEvent,
+  type WebContents,
 } from "electron";
 import {
   join,
@@ -88,6 +88,7 @@ import {
 } from "../../web/src/editors/drawing-format";
 import { registerAi } from "./ai";
 import { registerIssueReporter } from "./issue-reporter";
+import { attachWindowTabs, type WindowTabs } from "./window-tabs";
 // Test runs need their own Electron profile and single-instance lock as well as registry.
 if (process.env.SUITELEAF_TEST_DATA) {
   mkdirSync(process.env.SUITELEAF_TEST_DATA, { recursive: true });
@@ -100,9 +101,25 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 let window: BrowserWindow | null = null,
+  windowTabs: WindowTabs | null = null,
   store: FileStore,
   mode: AppMode = { kind: "single" },
   dirty = false;
+function pageContents(): WebContents[] {
+  if (windowTabs) return windowTabs.pages();
+  return window?.webContents && !window.webContents.isDestroyed() ? [window.webContents] : [];
+}
+function activePage(): WebContents | undefined {
+  const contents = windowTabs?.activeContents() ?? window?.webContents;
+  return contents && !contents.isDestroyed() ? contents : undefined;
+}
+function isPage(contents: WebContents | null | undefined): boolean {
+  if (!contents) return false;
+  return windowTabs ? windowTabs.isPage(contents) : contents === window?.webContents;
+}
+function broadcast(channel: string, ...args: unknown[]) {
+  for (const contents of pageContents()) contents.send(channel, ...args);
+}
 const localDirectory = process.env.SUITELEAF_TEST_DATA ?? localDataDirectory();
 const settingsPath = () =>
   process.env.SUITELEAF_SETTINGS ?? join(localDirectory, "settings.json");
@@ -116,7 +133,7 @@ const reportDocumentScan = (() => {
   const send = (progress: DocumentScanProgress) => {
     last = Date.now();
     pending = undefined;
-    window?.webContents.send("documents:scan", progress);
+    broadcast("documents:scan", progress);
   };
   return (progress: DocumentScanProgress) => {
     const immediate =
@@ -157,7 +174,8 @@ async function setMode(next: AppMode) {
   if (mode.kind === "single") await documentsWatcher.set(documentsDirectory);
   else documentsWatcher.close();
   buildMenu();
-  window?.webContents.reload();
+  if (windowTabs) windowTabs.reloadAll();
+  else window?.webContents.reload();
 }
 /** Run a provider's sign-in on the node's own origin in a child window, and
  * resolve with the one-time token it redirects back with. */
@@ -201,10 +219,7 @@ function authWindow(startUrl: string): Promise<string | null> {
   });
 }
 function authorize(event: IpcMainInvokeEvent) {
-  if (
-    event.sender !== window?.webContents ||
-    event.senderFrame !== window.webContents.mainFrame
-  )
+  if (!isPage(event.sender) || event.senderFrame !== event.sender.mainFrame)
     throw new Error("Unauthorized request.");
 }
 function register(channel: string, handler: (...args: any[]) => unknown) {
@@ -333,11 +348,12 @@ async function openFile() {
   return store.save({ file });
 }
 function send(action: string) {
-  window?.webContents.send("menu", action);
+  activePage()?.send("menu", action);
 }
 /** Automated tests keep the app off screen so it does not take focus. */
 const hideWindows = process.env.SUITELEAF_HIDE_WINDOWS === "1";
 function createWindow() {
+  const preload = join(import.meta.dirname, "../preload/index.cjs");
   window = new BrowserWindow({
     width: 1400,
     height: 920,
@@ -347,7 +363,7 @@ function createWindow() {
     show: false,
     skipTaskbar: hideWindows,
     webPreferences: {
-      preload: join(import.meta.dirname, "../preload/index.cjs"),
+      preload,
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -357,7 +373,7 @@ function createWindow() {
     contents: Electron.WebContents | null,
     permission: string,
   ) =>
-    contents === window?.webContents &&
+    isPage(contents) &&
     (permission === "clipboard-read" ||
       permission === "clipboard-sanitized-write") &&
     (contents?.getURL().startsWith("suiteleaf://app/") ||
@@ -391,13 +407,8 @@ function createWindow() {
     window?.setIgnoreMouseEvents(true);
     window?.showInactive();
   });
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url);
-    return { action: "deny" };
-  });
-  window.webContents.on("will-navigate", (event, url) => {
-    const current = window?.webContents.getURL();
-    if (url.split("#")[0] !== current?.split("#")[0]) event.preventDefault();
+  windowTabs = attachWindowTabs(window, preload, (value) => {
+    dirty = value;
   });
   let closeChosen = false;
   const chooseClose = () =>
@@ -412,8 +423,10 @@ function createWindow() {
           "Keep this window open until the save completes. Closing now may lose the latest edits.",
       }) === 1);
   window.on("close", (event) => {
+    windowTabs?.beginWindowClose();
     const restart = restartWhileDirty(dirty);
     if (restart.action === "wait") {
+      windowTabs?.cancelWindowClose();
       event.preventDefault();
       dialog.showMessageBoxSync(window!, {
         type: "warning",
@@ -422,7 +435,10 @@ function createWindow() {
       });
       return;
     }
-    if (dirty && !chooseClose()) event.preventDefault();
+    if (dirty && !chooseClose()) {
+      windowTabs?.cancelWindowClose();
+      event.preventDefault();
+    }
   });
   // The page's beforeunload guard would otherwise cancel a close the user already chose.
   window.webContents.on("will-prevent-unload", (event) => {
@@ -430,6 +446,7 @@ function createWindow() {
   });
   window.on("closed", () => {
     window = null;
+    windowTabs = null;
   });
   if (process.env.ELECTRON_RENDERER_URL)
     void window.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -490,6 +507,16 @@ function buildMenu() {
             accelerator: "CmdOrCtrl+O",
             click: () => send("open"),
           },
+          {
+            label: "New Tab",
+            accelerator: "CmdOrCtrl+T",
+            click: () => windowTabs?.newTab(),
+          },
+          {
+            label: "Close Tab",
+            accelerator: "CmdOrCtrl+W",
+            click: () => windowTabs?.closeActive(),
+          },
           { type: "separator" },
           { label: "Save", click: () => send("save") },
           { label: "Save As…", click: () => send("save-as") },
@@ -542,8 +569,16 @@ function buildMenu() {
       {
         label: "View",
         submenu: [
-          { role: "reload" },
-          { role: "toggleDevTools" },
+          {
+            label: "Reload",
+            accelerator: "CmdOrCtrl+R",
+            click: () => activePage()?.reload(),
+          },
+          {
+            label: "Toggle Developer Tools",
+            accelerator: process.platform === "darwin" ? "Alt+Cmd+I" : "Ctrl+Shift+I",
+            click: () => activePage()?.toggleDevTools(),
+          },
           { role: "resetZoom" },
           { role: "zoomIn" },
           { role: "zoomOut" },
@@ -692,9 +727,7 @@ else {
             process.env.SUITELEAF_TEST_DATA ?? app.getPath("documents"),
             "SuiteLeaf",
           );
-    documentsWatcher = new DocumentsDirectory(store, () =>
-      window?.webContents.send("files:changed"),
-    );
+    documentsWatcher = new DocumentsDirectory(store, () => broadcast("files:changed"));
     if (mode.kind === "single") {
       try {
         await documentsWatcher.set(documentsDirectory);
@@ -906,7 +939,9 @@ else {
           filters: [{ name: "PDF document", extensions: ["pdf"] }],
         });
         if (result.canceled || !result.filePath) return;
-        const bytes = await window!.webContents.printToPDF({
+        const page = activePage();
+        if (!page) return;
+        const bytes = await page.printToPDF({
           printBackground: true,
           pageSize: "Letter",
           preferCSSPageSize: true,
@@ -917,12 +952,14 @@ else {
             : `${result.filePath}.pdf`;
         await atomicWrite(path, bytes);
       };
-      if (!(await window!.webContents.getPrintersAsync()).length) {
+      const page = activePage();
+      if (!page) return;
+      if (!(await page.getPrintersAsync()).length) {
         await savePDF();
         return;
       }
       const failure = await new Promise<string | null>((resolve) =>
-        window!.webContents.print(
+        page.print(
           { printBackground: true },
           (success, reason) =>
             resolve(success || reason === "cancelled" ? null : reason),
@@ -942,14 +979,11 @@ else {
     });
     registerAi(
       register,
-      () => window?.webContents,
-      (sender) => sender === window?.webContents,
+      () => activePage(),
+      (sender) => isPage(sender),
+      () => pageContents(),
     );
-    registerIssueReporter(register, () => window);
-    ipcMain.on("dirty", (event, value) => {
-      if (event.sender === window?.webContents && typeof value === "boolean")
-        dirty = value;
-    });
+    registerIssueReporter(register, () => window, () => activePage());
     createWindow();
   });
   app.on("activate", () => {

@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 async function q3Deck(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
   await page.getByLabel("File title").fill("Q3 update");
   await fillSlideText(

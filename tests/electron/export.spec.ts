@@ -21,6 +21,7 @@ for (const format of ["DOCX", "XLSX"] as const)
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(e.message));
       if (format === "DOCX") {
+        await page.getByRole("button", { name: "New", exact: true }).click();
         await page.getByRole("button", { name: "New document" }).click();
         await page
           .getByRole("textbox", { name: "Document content" })
@@ -68,6 +69,7 @@ test("assistant export reports a cancelled save dialog", async () => {
     });
     const page = await app.firstWindow();
     await page.evaluate(() => localStorage.setItem("suiteleaf.ai.enabled", "1"));
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByRole("textbox", { name: "Document content" }).fill("Minutes");
     const call = (format: string) =>

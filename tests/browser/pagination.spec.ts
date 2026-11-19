@@ -64,6 +64,7 @@ test("a page break leaves the caret at the top of the new page", async ({
 }) => {
   test.skip(isMobile, "Ctrl+End and Ctrl+Enter are desktop shortcuts.");
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   const status = page.locator(".editor-status");

@@ -119,6 +119,7 @@ test("106-see-the-header-text", async ({ page }) => {
     "Sam is writing the minutes. She wants to see the header before she applies it.",
     1800,
   );
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

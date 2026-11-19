@@ -4,6 +4,7 @@ test.use({ viewport: { width: 1280, height: 800 } });
 
 test("typing in a document does not show a tab stop bar", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();

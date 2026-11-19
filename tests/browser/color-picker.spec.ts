@@ -4,6 +4,7 @@ test.use({ viewport: { width: 2000, height: 1000 } });
 
 test("dragging a color previews the value and applies it on release", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();

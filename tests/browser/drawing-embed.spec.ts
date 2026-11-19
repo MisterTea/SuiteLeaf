@@ -43,6 +43,7 @@ test("an SVG picture on a slide opens in Drawing, and the slide takes the change
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New presentation/ }).click();
   await page.locator('input[type="file"][accept*="image/svg+xml"]').setInputFiles(PICKED);
   const box = page.locator(".slide-canvas .slide-image").first();
@@ -63,6 +64,7 @@ test("an SVG picture in a document opens in Drawing, and the document takes the 
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New document/ }).click();
   await page.locator(".document-content").click();
   await page.locator('input[type="file"][accept*=".svg"]').setInputFiles(PICKED);
@@ -78,6 +80,7 @@ test("an SVG picture in a document opens in Drawing, and the document takes the 
 test("an SVG file in a MARP deck opens in Drawing, and the deck keeps naming the same file", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New MARP deck/ }).click();
   const markdown = page.getByLabel("Presentation markdown");
   await page.locator('input[type="file"][accept*="image/svg+xml"]').setInputFiles(PICKED);
@@ -101,6 +104,7 @@ const RED = LOGO.replace('fill="#1a73e8"', 'fill="#d93025"');
 async function newDocumentWith(page: Page, copies: number) {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New document/ }).click();
   await page.locator(".document-content").click();
   for (let i = 0; i < copies; i++)
@@ -157,6 +161,7 @@ test("keys pressed in Drawing change the drawing, not the slide underneath, and 
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New presentation/ }).click();
   await page.locator('input[type="file"][accept*="image/svg+xml"]').setInputFiles(PICKED);
   const box = page.locator(".slide-canvas .slide-image");
@@ -184,6 +189,7 @@ test("keys pressed in Drawing change the drawing, not the slide underneath, and 
 test("a slide picture keeps its width and takes the drawing's new shape", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New presentation/ }).click();
   await page.locator('input[type="file"][accept*="image/svg+xml"]').setInputFiles(PICKED);
   const box = page.locator(".slide-canvas .slide-image");
@@ -201,6 +207,7 @@ test("a slide picture keeps its width and takes the drawing's new shape", async 
 test("an SVG file a MARP deck shows twice changes in both places", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New MARP deck/ }).click();
   const markdown = page.getByLabel("Presentation markdown");
   const input = page.locator('input[type="file"][accept*="image/svg+xml"]');

@@ -90,6 +90,16 @@ export function undoLocalSlide(doc: Y.Doc): SlideUndoResult | null {
   return revert(doc, stack.undo, stack.redo);
 }
 
+/** The room has a local edit that Undo can take back. Seeding the open deck does not count. */
+export function canUndoSlide(doc: Y.Doc): boolean {
+  return (stacks.get(doc)?.undo.length ?? 0) > 0;
+}
+
+/** The room has a local edit that Redo can put back. */
+export function canRedoSlide(doc: Y.Doc): boolean {
+  return (stacks.get(doc)?.redo.length ?? 0) > 0;
+}
+
 /** Put back the newest undone slide edit, unless that object has since changed. */
 export function redoLocalSlide(doc: Y.Doc): SlideUndoResult | null {
   const stack = stackFor(doc);

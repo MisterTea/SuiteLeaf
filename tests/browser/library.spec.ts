@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 async function newFile(page: Page, kind: string, title: string, text?: string) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: `New ${kind}` }).click();
   const box = page.getByLabel("File title");
   await box.fill(title);
@@ -14,6 +15,7 @@ test("a title typed while a new spreadsheet loads keeps every keystroke", async 
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   const title = page.getByLabel("File title");
   await title.click();
@@ -66,7 +68,7 @@ test("the library searches inside files, sorts, renames and deletes in place", a
   await expect(page.getByText("No files match “tomatoes”")).toBeVisible();
   await page.getByRole("button", { name: "Clear search" }).click();
   await expect(search).toHaveValue("");
-  await expect(page.getByRole("heading", { name: "Good ideas start here." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await search.fill("garden");
   await search.press("Escape");
   await expect(rows).toHaveCount(3);

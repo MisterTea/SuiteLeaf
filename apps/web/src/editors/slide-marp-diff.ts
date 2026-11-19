@@ -60,7 +60,7 @@ const EXTENSIONS: Record<string, string> = {
 };
 
 /** A picture added on the canvas is stored with the deck and written as a relative path. */
-function storeImage(
+export function rememberMarpImage(
   src: string,
   alt: string | undefined,
   assets: Record<string, string>,
@@ -81,6 +81,14 @@ function storeImage(
   for (let n = 2; assets[path]; n++) path = `media/${stem}-${n}.${ext}`;
   assets[path] = src;
   return path;
+}
+
+function storeImage(
+  src: string,
+  alt: string | undefined,
+  assets: Record<string, string>,
+): string {
+  return rememberMarpImage(src, alt, assets);
 }
 
 function byReadingOrder(a: SlideElement, b: SlideElement) {

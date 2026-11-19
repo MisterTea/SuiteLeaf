@@ -697,10 +697,14 @@
   box-sizing: border-box;
   outline: none;
 }
-/* A text box's words when nobody is typing, laid out as the editor's textarea lays them out. */
+/* A text box's words when nobody is typing, laid out as the editor's textarea lays them out.
+   PowerPoint paints past the box unless the body asks to clip. Autofit still clips. */
 .slide-text-face {
   overflow: hidden;
   overflow-wrap: break-word;
+}
+.slide-text:not([data-autofit="on"]) .slide-text-face {
+  overflow: visible;
 }
 .slide-text-face a {
   color: inherit;

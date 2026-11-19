@@ -5,11 +5,12 @@ import { removeCachedModel } from "@suiteleaf/core/gguf-download";
 
 let host: UtilityProcess | undefined;
 let status: AiStatus = { state: "idle", backend: "llama.cpp" };
+let publishStatus = () => {};
 const statusWaiters: ((s: AiStatus) => void)[] = [];
 const templates = new Map<string, (template: string) => void>();
 const generations = new Map<string, WebContents>();
 
-function start(owner: () => WebContents | undefined) {
+function start() {
   if (host) return host;
   host = utilityProcess.fork(join(import.meta.dirname, "ai-host.js"), [], {
     serviceName: "SuiteLeaf model host",
@@ -22,7 +23,7 @@ function start(owner: () => WebContents | undefined) {
   host.on("message", (message) => {
     if (message.type === "status") {
       status = message.status;
-      owner()?.send("ai:status", status);
+      publishStatus();
       if (status.state === "ready" || status.state === "error")
         statusWaiters.splice(0).forEach((done) => done(status));
     } else if (message.type === "template") {
@@ -37,7 +38,7 @@ function start(owner: () => WebContents | undefined) {
   host.on("exit", (code) => {
     host = undefined;
     status = { state: "error", backend: "llama.cpp", modelId: status.modelId, message: `The model host exited (${code}).` };
-    owner()?.send("ai:status", status);
+    publishStatus();
     statusWaiters.splice(0).forEach((done) => done(status));
     for (const [id, target] of generations)
       target.send("ai:event", id, { type: "error", message: status.message });
@@ -67,7 +68,20 @@ export function registerAi(
   register: (channel: string, handler: (...args: any[]) => unknown) => void,
   owner: () => WebContents | undefined,
   isOwner: (sender: WebContents) => boolean,
+  others?: () => readonly WebContents[],
 ) {
+  publishStatus = () => {
+    const targets: WebContents[] = [];
+    const primary = owner();
+    if (primary) targets.push(primary);
+    for (const contents of others?.() ?? []) {
+      if (!targets.includes(contents)) targets.push(contents);
+    }
+    for (const contents of targets) {
+      if (contents.isDestroyed?.()) continue;
+      contents.send("ai:status", status);
+    }
+  };
   if (process.env.SUITELEAF_MODEL_PATH) status = { ...status, modelId: modelIdForFile(process.env.SUITELEAF_MODEL_PATH) };
   register("ai:status", () => status);
   register("ai:remove", async (fileName?: unknown) => {
@@ -81,19 +95,19 @@ export function registerAi(
     const id = typeof modelId === "string" && modelId in AI_MODELS ? (modelId as AiModelId) : undefined;
     if (status.state === "ready" && (!id || status.modelId === id)) return status;
     const waiting = new Promise<AiStatus>((done) => statusWaiters.push(done));
-    start(owner).postMessage({ type: "load", modelId: id });
+    start().postMessage({ type: "load", modelId: id });
     return waiting;
   });
   register("ai:template", () => {
     const id = crypto.randomUUID();
     const waiting = new Promise<string>((done) => templates.set(id, done));
-    start(owner).postMessage({ type: "template", id });
+    start().postMessage({ type: "template", id });
     return waiting;
   });
   ipcMain.on("ai:generate", (event, id: unknown, request: AiGenerateRequest) => {
     if (!isOwner(event.sender) || typeof id !== "string" || !validRequest(request)) return;
     generations.set(id, event.sender);
-    start(owner).postMessage({ type: "generate", id, request });
+    start().postMessage({ type: "generate", id, request });
   });
   ipcMain.on("ai:abort", (event, id: unknown) => {
     if (!isOwner(event.sender) || typeof id !== "string") return;

@@ -10,6 +10,7 @@ import { gardenPicture } from "./fixtures";
 const editorOf = (page: Page) => page.getByRole("textbox", { name: "Document content" });
 
 async function newDocument(page: Page, title: string) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const box = page.getByLabel("File title");
   await expect(box).toBeVisible();
@@ -75,6 +76,7 @@ test("02-find-and-organize-files", async ({ page }) => {
   await backToFiles(page);
 
   await caption(page, "She adds the garden club's files: a budget…", 1000);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   const title = page.getByLabel("File title");
   await title.click();
@@ -87,6 +89,7 @@ test("02-find-and-organize-files", async ({ page }) => {
   await backToFiles(page);
 
   await caption(page, "…a talk for the autumn meeting…", 900);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
   await title.click();
   await title.press("ControlOrMeta+A");

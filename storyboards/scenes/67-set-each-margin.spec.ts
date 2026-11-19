@@ -8,6 +8,7 @@ const editorOf = (page: Page) =>
   page.getByRole("textbox", { name: "Document content" });
 
 async function newDocument(page: Page, title: string) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const box = page.getByLabel("File title");
   await expect(box).toBeVisible();

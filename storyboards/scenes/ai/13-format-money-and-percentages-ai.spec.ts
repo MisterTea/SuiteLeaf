@@ -54,6 +54,7 @@ test("13-format-money-and-percentages-ai", async ({ page }) => {
   page.on("pageerror", (e) => errors.push(e.message));
   await openApp(page);
   await caption(page, "Jess, a freelance designer, is turning last month's hours into an invoice summary.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await ready(page);
   const name = page.getByLabel("File title");

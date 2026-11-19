@@ -634,6 +634,7 @@ describe.skipIf(!enabled)("cloud backend integration", () => {
         mkdirSync(resolve("test-results/cloud-browser"), { recursive: true });
         await page.goto(bases[0]);
         try {
+          await page.getByRole("button", { name: "New", exact: true }).click();
           await page.getByRole("button", { name: "New document" }).click();
         } catch (error) {
           await page.screenshot({
@@ -658,6 +659,7 @@ describe.skipIf(!enabled)("cloud backend integration", () => {
           path: resolve("test-results/cloud-browser/document.png"),
         });
         await page.goto(bases[0]);
+        await page.getByRole("button", { name: "New", exact: true }).click();
         await page.getByRole("button", { name: "New spreadsheet" }).click();
         await page.locator("[data-sheet-ready='true']").waitFor();
         const grid = page.locator(".sheet-host");
@@ -675,6 +677,7 @@ describe.skipIf(!enabled)("cloud backend integration", () => {
           path: resolve("test-results/cloud-browser/spreadsheet.png"),
         });
         await page.goto(bases[0]);
+        await page.getByRole("button", { name: "New", exact: true }).click();
         await page.getByRole("button", { name: "New presentation" }).click();
         const canvas = page.locator(".slide-canvas");
         await canvas.waitFor({ state: "visible" });

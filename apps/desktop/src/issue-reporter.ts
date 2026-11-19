@@ -1,10 +1,14 @@
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, WebContents } from "electron";
 
-/** Captures the app window as a PNG data URL, or "" if it cannot. */
-export async function captureScreenshot(win?: BrowserWindow | null): Promise<string> {
-  if (!win) return "";
+/** Captures the active page as a PNG data URL, or "" if it cannot. */
+export async function captureScreenshot(
+  win?: BrowserWindow | null,
+  contents?: WebContents | null,
+): Promise<string> {
+  const target = contents ?? win?.webContents;
+  if (!target) return "";
   try {
-    return (await win.webContents.capturePage()).toDataURL();
+    return (await target.capturePage()).toDataURL();
   } catch (err) {
     console.warn("capturePage failed:", err);
     return "";
@@ -15,6 +19,7 @@ export async function captureScreenshot(win?: BrowserWindow | null): Promise<str
 export function registerIssueReporter(
   register: (channel: string, handler: (...args: any[]) => unknown) => void,
   getWindow: () => BrowserWindow | null,
+  getContents?: () => WebContents | null | undefined,
 ) {
-  register("screenshot:capture", () => captureScreenshot(getWindow()));
+  register("screenshot:capture", () => captureScreenshot(getWindow(), getContents?.()));
 }

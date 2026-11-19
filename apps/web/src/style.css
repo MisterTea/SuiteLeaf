@@ -4,6 +4,7 @@
 @import "./editors/slide-theme.css";
 
 @import "./styles/base.css";
+@import "./styles/desktop-tabs.css";
 @import "./styles/home.css";
 @import "./styles/workspace.css";
 @import "./styles/command-palette.css";

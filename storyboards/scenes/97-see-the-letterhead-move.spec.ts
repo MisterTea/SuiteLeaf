@@ -73,6 +73,7 @@ async function replaceDistance(page: Page, label: string, value: string) {
 test("97-see-the-letterhead-move", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Sam is laying out the minutes. The footer will move before she applies.", 1700);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

@@ -242,3 +242,41 @@ test("paragraph animation badges follow their first lines as the box wraps and r
   }
   await page.screenshot({ path: "test-results/paragraph-animation-badges.png" });
 });
+
+test("an empty title hint disappears in edit mode and the caret stays on the first line", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, deck([{
+    id: "title", runs: [], placeholder: "Click to add title",
+    fontSize: 40, bold: true, height: 140, width: 700, x: 40, y: 40,
+  }]));
+  const box = page.locator('.slide-canvas [data-element-id="title"]');
+  const face = box.locator(".element-editor");
+  await expect(face).toHaveAttribute("data-empty", "true");
+  await expect(face).toHaveAttribute("data-placeholder", "Click to add title");
+  expect(await face.evaluate(node => getComputedStyle(node, "::before").content)).toContain("Click to add title");
+
+  await face.dblclick();
+  const editor = box.locator('[contenteditable="true"]');
+  await expect(editor).toBeFocused();
+  const editing = await editor.evaluate(node => {
+    const hint = getComputedStyle(node, "::before").content;
+    const pad = parseFloat(getComputedStyle(node).paddingTop);
+    const origin = node.getBoundingClientRect().top;
+    const line = node.querySelector(".slide-para, p");
+    const lineTop = (line ?? node).getBoundingClientRect().top - origin;
+    const range = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0) : null;
+    const caret = range?.getClientRects()[0] ?? range?.getBoundingClientRect();
+    return { hint, pad, lineTop, caretTop: caret && caret.height ? caret.top - origin : null };
+  });
+  expect(editing.hint).toBe("none");
+  expect(Math.abs(editing.lineTop - editing.pad)).toBeLessThan(2);
+  if (editing.caretTop != null) expect(editing.caretTop).toBeLessThan(editing.pad + 8);
+
+  await page.keyboard.type("Hello");
+  await expect(editor).toHaveText("Hello");
+  await page.locator(".slide-canvas").click({ position: { x: 8, y: 8 } });
+  await expect(box.locator('[contenteditable="true"]')).toHaveCount(0);
+  const restored = box.locator(".element-editor");
+  await expect(restored).toHaveAttribute("data-empty", "false");
+  expect(await restored.evaluate(node => getComputedStyle(node, "::before").content)).toBe("none");
+});

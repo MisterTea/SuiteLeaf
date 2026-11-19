@@ -6,6 +6,7 @@ const title = "Garden plot";
 
 async function newDocument(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const name = page.getByLabel("File title");
   await name.click();

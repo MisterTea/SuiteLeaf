@@ -12,6 +12,7 @@ const letter = [
 test("06-find-and-replace-ai", async ({ page }) => {
   await openApp(page);
   await caption(page, "Priya is writing a thank-you letter to the garden volunteers.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await expect(title).toBeVisible();

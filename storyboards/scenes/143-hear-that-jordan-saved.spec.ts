@@ -39,6 +39,7 @@ test("143-hear-that-jordan-saved", async ({ page }) => {
       "Sam signs in and opens the bake sale flyer. He is reading it, not typing.",
     );
     await signIn(page, "sam@riverside-garden.org");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     const title = page.getByLabel("File title");
     await title.click();

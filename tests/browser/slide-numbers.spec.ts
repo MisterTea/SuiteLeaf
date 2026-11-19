@@ -19,6 +19,7 @@ async function choose(page: Page, menu: string, item: string) {
 
 async function threeSlideDeck(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
   await expect(page.locator(".slides-editor")).toBeVisible();
   await page.getByLabel("File title").fill("Numbered deck");

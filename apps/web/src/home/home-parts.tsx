@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Leaf,
   FileText,
@@ -13,6 +14,7 @@ import {
   Clock,
   LogIn,
   Unplug,
+  X,
 } from "lucide-react";
 import { SettingsButton } from "../document-settings";
 import { DrawingIcon, NewDrawingCard, type NewKind } from "../drawing-home";
@@ -30,7 +32,7 @@ export function Logo() {
     </span>
   );
 }
-export function NewCards({
+export function NewMenu({
   onCreate,
   folder,
 }: {
@@ -38,63 +40,113 @@ export function NewCards({
   /** The SuiteDrive folder new files go in, when it isn't the top level. */
   folder?: string;
 }) {
+  const [open, setOpen] = useState(false);
   const where = folder ? <small>In {folder}</small> : null;
+  const pick = (kind: NewKind) => {
+    setOpen(false);
+    onCreate(kind);
+  };
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
   return (
-    <div className="new-cards">
-      <button className="new-card" onClick={() => onCreate("doc")}>
-        <span className="app-icon doc">
-          <FileText size={30} />
-        </span>
-        <span>
-          <strong>New document</strong>
-          {where ?? <small>A fresh page for your next idea</small>}
-        </span>
-        <Plus size={22} />
+    <>
+      <button
+        type="button"
+        className="new-menu-button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
+        <Plus size={16} />
+        New
       </button>
-      <button className="new-card" onClick={() => onCreate("sheet")}>
-        <span className="app-icon sheet">
-          <Sheet size={30} />
-        </span>
-        <span>
-          <strong>New spreadsheet</strong>
-          {where ?? <small>A little structure for the big picture</small>}
-        </span>
-        <Plus size={22} />
-      </button>
-      <button className="new-card" onClick={() => onCreate("slide")}>
-        <span className="app-icon slide">
-          <Presentation size={30} />
-        </span>
-        <span>
-          <strong>New presentation</strong>
-          {where ?? <small>A clean canvas for your next pitch</small>}
-        </span>
-        <Plus size={22} />
-      </button>
-      <button className="new-card" onClick={() => onCreate("marp")}>
-        <span className="app-icon slide">
-          <FileText size={30} />
-        </span>
-        <span>
-          <strong>New MARP deck</strong>
-          {where ?? <small>A markdown presentation, in one or two columns</small>}
-        </span>
-        <Plus size={22} />
-      </button>
-      <NewDrawingCard onCreate={onCreate} where={where} />
-      {formsEnabled ? (
-      <button className="new-card" onClick={() => onCreate("form")}>
-        <span className="app-icon form">
-          <ClipboardList size={30} />
-        </span>
-        <span>
-          <strong>New form</strong>
-          {where ?? <small>Questions and answers in one file</small>}
-        </span>
-        <Plus size={22} />
-      </button>
-      ) : null}
-    </div>
+      {open
+        ? createPortal(
+            <div
+              className="modal-overlay"
+              onClick={(event) => {
+                if (event.target === event.currentTarget) setOpen(false);
+              }}
+            >
+              <div
+                className="gdocs-dialog new-kind-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="new-kind-title"
+              >
+                <div className="dialog-header">
+                  <h2 id="new-kind-title">What do you want to make?</h2>
+                  <button
+                    type="button"
+                    className="dialog-close-btn"
+                    aria-label="Close"
+                    onClick={() => setOpen(false)}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="new-kind-list">
+                  <button type="button" className="new-card" onClick={() => pick("doc")}>
+                    <span className="app-icon doc">
+                      <FileText size={22} />
+                    </span>
+                    <span>
+                      <strong>New document</strong>
+                      {where ?? <small>A fresh page for your next idea</small>}
+                    </span>
+                  </button>
+                  <button type="button" className="new-card" onClick={() => pick("sheet")}>
+                    <span className="app-icon sheet">
+                      <Sheet size={22} />
+                    </span>
+                    <span>
+                      <strong>New spreadsheet</strong>
+                      {where ?? <small>A little structure for the big picture</small>}
+                    </span>
+                  </button>
+                  <button type="button" className="new-card" onClick={() => pick("slide")}>
+                    <span className="app-icon slide">
+                      <Presentation size={22} />
+                    </span>
+                    <span>
+                      <strong>New presentation</strong>
+                      {where ?? <small>A clean canvas for your next pitch</small>}
+                    </span>
+                  </button>
+                  <button type="button" className="new-card" onClick={() => pick("marp")}>
+                    <span className="app-icon slide">
+                      <FileText size={22} />
+                    </span>
+                    <span>
+                      <strong>New MARP deck</strong>
+                      {where ?? <small>A markdown presentation, in one or two columns</small>}
+                    </span>
+                  </button>
+                  <NewDrawingCard onCreate={pick} where={where} />
+                  {formsEnabled ? (
+                    <button type="button" className="new-card" onClick={() => pick("form")}>
+                      <span className="app-icon form">
+                        <ClipboardList size={22} />
+                      </span>
+                      <span>
+                        <strong>New form</strong>
+                        {where ?? <small>Questions and answers in one file</small>}
+                      </span>
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 export function ErrorBanner({

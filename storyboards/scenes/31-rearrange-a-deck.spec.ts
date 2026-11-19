@@ -107,7 +107,7 @@ const rows = (page: Page) => page.locator(".thumbnail-row");
 test("31-rearrange-a-deck", async ({ page }) => {
   const deck = q3Update();
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "New presentation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await page.evaluate(async (native) => {
     const file = JSON.parse(native) as { id: string; title: string; updatedAt: string };
     await new Promise<void>((resolve, reject) => {

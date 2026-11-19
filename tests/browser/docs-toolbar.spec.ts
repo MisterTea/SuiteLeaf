@@ -2,14 +2,15 @@ import { expect, test } from "@playwright/test";
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
-test("home shows the new-file cards in one row on a laptop screen", async ({ page }) => {
+test("home asks what to make from a New button", async ({ page }) => {
   await page.goto("/");
-  const tops = await Promise.all(
-    ["New document", "New spreadsheet", "New presentation"].map(
-      async (name) => (await page.getByRole("button", { name }).boundingBox())!.y,
-    ),
-  );
-  expect(new Set(tops).size).toBe(1);
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "What do you want to make?" });
+  await expect(dialog.getByRole("button", { name: "New document" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "New spreadsheet" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "New presentation" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
 });
 
 test("docs toolbar fits one row, outline entries align left, indent works in lists", async ({
@@ -22,6 +23,7 @@ test("docs toolbar fits one row, outline entries align left, indent works in lis
       await page.waitForTimeout(300);
   };
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click({ position: { x: 100, y: 80 } });
@@ -81,6 +83,7 @@ test("superscript and subscript buttons and menu items toggle and show the curre
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click({ position: { x: 100, y: 80 } });

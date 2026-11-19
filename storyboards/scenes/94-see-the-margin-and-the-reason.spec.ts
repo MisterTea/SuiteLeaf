@@ -116,6 +116,7 @@ async function noScroll(
 test("94-see-the-margin-and-the-reason", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Sam is laying out the minutes. The footer will sit past the margin.", 1700);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

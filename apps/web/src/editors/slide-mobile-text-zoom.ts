@@ -4,12 +4,12 @@ import type { Slide } from "@suiteleaf/core";
 /** Enlarge the canvas itself so text metrics and pointer coordinates stay in sync. */
 export function useSlideMobileTextZoom(
   stageRef: RefObject<HTMLDivElement | null>,
-  slide: Slide,
+  slide: Slide | undefined,
   focusedBox: string | null,
   deckWidth: number,
   readOnly: boolean,
 ) {
-  const element = slide.elements.find((box) => box.id === focusedBox);
+  const element = slide?.elements.find((box) => box.id === focusedBox);
   const { id, type, x = 0, y = 0, width: boxWidth = 0, height: boxHeight = 0 } = element ?? {};
   useLayoutEffect(() => {
     const stage = stageRef.current;
@@ -60,5 +60,5 @@ export function useSlideMobileTextZoom(
         stage.scrollTop = scrollTop;
       }
     };
-  }, [stageRef, slide.id, id, type, x, y, boxWidth, boxHeight, deckWidth, readOnly]);
+  }, [stageRef, slide?.id, id, type, x, y, boxWidth, boxHeight, deckWidth, readOnly]);
 }

@@ -30,6 +30,7 @@ import { PublicFileRoute } from "./drive/public-file-route";
 import { SharedFileRoute } from "./drive/shared-file-route";
 import { MailRoute } from "./mail/MailApp";
 import { PublicMail } from "./mail/PublicMail";
+import { DesktopTabBar } from "./desktop-tab-bar";
 
 function AppTools() {
   const { pathname } = useLocation();
@@ -140,9 +141,16 @@ export default function App() {
     void resolveMode().then(setMode);
   }, [signUp]);
   if (signUp) return <SignUpPage token={signUp} />;
-  if (!mode) return <div className="loading">Opening SuiteLeaf…</div>;
+  if (!mode)
+    return (
+      <>
+        <DesktopTabBar />
+        <div className="loading">Opening SuiteLeaf…</div>
+      </>
+    );
   return (
     <ModeContext.Provider value={mode}>
+      <DesktopTabBar />
       <HashRouter>
         <AppTools />
         <Routes>

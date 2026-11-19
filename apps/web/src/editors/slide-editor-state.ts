@@ -162,10 +162,12 @@ export function useSlidesEditorState({
   );
   const liveDirty = useRef(false);
   const clipboard = useRef<
-    | { kind: "elements"; elements: SlideElement[] }
-    | { kind: "slides"; slides: Slide[] }
+    | { kind: "elements"; elements: SlideElement[]; system?: boolean }
+    | { kind: "slides"; slides: Slide[]; system?: boolean }
     | null
   >(null);
+  /** Bumps when the editor clipboard changes, so a slow system-clipboard read can tell it is stale. */
+  const clipboardEpoch = useRef(0);
   const commitRef = useRef<
     (next: SlideFile["content"], key?: string) => void
   >(() => {});
@@ -224,7 +226,7 @@ export function useSlidesEditorState({
     apiRef, reducedMotion, libraryThemes, saveLibraryTheme, historyRef, deckRef, activeRef,
     selectedRef, selectedIdsRef, selectedElementRef, editingRef, textRange, anchorRef,
     presentingRef, handoutsRef, showCursorRef, moveShowRef, pendingFocus, textPress, ignoreCanvasClick, dragMoved,
-    spellCaret, setSpellCaret, liveDirty, clipboard, commitRef, marpOpenRef, marpStale, painted,
+    spellCaret, setSpellCaret, liveDirty, clipboard, clipboardEpoch, commitRef, marpOpenRef, marpStale, painted,
     setPainted, focusedBox, setFocusedBox, marpAreaRef, onChangeRef, readOnlyRef, imageInputRef,
     audioInputRef, videoInputRef, spellingRef, stageRef, draggingRef, activeDeckSlide,
   };

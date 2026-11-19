@@ -237,7 +237,7 @@ const PROMPT =
 
 test("32-give-a-deck-a-theme-and-transitions-ai", async ({ page }) => {
   await openApp(page);
-  await expect(page.getByRole("button", { name: "New presentation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await seedDeck(page);
   await expect(page.getByRole("link", { name: "Fundraiser pitch" })).toBeVisible();
   await caption(page, "Dev asks the assistant to give the fundraiser pitch one look, and a fade that skips one section.");

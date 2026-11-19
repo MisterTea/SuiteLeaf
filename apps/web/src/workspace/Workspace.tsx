@@ -53,6 +53,7 @@ import { FullscreenButton } from "./fullscreen-button";
 import { WorkspaceStatusToast } from "./workspace-status-toast";
 import { EditorStatusTarget } from "../editor-status-target";
 import { EditorToolbarTarget, EditorToolbarNavigationTarget, ToolbarActions } from "../editor-toolbar-actions";
+import { useDesktopTabTitle } from "../desktop-tab-bar";
 
 export function Workspace() {
   const viewportRef = useWorkspaceViewport();
@@ -114,6 +115,7 @@ export function Workspace() {
     Boolean(record?.drive && getSession()),
   );
   driveParentId.current = driveFolder.place?.parentId ?? null;
+  useDesktopTabTitle(locked ? "Already open" : record?.file.title);
   if (locked)
     return (
       <div className="loading">

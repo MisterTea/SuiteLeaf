@@ -146,6 +146,7 @@ test("the desktop app works as a cluster client and can switch back", async () =
         page.getByRole("button", { name: "Sign out" }),
       ).toBeVisible();
 
+      await page.getByRole("button", { name: "New", exact: true }).click();
       await page.getByRole("button", { name: "New spreadsheet" }).click();
       await page.getByLabel("File title").fill("Team budget");
       await expect(saveStatus()).toHaveText("Saved to SuiteDrive", {

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopBridge, DocumentScanProgress } from "@suiteleaf/core";
+import type { DesktopBridge, DesktopTabState, DocumentScanProgress } from "@suiteleaf/core";
 import type { AiGenerateEvent, AiStatus } from "@suiteleaf/core/ai";
 const bridge: DesktopBridge = {
   getDocumentsDirectory: () => ipcRenderer.invoke("documents:get"),
@@ -47,6 +47,28 @@ const bridge: DesktopBridge = {
   setMode: (mode) => ipcRenderer.invoke("mode:set", mode),
   authWindow: (url) => ipcRenderer.invoke("auth:window", url),
   captureScreenshot: () => ipcRenderer.invoke("screenshot:capture"),
+  tabs: {
+    open: (path, title) => ipcRenderer.invoke("tabs:open", path, title),
+    list: () => ipcRenderer.invoke("tabs:list"),
+    activate: (id) => ipcRenderer.invoke("tabs:activate", id),
+    close: (id) => ipcRenderer.invoke("tabs:close", id),
+    onChange: (callback) => {
+      const listener = (_event: unknown, tabs: unknown) => {
+        if (!Array.isArray(tabs)) return;
+        const parsed: DesktopTabState[] = [];
+        for (const tab of tabs) {
+          if (!tab || typeof tab !== "object") return;
+          const { id, title, active } = tab as DesktopTabState;
+          if (typeof id !== "string" || typeof title !== "string" || typeof active !== "boolean") return;
+          if (id.length > 80 || title.length > 200) return;
+          parsed.push({ id, title, active });
+        }
+        callback(parsed);
+      };
+      ipcRenderer.on("tabs:changed", listener);
+      return () => ipcRenderer.removeListener("tabs:changed", listener);
+    },
+  },
   onMenu: (callback) => {
     const listener = (_event: unknown, action: string) => callback(action);
     ipcRenderer.on("menu", listener);

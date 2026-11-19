@@ -9,6 +9,7 @@ const editorOf = (page: Page) => page.getByRole("textbox", { name: "Document con
 
 async function newDocument(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = editorOf(page);
   await editor.click();

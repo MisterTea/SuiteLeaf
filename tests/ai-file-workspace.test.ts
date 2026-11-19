@@ -243,9 +243,11 @@ describe("templates", () => {
   it("points at the template cards and the File menu", async () => {
     document.body.insertAdjacentHTML(
       "beforeend",
-      `<div class="template-gallery"></div><button aria-label="Invoice"></button><button aria-label="Actions for Bakery"></button><div class="file-menu"><button>File</button></div>`,
+      `<button class="start-from-template">Start from template</button><div class="template-gallery"></div><button aria-label="Invoice"></button><button aria-label="Actions for Bakery"></button><div class="file-menu"><button>File</button></div>`,
     );
     const { byName } = tools({ snapshotFile: async () => createFile("doc", "x") });
+    expect(byName.list_templates.target?.({} as never)).toBe(document.querySelector(".start-from-template"));
+    document.querySelector(".start-from-template")?.remove();
     expect(byName.list_templates.target?.({} as never)).toBe(document.querySelector(".template-gallery"));
     expect(byName.create_from_template.target?.({ name: "Invoice" } as never)).toBe(document.querySelector('[aria-label="Invoice"]'));
     expect(byName.remove_template.target?.({ name: "Bakery" } as never)).toBe(document.querySelector('[aria-label="Actions for Bakery"]'));

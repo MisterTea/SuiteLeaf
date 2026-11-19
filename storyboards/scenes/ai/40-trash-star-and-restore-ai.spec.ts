@@ -7,6 +7,7 @@ async function makeFile(
   title: string,
   body?: string,
 ) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: `New ${kind}` }).click();
   const box = page.getByLabel("File title");
   await expect(box).toBeVisible();

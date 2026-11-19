@@ -7,6 +7,7 @@ test("local version history previews read-only, names a snapshot, and restores i
     localStorage.setItem("suiteleaf.versionPauseMs", "1");
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.fill("Monday — Rosa, greenhouse, 7am");

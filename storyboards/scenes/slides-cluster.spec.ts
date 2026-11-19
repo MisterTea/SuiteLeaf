@@ -84,6 +84,7 @@ test("20-build-a-presentation", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Priya is making slides for Saturday's community garden meeting.");
   await caption(page, "She starts a new presentation.", 900);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
 
   const title = page.getByLabel("File title");
@@ -393,7 +394,8 @@ test.describe("cluster mode", () => {
       await driveItem(page, "Garden club").click();
       await expect(page.getByLabel("Folder path")).toContainText("Garden club");
       await expect(page.getByText("This folder is empty.")).toBeVisible();
-      const newDocument = page.getByRole("button", { name: /New document/ });
+      await page.getByRole("button", { name: "New", exact: true }).click();
+      const newDocument = page.getByRole("dialog", { name: "What do you want to make?" }).getByRole("button", { name: /New document/ });
       await expect(newDocument).toContainText("In Garden club");
       await caption(page, "…and the New buttons now say \"In Garden club\".", 1600);
       await caption(page, "She starts a new document there.", 900);
@@ -438,6 +440,7 @@ test.describe("cluster mode", () => {
       await createAccount(page, "Priya Shah", "priya@riverside-garden.org");
       await expect(page.getByText("Connected to 1 other server")).toBeVisible({ timeout: 20000 });
       await caption(page, "The sidebar shows which server she's on, and that it shares files with one other.", 2200);
+      await page.getByRole("button", { name: "New", exact: true }).click();
       await page.getByRole("button", { name: "New presentation" }).click();
       await expect(page.getByTitle(`Saving to SuiteDrive on ${officeHost}`)).toBeVisible();
       await caption(page, "She starts a presentation called \"Budget update\".", 900);
@@ -500,6 +503,7 @@ test.describe("cluster mode", () => {
       await page.goto(server.url);
       await caption(page, "Sam signs in to the garden club's server to write the bake sale flyer.");
       await createAccount(page, "Sam Okafor", "sam@riverside-garden.org");
+      await page.getByRole("button", { name: "New", exact: true }).click();
       await page.getByRole("button", { name: "New document" }).click();
       const title = page.getByLabel("File title");
       await title.click();
@@ -595,6 +599,7 @@ test.describe("cluster mode", () => {
     const server = await startServer(undefined, [new URL(page.url()).origin]);
     try {
       await caption(page, "Leo keeps a personal to-do list on this computer.");
+      await page.getByRole("button", { name: "New", exact: true }).click();
       await page.getByRole("button", { name: "New document" }).click();
       await page.getByLabel("File title").fill("Personal to-do");
       await page.getByRole("textbox", { name: "Document content" }).click();
@@ -608,6 +613,7 @@ test.describe("cluster mode", () => {
       await dialog.getByLabel("Server address").fill(server.url);
       await dialog.getByRole("button", { name: "Connect", exact: true }).click();
       await createAccount(page, "Leo Martins", "leo@riverside-garden.org");
+      await page.getByRole("button", { name: "New", exact: true }).click();
       await page.getByRole("button", { name: "New document" }).click();
       await page.getByLabel("File title").fill("Shed inventory");
       await page.getByRole("textbox", { name: "Document content" }).click();

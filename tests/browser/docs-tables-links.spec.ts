@@ -30,6 +30,7 @@ function picture(width = 200, height = 100) {
 
 async function newDocument(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();

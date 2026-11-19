@@ -29,6 +29,7 @@ function plain(node: { text?: string; content?: unknown[] }): string {
 test("145-keep-the-agenda-and-the-minutes-together", async ({ page }) => {
   await page.goto("/");
   await say(page, "Maya is writing up the October garden club meeting.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await expect(title).toBeVisible();

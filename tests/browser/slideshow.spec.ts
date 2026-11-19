@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 async function twoSlideDeck(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
   await fillSlideText(
     page.locator(".slide-canvas .slide-text").first(),

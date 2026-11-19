@@ -196,6 +196,20 @@ export function mirrorSlides(doc: Y.Doc, content: unknown, op: unknown) {
   }, LOCAL);
 }
 
+/**
+ * Copy the open deck into an empty room before anyone edits.
+ * An edit recorded against an empty room undoes by deleting the slide.
+ */
+export function seedSlideRoom(doc: Y.Doc, content: unknown): void {
+  const slides = doc.getMap<string>("slides");
+  const order = doc.getMap<string>("slideOrder");
+  if (slides.size > 0 || order.has("order")) return;
+  const deck = (content ?? {}) as { slides?: Record<string, unknown>; slideOrder?: unknown };
+  const present = orderOf(deck.slideOrder).filter((id) => deck.slides?.[id] != null);
+  if (!present.length) return;
+  mirrorSlides(doc, content, { added: present });
+}
+
 export type RemoteMaster = {
   background?: { color: string };
   elements: unknown[];

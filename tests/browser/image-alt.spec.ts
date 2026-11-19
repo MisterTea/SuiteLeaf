@@ -59,6 +59,7 @@ function overlaps(
 
 async function newDocument(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   if (await title.isVisible()) await title.fill("Seed swap sign-up");

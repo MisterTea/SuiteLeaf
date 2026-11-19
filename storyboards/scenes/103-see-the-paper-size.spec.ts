@@ -55,6 +55,7 @@ async function replaceField(page: Page, label: string, value: string) {
 test("103-see-the-paper-size", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Sam's printer takes A4. She needs to see the page change before she applies.", 1800);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

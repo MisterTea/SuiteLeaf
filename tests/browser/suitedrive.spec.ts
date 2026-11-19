@@ -239,6 +239,7 @@ test.describe("SuiteDrive across two nodes", () => {
       pageA.getByRole("heading", { name: "SuiteDrive" }),
     ).toBeVisible();
     await expect(pageA.getByText("Connect to a server")).toHaveCount(0);
+    await pageA.getByRole("button", { name: "New", exact: true }).click();
     await pageA.getByRole("button", { name: "New document" }).click();
     await pageA.getByLabel("File title").fill("Field report");
     const editorA = pageA.getByRole("textbox", { name: "Document content" });
@@ -337,6 +338,7 @@ test.describe("SuiteDrive across two nodes", () => {
   }) => {
     const page = await (await snapshotContext(browser)).newPage();
     await signUp(page, "reopen@example.com");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Offline notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
@@ -424,6 +426,7 @@ test.describe("SuiteDrive across two nodes", () => {
   }) => {
     const page = await pageHoldingWrites(browser);
     await signUp(page, "inflight@example.com");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Busy notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
@@ -479,6 +482,7 @@ test.describe("SuiteDrive across two nodes", () => {
   }) => {
     const page = await (await snapshotContext(browser)).newPage();
     await signUp(page, "reopen-inflight@example.com");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Quick notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
@@ -559,6 +563,7 @@ test.describe("SuiteDrive across two nodes", () => {
       page.evaluate(() => (window as Held).heldWrites.length);
 
     for (const name of ["Autosaved notes", "Shortcut notes"]) {
+      await page.getByRole("button", { name: "New", exact: true }).click();
       await page.getByRole("button", { name: "New document" }).click();
       await page.getByLabel("File title").fill(name);
       await editor.fill("First");
@@ -619,6 +624,7 @@ test.describe("SuiteDrive across two nodes", () => {
   }) => {
     const page = await (await snapshotContext(browser)).newPage();
     await signUp(page, "copy@example.com");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     const title = page.getByLabel("File title");
     await title.fill("Draft plan");
@@ -660,6 +666,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await signUp(page, "sign-out@example.com");
     const status = page.locator(".save-status");
     const editor = page.getByRole("textbox", { name: "Document content" });
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Private notes");
     await editor.fill("Secret draft");
@@ -932,7 +939,8 @@ test.describe("SuiteDrive across two nodes", () => {
     await create.getByRole("button", { name: "Create" }).click();
     await item("Club").click();
     await expect(crumbs).toContainText("Club");
-    const newDocument = page.getByRole("button", { name: /New document/ });
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    const newDocument = page.getByRole("dialog", { name: "What do you want to make?" }).getByRole("button", { name: /New document/ });
     await expect(newDocument).toContainText("In Club");
 
     await newDocument.click();

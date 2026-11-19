@@ -45,6 +45,25 @@ export function selectSourceRange(
     direction === "backward",
   );
 }
+
+/** Replace a span of the markdown. Ace's hidden textarea is only an input buffer. */
+export function replaceSourceText(
+  area: HTMLTextAreaElement,
+  start: number,
+  end: number,
+  text: string,
+): void {
+  const editor = sourceEditor(area);
+  if (!editor) {
+    area.setRangeText(text, start, end, "end");
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
+  }
+  const doc = editor.session.getDocument();
+  const from = doc.indexToPosition(start, 0);
+  const to = doc.indexToPosition(end, 0);
+  editor.session.replace(new Range(from.row, from.column, to.row, to.column), text);
+}
 export function sourceScrollTop(area: HTMLTextAreaElement): number {
   return sourceEditor(area)?.renderer.getScrollTop() ?? area.scrollTop;
 }

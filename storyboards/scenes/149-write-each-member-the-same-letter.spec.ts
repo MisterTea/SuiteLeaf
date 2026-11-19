@@ -46,6 +46,7 @@ test("149-write-each-member-the-same-letter", async ({ page }) => {
     page,
     "Maya has one letter for every garden member. She wants to read them all, and she does not want them emailed.",
   );
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await ready(page);
 
@@ -63,7 +64,8 @@ test("149-write-each-member-the-same-letter", async ({ page }) => {
   await caption(page, "Name, Plot, Rosa, Sunny, Leo, Shade. That is the whole list.", 1600);
 
   await page.getByRole("button", { name: "Back to files" }).click();
-  await expect(page.getByRole("button", { name: "New document" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await expect(title).toBeVisible();
   await title.click();

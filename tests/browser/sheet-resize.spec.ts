@@ -9,6 +9,7 @@ async function snapshot(page: Page) {
 
 async function newSheet(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await page.locator("[data-sheet-ready='true']").waitFor();
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute(

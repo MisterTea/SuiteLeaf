@@ -17,6 +17,7 @@ test("document edit → formatting → autosave → reopen → native export", a
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByLabel("File title").fill("Field notes");
   const editor = page.getByRole("textbox", { name: "Document content" });
@@ -152,6 +153,7 @@ test("a downloaded native file says what it is and reopens over its library copy
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByLabel("File title").fill("Packing list");
   const editor = page.getByRole("textbox", { name: "Document content" });
@@ -279,6 +281,7 @@ test("cached application and local files work offline", async ({ page }) => {
     throw new Error("No offline test origin");
   try {
     await page.goto(`http://127.0.0.1:${address.port}/`);
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page
       .getByRole("textbox", { name: "Document content" })
@@ -319,6 +322,7 @@ test("a second browser tab cannot edit the same file concurrently", async ({
   context,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await expect(
     page.getByRole("textbox", { name: "Document content" }),
@@ -542,6 +546,7 @@ test("find and replace keeps the current match in view and reports what is left"
     a.y < b.y + b.height &&
     b.y < a.y + a.height;
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();
@@ -610,6 +615,7 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
   await page.goto("/");
 
   // 1. Create a new presentation
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
   await page.getByLabel("File title").fill("Quarterly Product Pitch");
 
@@ -692,6 +698,7 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
 
   const boxes = page.locator(".slide-canvas .slide-text .element-textarea");

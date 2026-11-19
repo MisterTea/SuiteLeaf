@@ -20,7 +20,7 @@ function withWidowControl(record: ReturnType<typeof widowNewsletterRecord>) {
 
 async function seed(page: Page, record = widowNewsletterRecord()) {
   await page.goto("/");
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.evaluate(async (stored) => {
     await new Promise<void>((resolve, reject) => {
       const open = indexedDB.open("SuiteLeaf");

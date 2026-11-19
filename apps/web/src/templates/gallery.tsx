@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronRight, MoreHorizontal, Search } from "lucide-react";
+import { MoreHorizontal, Search } from "lucide-react";
 import {
   nativeFilename,
   type SuiteFile,
@@ -53,37 +53,6 @@ function matches(entry: TemplateEntry, query: string, kind: string) {
   if (kind && entry.info.kind !== kind) return false;
   const q = query.trim().toLowerCase();
   return !q || entry.info.name.toLowerCase().includes(q);
-}
-
-export function TemplateHome() {
-  const navigate = useNavigate();
-  const { entries, error, reload } = useTemplates();
-  const [preview, setPreview] = useState<TemplateEntry | null>(null);
-  return (
-    <section className="template-band" aria-label="Start from a template">
-      <header>
-        <h2>Start from a template</h2>
-        <button type="button" onClick={() => navigate("/templates")}>
-          Template gallery
-          <ChevronRight size={16} />
-        </button>
-      </header>
-      {error ? <p className="template-error">{error}</p> : null}
-      <div className="template-scroller">
-        {(entries ?? []).map((entry) => (
-          <TemplateCard
-            key={entry.info.id}
-            entry={entry}
-            onOpen={() => setPreview(entry)}
-            onChanged={() => void reload()}
-          />
-        ))}
-      </div>
-      {preview ? (
-        <PreviewDialog entry={preview} onClose={() => setPreview(null)} />
-      ) : null}
-    </section>
-  );
 }
 
 function TemplateCard({

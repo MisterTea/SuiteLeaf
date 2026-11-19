@@ -48,6 +48,7 @@ function stallPhoto(width = 280, height = 180) {
 test("66-describe-a-photo", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Lena is writing the seed-swap sign-up. A member who uses a screen reader will hear this photo.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

@@ -11,6 +11,7 @@ test("01-first-document", async ({ page }) => {
   await page.goto("/");
   await caption(page, "SuiteLeaf opens to your files. No account, no setup.");
   await caption(page, "Start a new document.", 900);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
 
   const title = page.getByLabel("File title");

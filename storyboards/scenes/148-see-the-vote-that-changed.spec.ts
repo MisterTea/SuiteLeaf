@@ -53,6 +53,7 @@ async function versionNatives(page: Page) {
 test("148-see-the-vote-that-changed", async ({ page }) => {
   await page.goto("/");
   await say(page, "Maya is writing up the October garden club meeting.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await expect(title).toBeVisible();

@@ -29,6 +29,9 @@ const drive = vi.hoisted(() => ({
     return { ...item };
   }),
   keepCopy: vi.fn(async () => {}),
+  read: vi.fn(async () => ({ text: "{\"version\":1}", versionId: "v1" })),
+  explanation: vi.fn(async () => null),
+  accounts: vi.fn(async () => []),
   create: vi.fn(async (input: { name: string; parentId: string | null; kind: "folder" }) => {
     const made = item(`new-${state.items.length}`, input.name, input.parentId, { kind: input.kind });
     state.items.push(made);
@@ -621,11 +624,99 @@ describe("DriveBrowser", () => {
       fireEvent.contextMenu(deckBtn);
       const menu = await screen.findByRole("menu", { name: "Actions for Pitch.slslides" });
       expect(within(menu).getByRole("button", { name: "Open Pitch.slslides in a new tab" })).toBeTruthy();
+      expect(within(menu).getByRole("button", { name: "Open Pitch.slslides" })).toBeTruthy();
+      expect(within(menu).getByRole("button", { name: "Download Pitch.slslides" })).toBeTruthy();
+      expect(within(menu).getByRole("button", { name: "Copy Pitch.slslides" })).toBeTruthy();
+      expect(within(menu).getByRole("button", { name: "Share Pitch.slslides" })).toBeTruthy();
       // Viewers don't see Move, Rename, Trash
       expect(within(menu).queryByRole("button", { name: "Move Pitch.slslides" })).toBeNull();
       expect(within(menu).queryByRole("button", { name: "Rename Pitch.slslides" })).toBeNull();
       expect(within(menu).queryByRole("button", { name: "Move Pitch.slslides to trash" })).toBeNull();
     } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it("runs open, download, copy, rename, move, and share from the file menu", async () => {
+    const onOpen = vi.fn();
+    const exportFile = vi.fn(async () => "/tmp/Plan.sldoc");
+    window.suiteleaf = { exportFile } as unknown as NonNullable<typeof window.suiteleaf>;
+    render(<DriveBrowser mode="open" inline onOpen={onOpen} />);
+    const docBtn = await screen.findByRole("button", { name: "Plan.sldoc" });
+    const openMenu = () => {
+      fireEvent.contextMenu(docBtn, { clientX: 80, clientY: 120 });
+      return screen.findByRole("menu", { name: "Actions for Plan.sldoc" });
+    };
+    const menu = await openMenu();
+    for (const name of [
+      "Open Plan.sldoc",
+      "Open Plan.sldoc in a new tab",
+      "Download Plan.sldoc",
+      "Rename Plan.sldoc",
+      "Move Plan.sldoc",
+      "Copy Plan.sldoc",
+      "Share Plan.sldoc",
+      "Move Plan.sldoc to trash",
+    ]) {
+      expect(within(menu).getByRole("button", { name })).toBeTruthy();
+    }
+    expect(within(menu).getByText("Open in a new tab").textContent).toBe("Open in a new tab");
+
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("button", { name: "Open Plan.sldoc" }));
+    });
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "doc" }));
+    expect(screen.queryByRole("menu", { name: "Actions for Plan.sldoc" })).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(within(await openMenu()).getByRole("button", { name: "Download Plan.sldoc" }));
+    });
+    expect(drive.read).toHaveBeenCalledWith("doc");
+    expect(exportFile).toHaveBeenCalledWith("Plan.sldoc", "{\"version\":1}");
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(within(await openMenu()).getByRole("button", { name: "Copy Plan.sldoc" }));
+    });
+    expect(drive.keepCopy).toHaveBeenCalledWith("doc");
+    expect(screen.getByText("Kept a copy of Plan.sldoc in My Drive. This copy is yours.")).toBeTruthy();
+
+    fireEvent.click(within(await openMenu()).getByRole("button", { name: "Rename Plan.sldoc" }));
+    const rename = await screen.findByRole("dialog", { name: "Rename" });
+    expect(within(rename).getByRole("textbox")).toHaveProperty("value", "Plan.sldoc");
+    fireEvent.click(within(rename).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(within(await openMenu()).getByRole("button", { name: "Move Plan.sldoc" }));
+    const move = await screen.findByRole("dialog", { name: "Move" });
+    expect(within(move).getByRole("button", { name: "Move here" })).toBeTruthy();
+    fireEvent.click(within(move).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(within(await openMenu()).getByRole("button", { name: "Share Plan.sldoc" }));
+    const share = await screen.findByRole("dialog", { name: "Share “Plan.sldoc”" });
+    expect(drive.access).toHaveBeenCalledWith("doc");
+    fireEvent.click(within(share).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Share “Plan.sldoc”" })).toBeNull());
+    delete window.suiteleaf;
+  });
+
+  it("opens a desktop tab instead of a browser window when the desktop tab api exists", async () => {
+    const open = vi.fn().mockResolvedValue(undefined);
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    window.suiteleaf = { tabs: { open } } as unknown as NonNullable<typeof window.suiteleaf>;
+    try {
+      render(<DriveBrowser mode="open" inline onOpen={vi.fn()} />);
+      const docBtn = await screen.findByRole("button", { name: "Plan.sldoc" });
+      fireEvent.click(docBtn, { metaKey: true });
+      expect(open).toHaveBeenCalledWith("/shared/doc", "Plan.sldoc");
+      expect(openSpy).not.toHaveBeenCalled();
+
+      open.mockRejectedValueOnce(new Error("bad id"));
+      fireEvent.click(docBtn, { ctrlKey: true });
+      await waitFor(() =>
+        expect(openSpy).toHaveBeenCalledWith(expect.stringContaining("#/shared/doc"), "_blank"),
+      );
+    } finally {
+      delete window.suiteleaf;
       openSpy.mockRestore();
     }
   });

@@ -8,7 +8,7 @@ async function seedEssay(page: Page) {
   const file = createFile("doc", "Independence essay") as DocFile;
   file.content = grammarEssayContent();
   await page.goto("/");
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.evaluate(async (record) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("SuiteLeaf");
@@ -97,6 +97,7 @@ test("ignored grammar comes back, stays in the file, and still runs offline", as
     if (/they was|movment|Danquah/i.test(body)) leaks.push(request.url());
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = editorOf(page);
   await editor.click();

@@ -8,6 +8,7 @@ test("a page-setup watermark stays behind the text and exports to Word", async (
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.stack || e.message));
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.fill("Garden club minutes");

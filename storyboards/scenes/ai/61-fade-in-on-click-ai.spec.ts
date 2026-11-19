@@ -219,7 +219,7 @@ test("61-fade-in-on-click-ai", async ({ page }) => {
   });
 
   await openApp(page);
-  await expect(page.getByRole("button", { name: "New presentation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await seedDeck(page);
   await expect(page.getByRole("link", { name: "Q3 update", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Q3 update", exact: true }).click();

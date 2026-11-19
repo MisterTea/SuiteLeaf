@@ -156,7 +156,7 @@ function deckText(deck: SavedDeck | null) {
 
 test("54-spell-a-sheet-and-a-deck-ai", async ({ page }) => {
   await openApp(page);
-  await expect(page.getByRole("button", { name: "New spreadsheet" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await seedFiles(page);
   await expect(page.getByRole("link", { name: "Decisions", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Update", exact: true })).toBeVisible();

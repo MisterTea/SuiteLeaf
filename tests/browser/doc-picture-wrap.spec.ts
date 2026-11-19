@@ -14,6 +14,7 @@ const paginated = (page: Page) =>
 
 async function newDocument(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.fill("Lena's letter");

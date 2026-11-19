@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 async function newDocument(page: Page, title: string, body?: string) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const box = page.getByLabel("File title");
   await box.fill(title);

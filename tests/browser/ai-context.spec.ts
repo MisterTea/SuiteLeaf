@@ -15,6 +15,7 @@ test("opening or leaving a document closes the assistant and starts a new conver
   await expect(panel).toContainText("No document open");
   await panel.getByRole("textbox").fill("Remember the file list");
 
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await expect(page.getByLabel("File title")).toHaveValue("Untitled document");
   await expect(panel).toHaveCount(0);
@@ -26,6 +27,6 @@ test("opening or leaving a document closes the assistant and starts a new conver
   await expect(panel).not.toContainText("Remember the file list");
 
   await page.getByRole("button", { name: "Back to files" }).click();
-  await expect(page.getByRole("button", { name: "New document" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await expect(panel).toHaveCount(0);
 });

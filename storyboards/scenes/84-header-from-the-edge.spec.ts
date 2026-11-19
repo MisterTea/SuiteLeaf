@@ -89,6 +89,7 @@ test("84-header-from-the-edge", async ({ page }) => {
     "Priya’s thesis needs the header close to the top, and the notes an inch in.",
     1600,
   );
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

@@ -23,6 +23,7 @@ test("single-node mode keeps files in the browser without accounts", async ({
   );
   await dialog.getByRole("button", { name: "Cancel" }).click();
 
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByRole("button", { name: "File", exact: true }).click();
   await expect(

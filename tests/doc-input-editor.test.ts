@@ -224,6 +224,72 @@ describe("pasting into a document", () => {
     expect(editor.getJSON().content?.[0].content?.filter((node) => node.type === "inlineImage")).toHaveLength(2);
   });
 
+  it("pastes a clipboard picture into the line", async () => {
+    make(doc("Start"));
+    editor.commands.setTextSelection(6);
+    const file = new File(["x"], "shot.png", { type: "image/png" });
+    const event = new Event("paste") as ClipboardEvent;
+    Object.defineProperty(event, "clipboardData", {
+      value: {
+        files: [file],
+        items: [{ kind: "file", type: file.type, getAsFile: () => file }],
+        getData: () => "",
+      },
+    });
+    const errors: string[] = [];
+    expect(docPaste(event, { editor, readOnlyRef: { current: false }, onError: (message) => errors.push(message) })).toBe(true);
+    await vi.waitFor(() => expect(editor.getJSON().content?.[0].content?.some((node) => node.type === "inlineImage")).toBe(true));
+    const picture = editor.getJSON().content?.[0].content?.find((node) => node.type === "inlineImage");
+    expect(String(picture?.attrs?.src)).toMatch(/^data:image\/png;base64,/);
+    expect(picture?.attrs?.width).toBeGreaterThan(0);
+    expect(picture?.attrs?.height).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+
+    const blank = new File(["y"], "blank.png", { type: "image/png" });
+    const again = new Event("paste") as ClipboardEvent;
+    Object.defineProperty(again, "clipboardData", {
+      value: { files: [blank], items: [], getData: () => "" },
+    });
+    const empty = make({ type: "doc", content: [{ type: "paragraph" }] });
+    empty.commands.setTextSelection(1);
+    expect(docPaste(again, { editor: empty, readOnlyRef: { current: false } })).toBe(true);
+    await vi.waitFor(() => expect(empty.getJSON().content?.[0].content?.[0]?.type).toBe("inlineImage"));
+    expect(empty.getJSON().content?.some((node) => node.type === "image")).toBe(false);
+  });
+
+  it("leaves a passage of text alone when a picture is only along for the ride", () => {
+    make(doc("Start"));
+    const file = new File(["x"], "shot.png", { type: "image/png" });
+    const event = new Event("paste") as ClipboardEvent;
+    Object.defineProperty(event, "clipboardData", {
+      value: {
+        files: [file],
+        items: [],
+        getData: (type: string) => (type === "text/html" ? "<p>Hello</p>" : "Hello"),
+      },
+    });
+    expect(docPaste(event, { editor, readOnlyRef: { current: false } })).toBe(true);
+    expect(editor.getText()).toContain("Hello");
+    expect(JSON.stringify(editor.getJSON())).not.toContain("inlineImage");
+  });
+
+  it("refuses a clipboard picture that is too large or a read-only document", async () => {
+    make(doc("Start"));
+    const huge = new File(["x"], "shot.png", { type: "image/png" });
+    Object.defineProperty(huge, "size", { value: 6 * 1024 * 1024 });
+    const event = new Event("paste") as ClipboardEvent;
+    Object.defineProperty(event, "clipboardData", {
+      value: { files: [huge], items: [], getData: () => "" },
+    });
+    const errors: string[] = [];
+    expect(docPaste(event, { editor, readOnlyRef: { current: true }, onError: (message) => errors.push(message) })).toBe(true);
+    expect(editor.getText()).toBe("Start");
+    expect(docPaste(event, { editor, readOnlyRef: { current: false }, onError: (message) => errors.push(message) })).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(errors).toEqual(["Choose a PNG, JPEG, GIF, WebP, or SVG image smaller than 5 MB."]);
+    expect(JSON.stringify(editor.getJSON())).not.toContain("inlineImage");
+  });
+
   it("cleans pasted HTML and refuses a read-only document", () => {
     make(doc("Start"));
     expect(docPaste(paste("<p>x</p>"), { editor, readOnlyRef: { current: true } })).toBe(true);

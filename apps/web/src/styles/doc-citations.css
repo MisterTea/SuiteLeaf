@@ -240,9 +240,6 @@
   }
 }
 @media (max-width: 700px) {
-  .template-band {
-    margin: 4px 0 20px;
-  }
   .template-gallery-top,
   .template-gallery-body {
     padding-left: 16px;

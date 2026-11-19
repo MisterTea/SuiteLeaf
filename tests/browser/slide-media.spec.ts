@@ -57,6 +57,7 @@ test("audio and video stay on the slide and the audio plays", async ({ page }) =
   const title = `Club night ${Date.now().toString(36)}`;
 
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New presentation" }).click();
   await expect(page.locator(".slides-editor")).toBeVisible();
   await page.getByLabel("File title").fill(title);

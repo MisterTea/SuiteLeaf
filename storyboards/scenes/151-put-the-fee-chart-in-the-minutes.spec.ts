@@ -40,6 +40,7 @@ test("151-put-the-fee-chart-in-the-minutes", async ({ page }) => {
     page,
     "Maya wants the plot-fee numbers in the October minutes. She does not build a chart in the spreadsheet first.",
   );
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await ready(page);
   await rename(page, "Plot fees");
@@ -60,7 +61,8 @@ test("151-put-the-fee-chart-in-the-minutes", async ({ page }) => {
   await saved(page);
 
   await page.getByRole("button", { name: "Back to files" }).click();
-  await expect(page.getByRole("button", { name: "New document" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await expect(page.getByRole("textbox", { name: "Document content" })).toBeVisible();
   await rename(page, "October meeting");

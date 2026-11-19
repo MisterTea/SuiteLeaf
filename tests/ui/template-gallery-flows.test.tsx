@@ -19,7 +19,6 @@ vi.mock("../../apps/web/src/node-client", () => ({
 import {
   SaveTemplateDialog,
   TemplateGallery,
-  TemplateHome,
 } from "../../apps/web/src/templates/gallery";
 import { TemplatePreview } from "../../apps/web/src/templates/preview";
 import { templateStore } from "../../apps/web/src/templates/store";
@@ -85,6 +84,18 @@ describe("template gallery", () => {
     expect(search).toHaveProperty("value", "");
     await userEvent.click(screen.getByRole("button", { name: "Back to files" }));
     expect(where()).toBe("/");
+  });
+
+  it("shows a template saved while the gallery is open", async () => {
+    renderAt("/templates", <TemplateGallery />);
+    await screen.findByRole("button", { name: "Invoice" });
+    await templateStore.save("Saved here", createFile("sheet", "Plan"));
+    const yours = await screen.findByRole("region", { name: "Your templates" });
+    expect(within(yours).getByRole("button", { name: "Saved here" })).toBeTruthy();
+    await userEvent.click(within(yours).getByRole("button", { name: "Actions for Saved here" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Saved here" })).toBeNull());
   });
 
   it("shows one kind from the address and can show all again", async () => {
@@ -206,28 +217,9 @@ describe("your templates", () => {
 
   it("explains when templates cannot be read", async () => {
     const list = vi.spyOn(templateStore, "list").mockRejectedValue(new Error("Storage is blocked."));
-    renderAt("/", <TemplateHome />);
+    renderAt("/templates", <TemplateGallery />);
     expect(await screen.findByText("Storage is blocked.")).toBeTruthy();
     list.mockRestore();
-  });
-});
-
-describe("home template band", () => {
-  it("opens the gallery and previews a template, and updates when one is saved", async () => {
-    renderAt("/", <TemplateHome />);
-    const band = await screen.findByRole("region", { name: "Start from a template" });
-    await within(band).findByRole("button", { name: "Invoice" });
-    await userEvent.click(within(band).getByRole("button", { name: "Meeting notes" }));
-    expect(screen.getByRole("dialog", { name: "Preview Meeting notes" })).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await templateStore.save("Saved here", createFile("sheet", "Plan"));
-    expect(await within(band).findByRole("button", { name: "Saved here" })).toBeTruthy();
-    await userEvent.click(within(band).getByRole("button", { name: "Actions for Saved here" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
-    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }));
-    await waitFor(() => expect(within(band).queryByRole("button", { name: "Saved here" })).toBeNull());
-    await userEvent.click(within(band).getByRole("button", { name: /Template gallery/ }));
-    expect(where()).toBe("/templates");
   });
 });
 

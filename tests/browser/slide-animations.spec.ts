@@ -42,6 +42,7 @@ test("animation ribbon and pane leave the slide visible and preview the painted 
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New presentation/ }).click();
   await page.getByRole("button", { name: "Animations", exact: true }).click();
   const ribbon = page.getByRole("region", { name: "Animations ribbon" });
@@ -88,6 +89,7 @@ test("slideshow plays entrance effects using the ribbon's with/after timing", as
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New presentation/ }).click();
   await page.getByRole("button", { name: "Animations", exact: true }).click();
   const ribbon = page.getByRole("region", { name: "Animations ribbon" });
@@ -129,6 +131,7 @@ test("Appear preview visibly resets the slide before revealing each object", asy
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New presentation/ }).click();
   await page.getByRole("button", { name: "Animations", exact: true }).click();
   const ribbon = page.getByRole("region", { name: "Animations ribbon" });

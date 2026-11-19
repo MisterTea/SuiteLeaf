@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/react";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
-import { svgDataUri } from "./svg-data";
+import { inlineFrame } from "@suiteleaf/core/image-inline";
+import { imageFileError, readImageFile } from "./clipboard-image";
 
 export async function insertDocImage(
   editor: Editor | null,
@@ -9,23 +10,13 @@ export async function insertDocImage(
   onError: (s: string) => void,
 ) {
   if (!f) return;
-  const svg = f.type === "image/svg+xml" || (!f.type && /\.svg$/i.test(f.name));
-  if (
-    (!svg && !/^image\/(png|jpeg|gif|webp)$/.test(f.type)) ||
-    f.size > 5 * 1024 * 1024
-  ) {
-    onError("Choose a PNG, JPEG, GIF, WebP, or SVG image smaller than 5 MB.");
+  const error = imageFileError(f);
+  if (error) {
+    onError(error);
     return;
   }
   try {
-    const src = svg
-      ? svgDataUri(await f.text())
-      : await new Promise<string>((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result));
-          r.onerror = reject;
-          r.readAsDataURL(f);
-        });
+    const src = await readImageFile(f);
     editor
       ?.chain()
       .focus()
@@ -46,6 +37,49 @@ export async function insertDocImage(
       .run();
   } catch {
     onError("Could not read that image.");
+  }
+}
+
+async function bitmapSize(src: string): Promise<{ width: number; height: number } | null> {
+  if (typeof Image === "undefined") return null;
+  try {
+    const picture = new Image();
+    picture.src = src;
+    if (typeof picture.decode === "function") await picture.decode();
+    if (!picture.naturalWidth || !picture.naturalHeight) return null;
+    return { width: picture.naturalWidth, height: picture.naturalHeight };
+  } catch {
+    return null;
+  }
+}
+
+/** A pasted screenshot lands in the line, about as tall as the words around it. */
+export async function pasteDocImages(
+  editor: Editor | null,
+  files: File[],
+  onError: (s: string) => void,
+) {
+  if (!editor) return;
+  for (const file of files) {
+    const error = imageFileError(file);
+    if (error) {
+      onError(error);
+      continue;
+    }
+    try {
+      const src = await readImageFile(file);
+      const frame = inlineFrame(await bitmapSize(src));
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "inlineImage",
+          attrs: { src, alt: "", width: frame.width, height: frame.height },
+        })
+        .run();
+    } catch {
+      onError("Could not read that image.");
+    }
   }
 }
 

@@ -26,6 +26,7 @@ test("native Save As → autosave → external conflict → recovery → reopeni
     const page = await app.firstWindow();
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page
       .getByRole("textbox", { name: "Document content" })
@@ -104,6 +105,7 @@ test("choosing Close in the unsaved prompt closes the window while saves keep fa
     const page = await app.firstWindow();
     // A listener stops Playwright from answering the page's beforeunload dialog itself.
     page.on("dialog", () => {});
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page.evaluate(async () => {
       const bridge = (window as unknown as { suiteleaf: { setDirty(d: boolean): void; list(): Promise<unknown> } }).suiteleaf;
@@ -170,6 +172,7 @@ test("folders on the home screen are the documents folder's folders, both ways",
     await folderRow("Garden").locator(".folder-open").click();
     await expect(page.getByRole("navigation", { name: "Folder path" })).toContainText("Garden");
     await expect(fileLink("Plan")).toBeVisible();
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: /New document/ }).click();
     await expect(page.locator(".slides-editor, .doc-editor, [aria-label='Document content']").first()).toBeVisible();
     await expect.poll(async () => (await readdir(join(docs, "Garden"))).sort()).toEqual([

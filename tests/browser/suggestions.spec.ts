@@ -33,6 +33,7 @@ async function placeSelection(page: Page, text: string, caret = false) {
 test("suggesting mode records, reviews, and restores changes", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => localStorage.setItem("suiteleaf-author", "Jordan"));
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByLabel("File title").fill("Quarterly Report");
   const editor = editorOf(page);

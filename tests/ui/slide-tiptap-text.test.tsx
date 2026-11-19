@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -96,9 +97,24 @@ it("keeps authored selections correct across markers and math", () => {
   expect(node.getAttribute("aria-label")).toBe("Body");
 });
 
+it("keeps the placeholder hint off an empty box while it is being edited", () => {
+  const view = render(<SlideTextBody content="" editing onText={noop} onCaret={noop} placeholder="Click to add title" />);
+  const editor = view.container.querySelector<HTMLElement>(".element-editor")!;
+  expect(editor.dataset.empty).toBe("true");
+  expect(editor.dataset.placeholder).toBe("Click to add title");
+  expect(editor.getAttribute("contenteditable")).toBe("true");
+  expect(editor.querySelector(".slide-para, p")).not.toBeNull();
+  const css = readFileSync("apps/web/src/editors/slide-text.css", "utf8");
+  expect(css).toContain('.element-editor[data-empty="true"]:not([contenteditable="true"])::before');
+  expect(css).toContain('.element-editor[contenteditable="true"]::before {\n  content: none;\n}');
+});
+
 it("renders empty static boxes with their placeholder and repaints layout changes", () => {
   const view = render(<SlideTextBody content="" editing={false} onText={noop} onCaret={noop} placeholder="Body" />);
-  expect(view.container.querySelector<HTMLElement>(".element-editor")!.dataset.empty).toBe("true");
+  const editor = view.container.querySelector<HTMLElement>(".element-editor")!;
+  expect(editor.dataset.empty).toBe("true");
+  expect(editor.dataset.placeholder).toBe("Body");
+  expect(editor.getAttribute("contenteditable")).not.toBe("true");
   view.rerender(<SlideTextBody content="• First" hang={24} fontSize={22} editing onText={noop} onCaret={noop} />);
   expect(view.container.querySelector(".slide-bullet-slot")).not.toBeNull();
   view.rerender(<SlideTextBody content="First" fontSize={24} editing onText={noop} onCaret={noop} />);

@@ -276,6 +276,20 @@ export interface DocumentScanProgress {
   folders: number;
   total?: number;
 }
+export interface DesktopTabState {
+  id: string;
+  title: string;
+  active: boolean;
+}
+/** In-window document tabs. Present in the desktop app. */
+export interface DesktopTabs {
+  /** Open `/`, `/file/:id`, or `/shared/:id` in a tab. */
+  open(path: string, title?: string): Promise<void>;
+  list(): Promise<DesktopTabState[]>;
+  activate(id: string): Promise<void>;
+  close(id: string): Promise<void>;
+  onChange(callback: (tabs: DesktopTabState[]) => void): () => void;
+}
 export interface DesktopBridge {
   /** Move a folder and its contents to the operating system Trash. */
   trashFolder?(folder: string): Promise<void>;
@@ -330,6 +344,8 @@ export interface DesktopBridge {
   authWindow?(startUrl: string): Promise<string | null>;
   /** Capture a screenshot of the active application window as a data URL. */
   captureScreenshot?(): Promise<string>;
+  /** Desktop document tabs. Each extra document is its own page in the window. */
+  tabs?: DesktopTabs;
 }
 
 export interface IssueData {

@@ -4,6 +4,7 @@ import { beat, caption, expect, test, typeSlowly } from "./harness";
 test("136-collect-sign-ups", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Maya is at the garden club table with her laptop.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New form" }).click();
   const title = page.getByLabel("File title");
   await expect(title).toBeVisible();

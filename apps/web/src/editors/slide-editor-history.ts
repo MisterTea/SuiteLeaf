@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { placeSlideObject, slideOp, type Slide, type SlideElement, type SlideFile } from "@suiteleaf/core";
 import type * as Y from "yjs";
 import type { SlideSelection } from "../collab/selection";
-import { redoLocalSlide, slideConflictText, undoLocalSlide } from "../collab/slide-undo";
+import { canRedoSlide, canUndoSlide, redoLocalSlide, slideConflictText, undoLocalSlide } from "../collab/slide-undo";
 import {
   deckWithRemoteOrder,
   removedSlideIds,
@@ -35,8 +35,8 @@ type TextDraft = {
   carets: { before: TextSelection | null; after: TextSelection | null }[];
 };
 
-function withTextOnSlide(slide: Slide, draft: TextDraft | null): Slide {
-  if (!draft || draft.index === 0 || slide.id !== draft.slideId ||
+function withTextOnSlide(slide: Slide | undefined, draft: TextDraft | null): Slide | undefined {
+  if (!slide || !draft || draft.index === 0 || slide.id !== draft.slideId ||
     !slide.elements.some((element) => element.id === draft.elementId)) return slide;
   return {
     ...slide,
@@ -100,10 +100,11 @@ export function useDeckHistory(
   };
 
   const refreshMarks = () =>
-    setHistoryMarks({
-      undo: historyRef.current!.canUndo,
-      redo: historyRef.current!.canRedo,
-    });
+    setHistoryMarks(
+      collabDoc
+        ? { undo: canUndoSlide(collabDoc), redo: canRedoSlide(collabDoc) }
+        : { undo: historyRef.current!.canUndo, redo: historyRef.current!.canRedo },
+    );
 
   const activeTextEditor = () => {
     const node = document.activeElement;
@@ -201,6 +202,8 @@ export function useDeckHistory(
   useEffect(() => {
     if (!collabDoc) return;
     const show = (next: SlideFile["content"]) => {
+      // Undo of an unseeded room deletes the only slide. Leave the one on screen.
+      if (!next.slideOrder.some((id) => next.slides[id])) return;
       storedRef.current = next;
       const shown = masterViewRef.current ? attachMasterPages(next, editingMasterRef.current) : next;
       deckRef.current = shown;
@@ -444,10 +447,9 @@ export function useDeckHistory(
     if (readOnlyRef.current || stepText(-1)) return;
     if (collabDoc) {
       const result = undoLocalSlide(collabDoc);
-      if (result) {
-        if (result.conflicts.length) onUndoConflict?.(slideConflictText(result.conflicts));
-        return;
-      }
+      if (result?.conflicts.length) onUndoConflict?.(slideConflictText(result.conflicts));
+      refreshMarks();
+      return;
     }
     flushMarpDraft();
     marpStale.current = false;
@@ -457,10 +459,9 @@ export function useDeckHistory(
     if (readOnlyRef.current || stepText(1)) return;
     if (collabDoc) {
       const result = redoLocalSlide(collabDoc);
-      if (result) {
-        if (result.conflicts.length) onUndoConflict?.(slideConflictText(result.conflicts));
-        return;
-      }
+      if (result?.conflicts.length) onUndoConflict?.(slideConflictText(result.conflicts));
+      refreshMarks();
+      return;
     }
     flushMarpDraft();
     marpStale.current = false;
@@ -475,7 +476,7 @@ export function useDeckHistory(
 
   return {
     displayDeck,
-    displaySlide: (slide: Slide) => withTextOnSlide(slide, draft),
+    displaySlide: (slide: Slide | undefined) => withTextOnSlide(slide, draft),
     textDeck: () => withTextDraft(deckRef.current, draftRef.current),
     historyMarks: draft || state.editingId || state.focusedBox ? {
       undo: !!draft && draft.index > 0,

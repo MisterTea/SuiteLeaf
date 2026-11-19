@@ -6,6 +6,7 @@ test.skip(process.env.VITE_SUITELEAF_FORMS !== "1", "This build hides forms.");
 
 test("a required rating is named when missing, then kept as 4", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New form" }).click();
   await page.getByLabel("File title").fill("Talk feedback");
   await page.getByRole("tab", { name: "Questions" }).waitFor();

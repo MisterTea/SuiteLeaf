@@ -155,6 +155,7 @@ test("150-use-the-roster-on-the-server", async ({ page }) => {
       page,
       "She writes Plot letter: Hello {{Name}}, your plot is {{Plot}}.",
     );
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     const title = page.getByLabel("File title");
     await expect(title).toBeVisible();

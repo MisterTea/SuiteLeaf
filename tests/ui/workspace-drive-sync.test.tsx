@@ -803,6 +803,28 @@ describe("the live room", () => {
     expect(status()).toBe("Saved to SuiteDrive");
   });
 
+  it("copies the open presentation into an empty shared room", async () => {
+    const plan = store("slide", "Deck");
+    await open(plan);
+    const doc = new Y.Doc();
+    act(() => (fake.room!.onDoc as (doc: Y.Doc) => void)(doc));
+    const content = plan.file.content as { slideOrder: string[] };
+    expect(JSON.parse(doc.getMap<string>("slideOrder").get("order")!)).toEqual(content.slideOrder);
+    expect(doc.getMap("slides").has(content.slideOrder[0]!)).toBe(true);
+    const shell = doc.getMap("slides").get(content.slideOrder[0]!);
+    act(() => (fake.room!.onDoc as (doc: Y.Doc) => void)(doc));
+    expect(doc.getMap("slides").get(content.slideOrder[0]!)).toBe(shell);
+  });
+
+  it("does not copy a viewer's presentation into the room", async () => {
+    driveApi.get.mockImplementation(async (id: string) => driveItem(id, { role: "viewer" }));
+    await open(store("slide", "Deck"));
+    const doc = new Y.Doc();
+    act(() => (fake.room!.onDoc as (doc: Y.Doc) => void)(doc));
+    expect(doc.getMap("slides").size).toBe(0);
+    expect(doc.getMap("slideOrder").has("order")).toBe(false);
+  });
+
   it("seeds a new room from the document and joins it", async () => {
     await open(store());
     const doc = new Y.Doc();

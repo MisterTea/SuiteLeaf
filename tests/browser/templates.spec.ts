@@ -21,13 +21,14 @@ async function sheetReady(page: Page) {
   await page.locator("[data-sheet-ready='true']").waitFor();
 }
 
-test("home shows two templates of each kind and the gallery is one click away", async ({
+test("Start from template opens the gallery, with two templates of each kind", async ({
   page,
 }) => {
   await page.goto("/");
+  await expect(page.locator(".template-band")).toHaveCount(0);
+  await page.getByRole("button", { name: "Start from template" }).click();
   for (const name of builtins)
     await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Template gallery" }).click();
   await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Spreadsheets" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Presentations" })).toBeVisible();
@@ -41,22 +42,24 @@ test("previewing a template creates nothing, including when it is closed", async
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "Start from template" }).click();
   await page.getByRole("button", { name: "Invoice", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "Preview Invoice" });
   await expect(preview.getByRole("cell", { name: "Total", exact: true })).toBeVisible();
   await expect(preview.getByText("$0.00")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(preview).toBeHidden();
-  await expect(page.getByText("A workspace waiting for you")).toBeVisible();
 
   await page.getByRole("button", { name: "Letter", exact: true }).click();
   await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Back to files" }).click();
   await expect(page.getByText("A workspace waiting for you")).toBeVisible();
   await expect(page.locator(".file-row")).toHaveCount(0);
 });
 
 test("using a template opens a new file with the title selected", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "Start from template" }).click();
   await page.getByRole("button", { name: "Meeting notes", exact: true }).click();
   await page.getByRole("button", { name: "Use template" }).click();
   const title = page.getByLabel("File title");
@@ -79,6 +82,7 @@ test("using a template opens a new file with the title selected", async ({ page 
 test("an invoice copy keeps live formulas", async ({ page }) => {
   test.setTimeout(90000);
   await page.goto("/");
+  await page.getByRole("button", { name: "Start from template" }).click();
   await page.getByRole("button", { name: "Invoice", exact: true }).click();
   await page.getByRole("button", { name: "Use template" }).click();
   await sheetReady(page);
@@ -105,6 +109,7 @@ test("Save as template takes two menu clicks and stays independent of the file",
 }) => {
   test.setTimeout(90000);
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByRole("textbox", { name: "Document content" }).waitFor();
   const title = page.getByLabel("File title");
@@ -120,7 +125,7 @@ test("Save as template takes two menu clicks and stays independent of the file",
   await page.getByRole("textbox", { name: "Document content" }).click();
   await page.keyboard.type("October only");
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("button", { name: "Template gallery" }).click();
+  await page.getByRole("button", { name: "Start from template" }).click();
   await expect(page.getByRole("heading", { name: "Your templates" })).toBeVisible();
   await page.getByRole("button", { name: "Bakery invoice", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "Preview Bakery invoice" });
@@ -155,6 +160,7 @@ test("File › New › From template filters to that editor", async ({ page }) =
   ] as const;
   for (const [create, , shown, hidden] of editors) {
     await page.goto("/");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: create }).click();
     if (create === "New spreadsheet")
       await page.locator("[data-sheet-ready='true']").waitFor();
@@ -178,7 +184,7 @@ test("built-in templates create a file with the network blocked", async ({ page 
   );
   await page.context().setOffline(true);
   for (const name of builtins) {
-    await page.getByRole("button", { name: "Template gallery" }).click();
+    await page.getByRole("button", { name: "Start from template" }).click();
     await page.getByRole("button", { name, exact: true }).click();
     await page.getByRole("button", { name: "Use template" }).click();
     await expect(page.getByLabel("File title")).toHaveValue(name);

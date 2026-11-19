@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { blockTexts, compactSession, parseFile, roomAlreadyHasText, syncParagraphTexts } from "@suiteleaf/core";
 import { useDocumentRoom, shouldSeedDocument } from "../collab/session";
+import { seedSlideRoom } from "../collab/slide-room";
 import { keptLocalCopy } from "../conflict-merge";
 import { drive, getSession } from "../node-client";
 import { recordSaveStatus, unackedEditCount } from "../save-state";
@@ -79,6 +80,9 @@ export function useWorkspaceRoom(ws: WorkspaceState) {
           fragment.observeDeep(show);
           return;
         }
+      }
+      if (doc && current.current?.file.kind === "slide" && driveRole !== "viewer" && shouldSeedDocument(doc)) {
+        seedSlideRoom(doc, current.current.file.content);
       }
       if (!doc) collabBaseline.current = null;
       setCollabDoc(doc);

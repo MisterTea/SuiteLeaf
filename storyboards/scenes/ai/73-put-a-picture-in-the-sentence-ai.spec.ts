@@ -48,7 +48,7 @@ test("73-put-a-picture-in-the-sentence-ai", async ({ page }) => {
   expect(originalSrc).toMatch(/^data:image\/png;base64,/);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.locator("input[type=file]").setInputFiles({
     name: "Saturday note.sldoc",
     mimeType: "application/json",

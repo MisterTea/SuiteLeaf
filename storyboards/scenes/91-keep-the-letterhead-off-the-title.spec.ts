@@ -119,6 +119,7 @@ test("91-keep-the-letterhead-off-the-title", async ({ page }) => {
     "Sam is laying out the council minutes. The letterhead and the title both want an inch.",
     1700,
   );
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

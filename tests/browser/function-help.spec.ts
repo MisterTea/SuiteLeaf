@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 async function sheet(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await page.locator("[data-sheet-ready='true']").waitFor();
 }

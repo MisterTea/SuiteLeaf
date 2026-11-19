@@ -402,9 +402,6 @@ body.agent-open .title-block input {
 body.agent-open .save-status {
   flex-shrink: 0;
 }
-body.agent-open .new-cards {
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-}
 
 body.agent-open .sign-in-screen {
   margin-right: var(--agent-width);

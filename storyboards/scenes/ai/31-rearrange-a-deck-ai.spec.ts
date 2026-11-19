@@ -109,7 +109,7 @@ async function canvasShapes(page: Page): Promise<ShapeSpot[]> {
 
 test("31-rearrange-a-deck-ai", async ({ page }) => {
   await openApp(page);
-  await expect(page.getByRole("button", { name: "New presentation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
   await seedDeck(page);
   await expect(page.getByRole("link", { name: "Q3 update" })).toBeVisible();
   await caption(page, "Maria opens last quarter's update and asks the assistant to reshuffle it.");

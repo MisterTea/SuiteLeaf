@@ -56,6 +56,7 @@ async function drag(page: Page, dx: number) {
 test("57-crop-a-photo", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Lena is making the seed-swap sign-up note.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

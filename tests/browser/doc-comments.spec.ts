@@ -50,6 +50,7 @@ test("document comments post from the keyboard and stay linked to the text", asy
 }) => {
   test.setTimeout(90000);
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();
@@ -123,6 +124,7 @@ test("document comments post from the keyboard and stay linked to the text", asy
 test("the document's comment list opens beside the toolbar, and its × closes it", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByRole("textbox", { name: "Document content" }).click();
   await page.getByRole("button", { name: "Comments", exact: true }).click();

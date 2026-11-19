@@ -20,6 +20,8 @@ import {
 } from "./slide-fade-in";
 import type { SlidesEditorState } from "./slide-editor-state";
 import type { DeckHistoryApi } from "./slide-editor-history";
+import { slideClipboardImage } from "./slide-clipboard-paste";
+import { markSystemClipboard } from "./clipboard-image";
 import type { SlideElementActions } from "./slide-editor-elements";
 import type { SlideTextFormat } from "./slide-editor-text";
 
@@ -161,6 +163,7 @@ export function slideCommands(
     stepSlide,
     deleteSelectedElement,
     selectElement,
+    insertImageFile,
     toggleBold,
     toggleItalic,
     toggleUnderline,
@@ -176,11 +179,20 @@ export function slideCommands(
       | "moveSlides"
       | "stepSlide"
     > &
-    Pick<SlideElementActions, "deleteSelectedElement" | "selectElement"> &
+    Pick<SlideElementActions, "deleteSelectedElement" | "selectElement" | "insertImageFile"> &
     Pick<SlideTextFormat, "toggleBold" | "toggleItalic" | "toggleUnderline" | "selectionIn">,
 ) {
-  const { deckRef, activeDeckSlide, selectedElementRef, clipboard, anchorRef, commitRef, activeRef } =
+  const { deckRef, activeDeckSlide, selectedElementRef, clipboard, clipboardEpoch, anchorRef, commitRef, activeRef } =
     state;
+
+  const publishClip = (value: NonNullable<(typeof clipboard)["current"]>) => {
+    const epoch = ++clipboardEpoch.current;
+    clipboard.current = { ...value, system: false };
+    void markSystemClipboard().then((ok) => {
+      if (!ok || clipboardEpoch.current !== epoch || !clipboard.current) return;
+      clipboard.current = { ...clipboard.current, system: true };
+    });
+  };
 
   const copySelection = () => {
     const deckNow = deckRef.current;
@@ -189,16 +201,16 @@ export function slideCommands(
       (item) => item.id === selectedElementRef.current,
     );
     if (el) {
-      clipboard.current = { kind: "elements", elements: [structuredClone(el)] };
+      publishClip({ kind: "elements", elements: [structuredClone(el)] });
       return;
     }
     if (state.masterViewRef.current) return;
     const ids = chosenSlides();
     if (!ids.length) return;
-    clipboard.current = {
+    publishClip({
       kind: "slides",
       slides: ids.map((id) => structuredClone(deckNow.slides[id])),
-    };
+    });
   };
 
   const cutSelection = () => {
@@ -207,11 +219,10 @@ export function slideCommands(
     else if (clipboard.current?.kind === "slides") deleteCurrentSlide();
   };
 
-  const pasteClipboard = () => {
-    const clip = clipboard.current;
+  const pasteInternal = (clip: NonNullable<(typeof clipboard)["current"]>) => {
     const deckNow = deckRef.current;
     const slide = activeDeckSlide(deckNow);
-    if (!clip || !slide) return;
+    if (!slide) return;
     if (clip.kind === "elements") {
       const placed = pastedElements(
         slide.elements,
@@ -232,6 +243,26 @@ export function slideCommands(
     commit(result.deck);
     anchorRef.current = result.newIds[0];
     applySelection(result.newIds[0], result.newIds, null);
+  };
+
+  const pasteClipboard = () => {
+    const clip = clipboard.current;
+    const epoch = clipboardEpoch.current;
+    // A copied shape still owns the paste until a picture replaces the system clipboard.
+    if (clip && !clip.system) {
+      pasteInternal(clip);
+      return;
+    }
+    void (async () => {
+      const file = await slideClipboardImage(clip);
+      if (clipboardEpoch.current !== epoch) return;
+      if (file) {
+        await insertImageFile(file);
+        return;
+      }
+      const current = clipboard.current;
+      if (current) pasteInternal(current);
+    })();
   };
 
   const runCommand = (command: SlideCommand) => {

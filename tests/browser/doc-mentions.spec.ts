@@ -90,6 +90,7 @@ test("an @mention is stored apart from the sentence and opens on that person", a
     localStorage.setItem("suiteleaf:known-names", JSON.stringify(["Jordan", "Alex"]));
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByLabel("File title").fill("Quarterly Report");
   await writeReport(page);
@@ -189,6 +190,7 @@ test("the first comment name is what @ matches, and a name with no account can b
 }) => {
   test.setTimeout(90000);
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();

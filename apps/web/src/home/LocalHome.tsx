@@ -12,6 +12,10 @@ import { SameFileDialog, openNotices } from "../same-file";
 import { sampleDoc, sampleSheet, sampleSlide } from "../samples";
 import { drawingFromAction, newFile, type NewKind } from "../drawing-home";
 import { DriveDialog, NameDialog } from "../drive/DriveBrowser";
+import { ShareDialog } from "../drive/ShareDialog";
+import { getSession } from "../node-client";
+import { downloadLibrarySelection } from "./LibrarySelection";
+
 import { searchFile } from "../library-search";
 import { FileLibraryRow, TrashToast } from "../library-trash-ui";
 import { childFolders, existingFolder, folderName, folderOfPath, isWithinFolder, parentFolder } from "../local-folders";
@@ -41,12 +45,12 @@ import { AiButton } from "../ai/AgentSidebar";
 import { FeedbackButton } from "../feedback/FeedbackButton";
 import { homeSnapshot, homeTools, type HomeAgentContext } from "../ai/tools/files";
 import { connectTools } from "../ai/tools/cluster";
-import { TemplateHome } from "../templates/gallery";
 import { message } from "../error-message";
 import { useLibrarySelection } from "./use-library-selection";
 import { driveFileDrop } from "./drive-file-drop";
 import { ImportButton } from "./ImportButton";
-import { ErrorBanner, LeftServerNotice, LocalSidebar, NewCards } from "./home-parts";
+import { ErrorBanner, LeftServerNotice, LocalSidebar, NewMenu } from "./home-parts";
+import { openDocumentInNewTab, useDesktopTabTitle } from "../desktop-tab-bar";
 
 /** The documents folder the home screen showed last, so returning from a file reopens it. */
 let lastLocalFolder = "";
@@ -78,10 +82,13 @@ export function LocalHome() {
   const navigationType = useNavigationType();
   const [searchParams] = useSearchParams();
   const { locked, demo } = useMode();
+  useDesktopTabTitle("Files");
   const [connecting, setConnecting] = useState(false);
   const [records, setRecords] = useState<FileRecord[]>([]),
     [query, setQuery] = useState(""),
     [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
+    [sharing, setSharing] = useState<FileRecord | null>(null),
     [filter, setFilter] = useState<LibraryFilter>("all"),
     [opened, setOpened] = useState(readOpened),
     [sort, setSort] = useState<{ by: "name" | "edited"; desc: boolean }>({
@@ -267,6 +274,33 @@ export function LocalHome() {
     await refresh();
   };
   const desktop = !!window.suiteleaf;
+  const downloadRecord = (record: FileRecord) => {
+    void (async () => {
+      const full = (await storage.get(record.file.id)) ?? record;
+      await downloadLibrarySelection([full]);
+    })().catch((e) => setError(message(e)));
+  };
+  const shareRecord = (record: FileRecord) => {
+    if (record.drive?.itemId && getSession()) {
+      setSharing(record);
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = `/file/${encodeURIComponent(record.file.id)}`;
+    void (async () => {
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: record.file.title, url: url.href });
+          return;
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+      await navigator.clipboard.writeText(url.href);
+      setNotice(`Link copied for “${record.file.title}”.`);
+    })().catch((e) => setError(message(e)));
+  };
   const rememberUndo = (moved: FileRecord[]) => {
     clearTimeout(undoTimer.current);
     setUndo(moved);
@@ -558,18 +592,18 @@ export function LocalHome() {
           </div>
         </header>
         <LeftServerNotice />
-        {focused ? null : (
-          <>
-            <section className="welcome">
-              <p className="eyebrow">YOUR EVERYDAY WORKSPACE</p>
-              <h1>Good ideas start here.</h1>
-              <p>Write something. Work out the numbers. Make it yours.</p>
-            </section>
-            <NewCards onCreate={make} />
-            <TemplateHome />
-          </>
-        )}
+        <div className="home-new">
+          <NewMenu onCreate={make} />
+          <button
+            type="button"
+            className="start-from-template"
+            onClick={() => navigate("/templates")}
+          >
+            Start from template
+          </button>
+        </div>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
+        {notice ? <p className="file-action-note" role="status">{notice}</p> : null}
         {connecting ? (
           <ConnectDialog onClose={() => setConnecting(false)} />
         ) : null}
@@ -717,14 +751,25 @@ export function LocalHome() {
                     snippet={snippet}
                     view={filter}
                     desktop={desktop}
-                    onMove={folders ? () => setFolderDialog({ kind: "move-file", record: r }) : undefined}
+                    onOpen={() => navigate(`/file/${r.file.id}`)}
+                    onOpenInNewTab={() => openDocumentInNewTab(`/file/${r.file.id}`, r.file.title)}
+                    onDownload={() => downloadRecord(r)}
+                    onShare={() => shareRecord(r)}
+                    onMove={() => {
+                      if (desktop && !folders) {
+                        setError("Folders are still loading. Try again in a moment.");
+                        return;
+                      }
+                      setFolderDialog({ kind: "move-file", record: r });
+                    }}
                     onDragStart={browsing ? (event) => dragFile(event, r.file.id) : undefined}
                     onRename={() => setRenaming(r)}
                     onDuplicate={() =>
-                      void storage
-                        .save({ file: duplicateFile(r.file) })
-                        .then(refresh)
-                        .catch((e) => setError(message(e)))
+                      void (async () => {
+                        const full = (await storage.get(r.file.id)) ?? r;
+                        await storage.save({ file: duplicateFile(full.file) });
+                        await refresh();
+                      })().catch((e) => setError(message(e)))
                     }
                     onMoveToTrash={() => moveToTrash(r)}
                     onRestore={() => restore(r)}
@@ -799,11 +844,19 @@ export function LocalHome() {
               }}
             />
           ) : null}
-          {folderDialog?.kind === "move-file" && folders ? (
+          {sharing?.drive ? (
+            <ShareDialog
+              itemId={sharing.drive.itemId}
+              itemName={sharing.file.title}
+              kind={sharing.file.kind}
+              onClose={() => setSharing(null)}
+            />
+          ) : null}
+          {folderDialog?.kind === "move-file" ? (
             <LocalMoveDialog
               name={folderDialog.record.file.title}
               from={folderOf(folderDialog.record)}
-              folders={folders}
+              folders={folders ?? []}
               onClose={() => setFolderDialog(null)}
               onMove={(target) => {
                 setFolderDialog(null);

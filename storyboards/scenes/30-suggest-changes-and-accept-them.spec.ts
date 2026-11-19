@@ -63,6 +63,7 @@ async function managerCopy(bytes: Buffer) {
 test("30-suggest-changes-and-accept-them", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Jordan is editing Alex's Quarterly Report. The changes should stay proposals.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   await beat(page, 400);
   const title = page.getByLabel("File title");

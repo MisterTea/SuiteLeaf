@@ -63,6 +63,7 @@ async function replaceField(page: Page, label: string, value: string) {
 test("100-see-the-margin-move", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Sam is widening the minutes. The margin will move before she applies.", 1700);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

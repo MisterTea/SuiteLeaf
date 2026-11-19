@@ -181,7 +181,15 @@ export function useSlideEditorActions(
 /** The editor's keyboard: commands, Escape, the context menu, focus, and starting the show. */
 export function useSlideEditorKeys(
   state: SlidesEditorState,
-  { api, beginShow }: Pick<ShowControls, "beginShow"> & { api: RefObject<SlideEditorApi> },
+  {
+    api,
+    beginShow,
+    holdPaste,
+  }: Pick<ShowControls, "beginShow"> & {
+    api: RefObject<SlideEditorApi>;
+    /** A real paste shortcut. When it returns true, the paste event carries the clipboard. */
+    holdPaste: RefObject<(event: KeyboardEvent) => boolean>;
+  },
 ) {
   const {
     deck, deckRef, presenting, presentingRef, handoutsRef, setContextMenu, contextMenu, editingRef,
@@ -224,6 +232,8 @@ export function useSlideEditorKeys(
         e.preventDefault();
         return;
       }
+      // A real paste keeps going, so the paste event can carry a picture.
+      if (command.type === "paste" && holdPaste.current(e)) return;
       e.preventDefault();
       api.current.run(command);
     };

@@ -203,7 +203,8 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
       }),
       target: ({ kind }) =>
         onScreen(
-          [...document.querySelectorAll(".new-card")].find((b) => b.textContent?.toLowerCase().includes(`new ${kind}`)),
+          [...document.querySelectorAll(".new-card")].find((b) => b.textContent?.toLowerCase().includes(`new ${kind}`)) ??
+            document.querySelector(".new-menu-button"),
           false,
         ),
       async execute({ kind, title }) {

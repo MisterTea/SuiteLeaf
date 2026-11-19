@@ -4,6 +4,7 @@ test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true
 
 test("slide carousel delegates swipes to native touch scrolling", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New presentation/ }).click();
   for (let i = 0; i < 12; i++) await page.locator(".add-slide-sidebar-btn").click();
   const list = page.locator(".thumbnails-list");

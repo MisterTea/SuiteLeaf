@@ -27,7 +27,8 @@ import {
 import { message } from "../error-message";
 import { driveFileDrop } from "./drive-file-drop";
 import { ImportButton } from "./ImportButton";
-import { ErrorBanner, Logo, NewCards } from "./home-parts";
+import { ErrorBanner, Logo, NewMenu } from "./home-parts";
+import { useDesktopTabTitle } from "../desktop-tab-bar";
 
 export function MailLink() {
   const navigate = useNavigate();
@@ -102,6 +103,7 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { locked } = useMode();
+  useDesktopTabTitle("Files");
   const [error, setError] = useState("");
   const [listed, setListed] = useState(0);
   const folder = useRef<string | null>(null);
@@ -199,15 +201,10 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
             <InstallButton />
           </div>
         </header>
-        <section className="welcome">
-          <p className="eyebrow">YOUR TEAM WORKSPACE</p>
-          <h1>Good ideas start here.</h1>
-          <p>
-            Everything you create is saved to SuiteDrive, on your team&apos;s
-            server.
-          </p>
-        </section>
-        <NewCards onCreate={make} folder={folderName} />
+        <div className="home-new">
+          <NewMenu onCreate={make} folder={folderName} />
+          {folderName ? <span className="home-new-where">In {folderName}</span> : null}
+        </div>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <section className="file-section">
           <header>

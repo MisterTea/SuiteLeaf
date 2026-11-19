@@ -15,11 +15,7 @@
     padding: 25px;
   }
   .new-card {
-    padding: 20px 15px;
-  }
-  .app-icon {
-    width: 44px;
-    height: 55px;
+    padding: 12px;
   }
   .new-card small {
     font-size: 11px;
@@ -68,16 +64,8 @@
   .search {
     width: 100%;
   }
-  .welcome {
-    margin-top: 35px;
-  }
-  .welcome h1 {
-    font-size: 31px;
-  }
-  .new-cards {
-    grid-template-columns: 1fr;
-    gap: 12px;
-    margin: 25px 0;
+  .home-new {
+    margin-top: 16px;
   }
   .new-card small {
     font-size: 12px;

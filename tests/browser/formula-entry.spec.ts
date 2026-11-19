@@ -11,6 +11,7 @@ test("formula suggestions never replace a formula typed past them", async ({ pag
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.stack || e.message));
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   const host = page.locator(".sheet-host");
   await host.waitFor();

@@ -58,6 +58,7 @@ test("98-indent-the-first-line", async ({ page }) => {
     page,
     "Nia opens a new document and types two paragraphs of a short story.",
   );
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

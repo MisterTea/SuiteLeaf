@@ -13,7 +13,7 @@ async function seedNote(page: Page) {
   const file = createFile("doc", "Methods");
   if (file.kind !== "doc") throw new Error("expected a document");
   await page.goto("/");
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.evaluate(async (record) => {
     await new Promise<void>((resolve, reject) => {
       const open = indexedDB.open("SuiteLeaf");

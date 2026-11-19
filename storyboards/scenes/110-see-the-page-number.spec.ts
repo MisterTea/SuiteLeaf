@@ -108,6 +108,7 @@ async function controlsTogether(page: Page) {
 test("110-see-the-page-number", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Sam is numbering the town council minutes.", 1600);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

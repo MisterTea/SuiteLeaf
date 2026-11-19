@@ -28,7 +28,7 @@ export function DrawingIcon({ size }: { size: number }) {
   return <PenTool size={size} />;
 }
 
-/** The home screen's card for a new drawing, which asks what kind. */
+/** The new-file dialog's row for a drawing, which asks SVG, Mermaid, or Graphviz. */
 export function NewDrawingCard({
   onCreate,
   where,
@@ -39,7 +39,7 @@ export function NewDrawingCard({
   return (
     <div className="new-card new-drawing-card" role="group" aria-label="New drawing">
       <span className="app-icon drawing">
-        <DrawingIcon size={30} />
+        <DrawingIcon size={22} />
       </span>
       <span>
         <strong>New drawing</strong>

@@ -84,6 +84,7 @@ async function caretAt(page: Page, phrase: string) {
 test("83-line-up-the-times", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Nia opens a new agenda. Each line is a name, then a time.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

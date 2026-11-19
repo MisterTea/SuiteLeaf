@@ -76,8 +76,10 @@ test("33-start-from-a-template-ai", async ({ page }) => {
   await expect(page.getByRole("link", { name: november, exact: true }), why).toBeVisible();
   await expect(page.getByRole("link", { name: "Landlord meeting", exact: true }), why).toBeVisible();
   await expect(page.getByRole("link", { name: "Pitch deck", exact: true }), why).toBeVisible();
+  await page.getByRole("button", { name: "Start from template" }).click();
   await expect(page.getByRole("button", { name: "Bakery invoice", exact: true }), why).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Invoice", exact: true }), why).toBeVisible();
+  await page.getByRole("button", { name: "Back to files" }).click();
   const savedTemplates = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((ok, fail) => {
       const request = indexedDB.open("SuiteLeafTemplates");

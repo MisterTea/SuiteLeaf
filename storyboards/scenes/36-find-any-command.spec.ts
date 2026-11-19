@@ -5,6 +5,7 @@ const mac = process.platform === "darwin";
 test("36-find-any-command", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Priya would rather type a command than hunt through the menus.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();

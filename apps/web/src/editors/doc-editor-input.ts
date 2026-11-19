@@ -5,6 +5,8 @@ import { CellSelection } from "@tiptap/pm/tables";
 import type { EditorView } from "@tiptap/pm/view";
 import { isInternalAnchor, slugify } from "../anchors";
 import { importHTML } from "./doc-extensions";
+import { pastedImageFiles } from "./clipboard-image";
+import { pasteDocImages } from "./doc-image-insert";
 import type { ProofingContext } from "./doc-proofing";
 import type { TableMenu } from "./doc-table-ui";
 
@@ -191,9 +193,22 @@ export function docKeyDown(
 
 export function docPaste(
   event: ClipboardEvent,
-  { editor, readOnlyRef }: { editor: Editor | null; readOnlyRef: RefObject<boolean> },
+  {
+    editor,
+    readOnlyRef,
+    onError,
+  }: {
+    editor: Editor | null;
+    readOnlyRef: RefObject<boolean>;
+    onError?: (message: string) => void;
+  },
 ): boolean {
   if (readOnlyRef.current) return true;
+  const images = pastedImageFiles(event.clipboardData);
+  if (images.length) {
+    void pasteDocImages(editor, images, onError ?? (() => {}));
+    return true;
+  }
   const html = event.clipboardData?.getData("text/html");
   if (!html) return false;
   const content = importHTML(html);

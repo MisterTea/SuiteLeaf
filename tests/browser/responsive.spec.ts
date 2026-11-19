@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 
 test("Slide save failure toasts stay above the carousel through rotation", async ({ page, isMobile }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New presentation/ }).click();
   const toast = page.locator(".slides-canvas-stage > .workspace-status-toast");
   await page.locator(".slides-canvas-stage").waitFor();
@@ -68,7 +69,7 @@ test("Mobile shared presentation keeps upload retries visible through rotation",
     await route.fulfill({ json: body });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: /^New presentation/ }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.evaluate(async (record) => {
     await new Promise<void>((resolve, reject) => {
       const open = indexedDB.open("SuiteLeaf");
@@ -296,6 +297,7 @@ test("Mobile workspace combines navigation and actions without showing the title
     await page.setViewportSize({ width, height: 844 });
     for (const kind of ["document", "spreadsheet", "presentation"]) {
       await page.goto("/");
+      await page.getByRole("button", { name: "New", exact: true }).click();
       await page.getByRole("button", { name: new RegExp(`^New ${kind}`) }).click();
       const header = page.locator(".workspace-header");
       await expect(page.getByLabel("File title")).toBeHidden();
@@ -478,6 +480,7 @@ test("Mobile Docs reflows readable text, tables and images and restores paper la
 test("Mobile sheet touch: select, pan, lasso, and double tap to edit", async ({ page, isMobile }) => {
   test.skip(!isMobile);
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   const host = page.getByLabel("Spreadsheet grid");
   await expect(host).toHaveAttribute("aria-busy", "false");
@@ -508,6 +511,7 @@ test("Mobile slide editing keeps the toolbar above the keyboard without blank sc
     Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: /^New presentation/ }).click();
   const text = page.locator(".slide-canvas .element-textarea").first();
   await editSlideText(page.locator(".slide-canvas .slide-text").first());
@@ -627,7 +631,8 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     page,
   }) => {
     await page.goto("/");
-    await page.waitForSelector(".new-cards");
+    const create = page.getByRole("button", { name: "New", exact: true });
+    await expect(create).toBeVisible();
 
     const viewport = page.viewportSize()!;
     const isMobile = viewport.width < 700;
@@ -645,16 +650,17 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
       expect(sidebarBox.width).toBeGreaterThanOrEqual(180);
     }
 
-    // New cards adapt to width and remain clickable
-    const docCard = page.getByRole("button", { name: "New document" });
-    const sheetCard = page.getByRole("button", { name: "New spreadsheet" });
-    const slideCard = page.getByRole("button", { name: "New presentation" });
-    await expect(docCard).toBeVisible();
-    await expect(sheetCard).toBeVisible();
-    await expect(slideCard).toBeVisible();
-
-    const docBox = (await docCard.boundingBox())!;
-    expect(docBox.x).toBeGreaterThanOrEqual(sidebarBox.x + sidebarBox.width - 1);
+    const createBox = (await create.boundingBox())!;
+    expect(createBox.x).toBeGreaterThanOrEqual(sidebarBox.x + sidebarBox.width - 1);
+    expect(createBox.x + createBox.width).toBeLessThanOrEqual(viewport.width + 1);
+    await create.click();
+    const dialog = page.getByRole("dialog", { name: "What do you want to make?" });
+    const docChoice = dialog.getByRole("button", { name: "New document" });
+    await expect(docChoice).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "New spreadsheet" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "New presentation" })).toBeVisible();
+    const docBox = (await docChoice.boundingBox())!;
+    expect(docBox.x).toBeGreaterThanOrEqual(0);
     expect(docBox.x + docBox.width).toBeLessThanOrEqual(viewport.width + 1);
 
     // Search input is accessible and fits
@@ -668,6 +674,7 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     page,
   }) => {
     await page.goto("/");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page.waitForSelector(".paper");
 
@@ -747,6 +754,7 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     page,
   }) => {
     await page.goto("/");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New document" }).click();
     await page.waitForSelector(".paper");
 
@@ -794,6 +802,7 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     page,
   }) => {
     await page.goto("/");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New spreadsheet" }).click();
     await page.waitForSelector(".sheet-host");
 
@@ -841,6 +850,7 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     page,
   }) => {
     await page.goto("/");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: "New presentation" }).click();
     await page.waitForSelector(".slides-canvas-stage");
 
@@ -903,6 +913,7 @@ test("Editor menu bars stay above their toolbars without overlapping", async ({ 
   for (const kind of ["document", "spreadsheet", "presentation"]) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
+    await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("button", { name: new RegExp(`^New ${kind}`) }).click();
     const bar = page.getByRole("menubar", { name: "Main menu" });
     await expect(bar).toBeInViewport();

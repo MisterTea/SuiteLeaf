@@ -35,6 +35,7 @@ import { useSlideExports } from "./slide-editor-exports";
 import { useShowControls, useShowPlayback } from "./slide-editor-show";
 import { useSlidesAgentHost } from "./slide-editor-agent";
 import { useSlideEditorActions, useSlideEditorKeys } from "./slide-editor-actions";
+import { useSlideClipboardPaste } from "./slide-clipboard-paste";
 import { editorCanvasHooks, SlideCanvasStage } from "./slide-editor-canvas";
 import { SlidesToolbar } from "./slide-editor-toolbar";
 import { SlideFormatTools, SlideTextToolbar } from "./slide-editor-format-tools";
@@ -258,10 +259,17 @@ export default function Slides({
     toggleSlideCommentPanel,
     openSlideResolved,
   });
-  useSlideEditorKeys(state, { api, beginShow });
+  const holdPaste = useSlideClipboardPaste(state, {
+    insertImageFile: objects.insertImageFile,
+    pasteClipboard,
+    marpDraft,
+    onMarpChange,
+    onError,
+  });
+  useSlideEditorKeys(state, { api, beginShow, holdPaste });
   const playback = useShowPlayback(state, { ...showControls, activeSlide, marpPages });
 
-  const equationElement = activeSlide.elements.find((element) => element.id === equationTarget);
+  const equationElement = activeSlide?.elements.find((element) => element.id === equationTarget);
   const equationChoices = equationElement ? slideEquations(equationElement) : [];
   const editEquation = (element: (typeof activeSlide.elements)[number]) => {
     if (readOnly || !hasSlideEquation(element)) return false;
@@ -372,7 +380,7 @@ export default function Slides({
         }
       />
 
-      {state.panel === "animation" && <SlideAnimationRibbon deck={deck} slide={activeSlide}
+      {state.panel === "animation" && activeSlide && <SlideAnimationRibbon deck={deck} slide={activeSlide}
         selectedElementId={selectedElementId} selectedKey={selectedAnimationKey} readOnly={readOnly}
         onChange={commit} onApplyEffect={applyAnimation} onPreview={animationPreview.play} playing={animationPreview.playing}
         onStop={animationPreview.stop} onClose={() => { animationPreview.stop(); setPanel(null); }} />}

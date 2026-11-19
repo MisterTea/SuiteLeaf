@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { exportBinary, exportText, printDocument } from "../../apps/web/src/storage";
-import { box, openSlides, pick, press, setupSlidesDom, words } from "./slide-editor-harness";
+import { box, mockImageDimensions, openSlides, pick, press, setupSlidesDom, words } from "./slide-editor-harness";
 
 vi.mock("../../apps/web/src/editors/themes/beam_ut.css?raw", () => ({ default: "/* @theme beam_ut */" }));
 vi.mock("../../apps/web/src/storage", async (importOriginal) => ({
@@ -168,6 +168,41 @@ describe("the keyboard", () => {
     expect(editor.order().at(-2)).toBe(editor.active());
     press("Backspace");
     expect(editor.order()).toEqual(["a", "b", "c"]);
+  });
+
+  function pasteImage(name = "shot.png") {
+    const file = new File(["png"], name, { type: "image/png" });
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", {
+      value: {
+        files: [file],
+        items: [{ kind: "file", type: file.type, getAsFile: () => file }],
+        types: ["Files"],
+        getData: () => "",
+      },
+    });
+    document.body.dispatchEvent(event);
+  }
+
+  it("pastes a clipboard picture onto the slide", async () => {
+    mockImageDimensions(80, 40);
+    const editor = openSlides();
+    pasteImage();
+    await waitFor(() => expect(editor.elements("a").some((el) => el.type === "image")).toBe(true));
+    expect(editor.elements("a").find((el) => el.type === "image")).toMatchObject({ alt: "shot.png" });
+    expect(String(editor.elements("a").find((el) => el.type === "image")?.src)).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("keeps a copied shape when the system clipboard still has an older picture", async () => {
+    mockImageDimensions(80, 40);
+    const editor = openSlides();
+    pick("a-words");
+    press("c", meta);
+    pasteImage();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(editor.elements("a").some((el) => el.type === "image")).toBe(false);
+    press("v", meta);
+    expect(editor.elements("a").filter((el) => el.content === "Intro")).toHaveLength(2);
   });
 
   it("lets a viewer copy and step but not change anything", () => {

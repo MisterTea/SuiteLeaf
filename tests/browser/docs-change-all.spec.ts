@@ -32,7 +32,7 @@ function launchNotes() {
 
 async function seed(page: Page, file: ReturnType<typeof launchNotes>) {
   await page.goto("/");
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.evaluate(async (record) => {
     await new Promise<void>((resolve, reject) => {
       const open = indexedDB.open("SuiteLeaf");
@@ -126,6 +126,7 @@ test("change all lists every copy, cancels, and undoes in one step", async ({ pa
 
 test("find and replace still replaces every match in one undo", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const editor = editorOf(page);
   await editor.click();

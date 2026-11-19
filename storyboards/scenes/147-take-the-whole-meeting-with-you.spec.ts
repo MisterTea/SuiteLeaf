@@ -19,6 +19,7 @@ async function say(page: Page, text: string, hold = 1400) {
 test("147-take-the-whole-meeting-with-you", async ({ page }) => {
   await page.goto("/");
   await say(page, "Maya is taking the October meeting with her.");
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await expect(title).toBeVisible();

@@ -20,6 +20,11 @@
   word-break: break-word;
   overflow: hidden;
 }
+/* PowerPoint's default is to paint past the box. Autofit has already shrunk
+   the type, so that box still clips. */
+.slide-text:not([data-autofit="on"]) .element-editor {
+  overflow: visible;
+}
 
 .element-editor[contenteditable="false"] {
   user-select: none;
@@ -37,10 +42,17 @@
   color: inherit;
 }
 
-.element-editor[data-empty="true"]::before,
+/* The hint is paint, not text. An in-flow ::before becomes its own line above
+   the empty paragraph, so the caret sits under the hint and cannot move up.
+   Drop the hint as soon as the box is being edited. */
+.element-editor[data-empty="true"]:not([contenteditable="true"])::before,
 .slide-text-face[data-empty="true"]::before {
   content: attr(data-placeholder);
   opacity: 0.5;
+}
+
+.element-editor[contenteditable="true"]::before {
+  content: none;
 }
 
 .format-hint-bar {

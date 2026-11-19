@@ -30,6 +30,7 @@ async function chooseParagraphStyle(page: Page, label: string) {
 }
 
 async function writeMinutes(page: Page) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await expect(title).toBeVisible();

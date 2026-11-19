@@ -94,7 +94,7 @@ async function lineBox(page: Page) {
 
 test("70-put-a-picture-beside-the-text-ai", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "New document" }).waitFor();
+  await page.getByRole("button", { name: "New", exact: true }).waitFor();
   await page.locator("input[type=file]").setInputFiles({
     name: "A letter.sldoc",
     mimeType: "application/json",

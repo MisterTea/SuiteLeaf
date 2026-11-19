@@ -59,14 +59,15 @@ test("33-start-from-a-template", async ({ page }) => {
 
   await caption(
     page,
-    "Tomás needs an invoice, notes for his landlord, and a pitch deck. Templates are already on the home screen — nothing to turn on.",
+    "Tomás needs an invoice, notes for his landlord, and a pitch deck. Start from template sits next to New.",
     1800,
   );
+  await expect(page.getByRole("button", { name: "Start from template" })).toBeVisible();
+  await page.getByRole("button", { name: "Start from template" }).click();
   for (const name of ["Invoice", "Budget", "Meeting notes", "Letter", "Pitch deck", "Announcement"])
     await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
 
-  await caption(page, "The whole gallery is one click away. He looks for an invoice.", 1200);
-  await page.getByRole("button", { name: "Template gallery" }).click();
+  await caption(page, "The gallery is one click away. He looks for an invoice.", 1200);
   await page.getByLabel("Search templates").click();
   await typeSlowly(page, "inv", 80);
   await expect(page.getByRole("button", { name: "Invoice", exact: true })).toBeVisible();
@@ -91,9 +92,10 @@ test("33-start-from-a-template", async ({ page }) => {
 
   await caption(
     page,
-    "Two clicks from home: the template, then Use template. The new file's title is selected.",
+    "From home he opens Start from template, then the invoice. Use template selects the new file's title.",
     1400,
   );
+  await page.getByRole("button", { name: "Start from template" }).click();
   await page.getByRole("button", { name: "Invoice", exact: true }).click();
   await page.getByRole("button", { name: "Use template" }).click();
   const title = page.getByLabel("File title");
@@ -141,10 +143,11 @@ test("33-start-from-a-template", async ({ page }) => {
   await expect(page.getByRole("status")).toContainText("Saved as template");
   await beat(page, 900);
 
-  await caption(page, "Bakery invoice sits on the home screen. October's file is separate.", 1400);
+  await caption(page, "Bakery invoice is in the gallery. October's file is separate.", 1400);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await expect(page.getByRole("button", { name: "Bakery invoice", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Invoice · Café Lune · October" })).toBeVisible();
+  await page.getByRole("button", { name: "Start from template" }).click();
+  await expect(page.getByRole("button", { name: "Bakery invoice", exact: true })).toBeVisible();
 
   await caption(
     page,
@@ -171,6 +174,7 @@ test("33-start-from-a-template", async ({ page }) => {
   await selectCells(page, "B6");
   await beat(page, 800);
   await page.getByRole("button", { name: "Back to files" }).click();
+  await page.getByRole("button", { name: "Start from template" }).click();
   await page.getByRole("button", { name: "Bakery invoice", exact: true }).click();
   await expect(page.getByRole("dialog").getByText("24", { exact: true })).toBeVisible();
   await expect(page.getByRole("dialog").getByText("$240.00")).toBeVisible();
@@ -204,7 +208,7 @@ test("33-start-from-a-template", async ({ page }) => {
   await caption(page, "At the market, with no signal, the pitch deck template is still on this computer.", 1600);
   await page.context().setOffline(true);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("button", { name: "Template gallery" }).click();
+  await page.getByRole("button", { name: "Start from template" }).click();
   await page.getByRole("button", { name: "Pitch deck", exact: true }).click();
   await page.getByRole("button", { name: "Use template" }).click();
   await expect(page.getByLabel("File title")).toHaveValue("Pitch deck");
@@ -214,7 +218,7 @@ test("33-start-from-a-template", async ({ page }) => {
   await page.context().setOffline(false);
   await caption(page, "Back home, the ⋯ menu renames or removes a template. The invoices stay.", 1400);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("button", { name: "Template gallery" }).click();
+  await page.getByRole("button", { name: "Start from template" }).click();
   await page.getByRole("button", { name: "Actions for Bakery invoice" }).click();
   await expect(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Remove" })).toBeVisible();

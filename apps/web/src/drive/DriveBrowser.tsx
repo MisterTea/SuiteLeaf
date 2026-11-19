@@ -49,6 +49,8 @@ import {
 import { driveFileUrl } from "./drive-files";
 import { place } from "./drive-place";
 import { DriveMenuPopup } from "./DriveMenuPopup";
+import { ShareDialog } from "./ShareDialog";
+import { listedFileMenu, useDriveFileActions } from "./drive-file-actions";
 export { rememberDriveFolder } from "./drive-place";
 export { DriveDialog } from "./drive-dialog";
 
@@ -389,6 +391,13 @@ export function DriveBrowser({
   };
   const openInNewTab = useCallback(
     (target: { id: string; name: string }) => {
+      const tabs = window.suiteleaf?.tabs;
+      if (tabs) {
+        void tabs.open(`/shared/${target.id}`, target.name).catch(() => {
+          window.open(driveFileUrl(target.id), "_blank");
+        });
+        return;
+      }
       if (onOpenInNewTab) onOpenInNewTab(target as DriveItem);
       else window.open(driveFileUrl(target.id), "_blank");
     },
@@ -401,6 +410,15 @@ export function DriveBrowser({
       void select(item);
     }
   };
+  const {
+    sharing,
+    setSharing,
+    downloadDriveFile,
+    copyDriveFile,
+    shareDriveFile,
+    renameLoaded,
+    moveLoaded,
+  } = useDriveFileActions(act, refresh, setKept, setAsking, setMoving);
 
   // The shared root is a list, not a folder; the node enforces folder roles.
   const canWrite = view === "mine" || folder.id !== null;
@@ -617,7 +635,15 @@ export function DriveBrowser({
                     mode={mode}
                     busy={busy}
                     popupRef={menuPopup}
+                    onOpen={() => {
+                      void open(hit.name, async () => select(await drive.get(hit.id)));
+                    }}
                     onOpenInNewTab={() => openInNewTab(hit)}
+                    onDownload={() => downloadDriveFile(hit)}
+                    onRename={() => renameLoaded(hit.id)}
+                    onMove={() => moveLoaded(hit.id)}
+                    onCopy={() => copyDriveFile(hit)}
+                    onShare={() => shareDriveFile(hit)}
                     onClose={() => {
                       setMenuId(null);
                       setMenuPoint(null);
@@ -793,22 +819,16 @@ export function DriveBrowser({
                         mode={mode}
                         busy={busy}
                         popupRef={menuPopup}
-                        onOpenInNewTab={() => openInNewTab(item)}
-                        onMove={
-                          item.role === "owner" || item.role === "editor"
-                            ? () => setMoving(item)
-                            : undefined
-                        }
-                        onRename={
-                          item.role === "owner" || item.role === "editor"
-                            ? () => setAsking({ action: "rename", item })
-                            : undefined
-                        }
-                        onMoveToTrash={
-                          item.role === "owner" || item.role === "editor"
-                            ? () => moveToTrash(item)
-                            : undefined
-                        }
+                        {...listedFileMenu(item, mode, {
+                          choose,
+                          openInNewTab,
+                          download: downloadDriveFile,
+                          copy: copyDriveFile,
+                          share: shareDriveFile,
+                          move: setMoving,
+                          rename: (target) => setAsking({ action: "rename", item: target }),
+                          trash: moveToTrash,
+                        })}
                         onClose={() => {
                           setMenuId(null);
                           setMenuPoint(null);
@@ -900,6 +920,14 @@ export function DriveBrowser({
             cannot be undone.
           </p>
         </DriveDialog>
+      ) : null}
+      {sharing ? (
+        <ShareDialog
+          itemId={sharing.id}
+          itemName={sharing.name}
+          kind={sharing.kind}
+          onClose={() => setSharing(null)}
+        />
       ) : null}
       {moving ? (
         <MoveDialog

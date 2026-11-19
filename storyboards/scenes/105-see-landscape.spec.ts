@@ -68,6 +68,7 @@ test("105-see-landscape", async ({ page }) => {
     "Sam is laying out a wide sheet. She needs to see the page turn before she applies.",
     1800,
   );
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
   await title.click();
