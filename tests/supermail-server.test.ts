@@ -73,10 +73,20 @@ describe("SuperMail Server Multi-User Storage & Isolation", () => {
       },
     } as any;
 
-    setTimeout(() => {
-      req.emit("data", Buffer.from(JSON.stringify(body)));
+    // The handler creates the user directory before it reads the body. A timer
+    // can emit the payload before those listeners exist, and then the read
+    // waits forever. Deliver it once the handler is listening.
+    const payload = Buffer.from(JSON.stringify(body));
+    let sent = false;
+    const send = () => {
+      if (sent) return;
+      sent = true;
+      req.emit("data", payload);
       req.emit("end");
-    }, 10);
+    };
+    req.on("newListener", (event: string) => {
+      if (event === "end") queueMicrotask(send);
+    });
 
     return {
       req,
