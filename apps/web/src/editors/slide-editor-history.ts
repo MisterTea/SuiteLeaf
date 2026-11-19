@@ -50,7 +50,8 @@ function withTextDraft(deck: SlideFile["content"], draft: TextDraft | null) {
   const slide = draft && deck.slides[draft.slideId];
   if (!slide) return deck;
   const next = withTextOnSlide(slide, draft);
-  return next === slide ? deck : { ...deck, slides: { ...deck.slides, [slide.id]: next } };
+  if (!next || next === slide) return deck;
+  return { ...deck, slides: { ...deck.slides, [slide.id]: next } };
 }
 
 /** Commits, undo and redo, the selection, and the shared room's edits. */
