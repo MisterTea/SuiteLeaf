@@ -42,17 +42,15 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: node node_modules/electron/install.js
-      # GitHub's Ubuntu image ships xvfb. The smaller act image does not.
-      - name: Install xvfb when the runner does not have it
+      # GitHub's Ubuntu image ships xvfb and Electron's shared libraries.
+      # The smaller act image does not, so Electron exits before any test.
+      - name: Install Electron display libraries when the runner does not have them
         run: |
-          if ! command -v xvfb-run >/dev/null 2>&1; then
-            if command -v sudo >/dev/null 2>&1 && [ "$(id -u)" -ne 0 ]; then
-              sudo apt-get update
-              sudo apt-get install -y xvfb
-            else
-              apt-get update
-              apt-get install -y xvfb
-            fi
+          need=0
+          command -v xvfb-run >/dev/null 2>&1 || need=1
+          ldconfig -p 2>/dev/null | grep -q 'libnspr4\.so' || need=1
+          if [ "$need" -eq 1 ]; then
+            npx playwright install-deps chromium
           fi
       - run: xvfb-run --auto-servernum npm run test:electron
       - uses: actions/upload-artifact@v4
