@@ -5,7 +5,9 @@ import { readAiPreferences, reloadAiPreferences, writeAiPreferences } from "../a
 describe("assistant policy", () => {
   it("sends nothing until the assistant is on, and nothing remote until that endpoint is chosen", () => {
     reloadAiPreferences();
-    expect(readAiPreferences().enabled).toBe(false);
+    expect(readAiPreferences().enabled).toBe(true);
+    expect(assistantBlock(readAiPreferences(), false)).toBe(null);
+    writeAiPreferences({ enabled: false });
     expect(assistantBlock(readAiPreferences(), false)).toBe("The assistant is off.");
     writeAiPreferences({ enabled: true });
     expect(assistantBlock(readAiPreferences(), false)).toBe(null);

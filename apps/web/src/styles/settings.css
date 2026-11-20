@@ -17,6 +17,7 @@
   background: var(--dialog-bg);
   color: var(--text-primary);
 }
+.settings-card + .settings-card { margin-top: 16px; }
 .settings-card h2 { margin-top: 0; }
 .settings-card p { line-height: 1.6; }
 .settings-directory { overflow-wrap: anywhere; font-family: monospace; }

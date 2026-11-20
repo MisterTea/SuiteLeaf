@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { ArrowUp, Check, CircleAlert, FileUp, Loader2, RotateCcw, ShieldQuestion, Sparkles, Square, Undo2, X } from "lucide-react";
 import { agentSession, type TranscriptItem } from "./agent";
 import { AssistantSettings, assistantLabel, assistantWhere } from "./assistant-settings";
-import { onAiPreferencesChanged, readAiPreferences, writeAiPreferences } from "./preferences";
+import { onAiPreferencesChanged, readAiPreferences } from "./preferences";
 import { setAiRuntime } from "./backend";
 import { useMode } from "../mode";
 import { cursorStore } from "./cursor";
@@ -60,22 +60,28 @@ const useSession = () => {
   return agentSession;
 };
 
-/** Toolbar button that opens the AI panel. The first click turns the assistant on. */
+/** Toolbar button that opens the AI panel. It does nothing while Assistant is off in Settings. */
 export function AiButton() {
   const prefs = useSyncExternalStore(onAiPreferencesChanged, readAiPreferences);
   const isOpen = usePanelOpen();
   const canUseAi = useAiAccess();
   if (!canUseAi) return null;
+  const enabled = prefs.enabled;
   return (
     <button
       type="button"
-      className={`ai-button${isOpen ? " active" : ""}`}
+      className={`ai-button${enabled && isOpen ? " active" : ""}`}
       aria-label="AI assistant"
-      aria-pressed={isOpen}
-      title={`Ask ${assistantName()}, the on-device assistant`}
+      aria-pressed={enabled && isOpen}
+      title={
+        enabled
+          ? `Ask ${assistantName()}, the on-device assistant`
+          : "Turn on Assistant in Settings"
+      }
+      disabled={!enabled}
       onClick={() => {
-        if (!prefs.enabled) writeAiPreferences({ enabled: true });
-        panel.set(prefs.enabled ? !isOpen : true);
+        if (!readAiPreferences().enabled) return;
+        panel.set(!isOpen);
       }}
     >
       <Sparkles size={16} />
@@ -453,11 +459,10 @@ export function AgentLayer() {
     dismissAgent();
   }, [fileKey]);
   useEffect(() => {
-    if (!canUseAi) {
+    if (!canUseAi || !prefs.enabled) {
       dismissAgent();
       return;
     }
-    if (!prefs.enabled) return;
     void agentSession.resume();
   }, [prefs.enabled, canUseAi]);
   if (!prefs.enabled || !canUseAi) return null;

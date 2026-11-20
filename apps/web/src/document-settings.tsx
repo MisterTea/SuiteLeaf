@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Settings } from "lucide-react";
+import { ArrowLeft, LogIn, Settings } from "lucide-react";
 import { Navigate, useNavigate } from "react-router-dom";
 import type { DocumentScanProgress } from "@suiteleaf/core";
 import { AssistantOptIn } from "./ai/assistant-settings";
+import { ConnectDialog } from "./drive/SignIn";
 import { useMode } from "./mode";
-import { ExpansionNotice, FeatureMatrix } from "./packaging-view";
 
 function countLabel(count: number, noun: string) {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -28,6 +28,7 @@ export function SettingsButton() {
   return mode.kind === "single" ? (
     <button
       type="button"
+      className="sidebar-icon-button"
       aria-label="Settings"
       title="Settings"
       onClick={() => navigate("/settings")}
@@ -57,11 +58,12 @@ export function DocumentSettings() {
 }
 
 export function SettingsPage() {
-  const { mode } = useMode();
+  const { mode, locked } = useMode();
   const navigate = useNavigate();
   const [directory, setDirectory] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [scan, setScan] = useState<DocumentScanProgress | null>(null);
   const [action, setAction] = useState<"choose" | "rescan" | null>(null);
   const scanning = useRef(false);
@@ -99,13 +101,30 @@ export function SettingsPage() {
         </button>
         <h1>Settings</h1>
       </header>
-      <FeatureMatrix />
-      <ExpansionNotice />
       <section className="settings-card" aria-labelledby="assistant-title">
         <h2 id="assistant-title">Assistant</h2>
-        <p>Documents, spreadsheets, and slides work with the assistant off. Turning it on can download a model onto this computer.</p>
+        <p>
+          The assistant is on. Documents, spreadsheets, and slides still work
+          if you turn it off. Leaving it on can download a model onto this
+          computer.
+        </p>
         <AssistantOptIn />
       </section>
+      {locked ? null : (
+        <section className="settings-card" aria-labelledby="server-title">
+          <h2 id="server-title">Server</h2>
+          <p>
+            Connect this app to a SuiteLeaf server. Files then live in
+            SuiteDrive for your organization. Files already on this computer
+            stay here.
+          </p>
+          <button type="button" onClick={() => setConnecting(true)}>
+            <LogIn size={14} aria-hidden="true" />
+            Connect to a server
+          </button>
+        </section>
+      )}
+      {connecting ? <ConnectDialog onClose={() => setConnecting(false)} /> : null}
       <section
         className="settings-card"
         aria-labelledby="document-directory-title"

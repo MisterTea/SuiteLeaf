@@ -567,8 +567,6 @@ export function LocalHome() {
         setFilter={setFilter}
         setSort={setSort}
         demo={demo}
-        locked={locked}
-        setConnecting={setConnecting}
       />
       <main className="home-main">
         <header className="home-top">

@@ -33,20 +33,37 @@ body.agent-open .gdocs-modal-overlay {
   gap: 6px;
   border: 1px solid var(--border);
   background: var(--surface);
-  color: var(--agent-accent);
   border-radius: 18px;
   padding: 5px 12px;
   font: 600 13px/1.2 inherit;
   cursor: pointer;
 }
-.ai-button:hover,
+.ai-button {
+  color: var(--green);
+}
+.install-button {
+  color: var(--agent-accent);
+}
+.ai-button:hover:not(:disabled):not(.active) {
+  background: var(--sidebar-selected);
+  color: var(--green);
+}
 .install-button:hover {
   background: var(--agent-accent-soft);
 }
 .ai-button.active {
-  background: var(--agent-accent);
-  border-color: var(--agent-accent);
+  background: var(--green);
+  border-color: var(--green);
   color: #fff;
+}
+:root[data-theme="dark"] .ai-button.active,
+:root.dark-theme .ai-button.active {
+  color: #102117;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ai-button.active {
+    color: #102117;
+  }
 }
 .home-top .ai-button {
   margin-left: 12px;

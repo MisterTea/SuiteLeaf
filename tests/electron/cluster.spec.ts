@@ -118,6 +118,8 @@ test("the desktop app works as a cluster client and can switch back", async () =
           })
         ).status;
       const reconnect = async () => {
+        const settings = page.getByRole("button", { name: "Settings" });
+        if (await settings.isVisible()) await settings.click();
         await page.getByRole("button", { name: "Connect to a server" }).click();
         const connect = page.getByRole("dialog", {
           name: "Connect to a SuiteLeaf server",
@@ -165,6 +167,7 @@ test("the desktop app works as a cluster client and can switch back", async () =
       await expect(
         page.getByText("Your files, on this computer."),
       ).toBeVisible();
+      await page.getByRole("button", { name: "Settings" }).click();
       await expect(
         page.getByRole("button", { name: "Connect to a server" }),
       ).toBeVisible();

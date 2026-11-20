@@ -45,6 +45,7 @@
   --slides-stage-bg: #f1f3f4;
   --slide-thumb-selected: #e8f0fe;
   --notes-bg: #ffffff;
+  --text-color: var(--text-primary);
 }
 
 :root[data-theme="dark"],

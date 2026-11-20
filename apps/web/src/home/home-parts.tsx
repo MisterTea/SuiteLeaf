@@ -12,7 +12,6 @@ import {
   FolderOpen,
   Star,
   Clock,
-  LogIn,
   Unplug,
   X,
 } from "lucide-react";
@@ -188,21 +187,16 @@ export function LocalSidebar({
   setFilter,
   setSort,
   demo,
-  locked,
-  setConnecting,
 }: {
   filter: LibraryFilter;
   setFilter: (filter: LibraryFilter) => void;
   setSort: (sort: { by: "name" | "edited"; desc: boolean }) => void;
   demo: boolean;
-  locked: boolean;
-  setConnecting: (connecting: boolean) => void;
 }) {
   return (
     <aside className="sidebar">
       <Logo />
       <div className="sidebar-links">
-        <SettingsButton />
         <button
           className={filter === "recent" ? "selected" : ""}
           onClick={() => setFilter("recent")}
@@ -272,29 +266,23 @@ export function LocalSidebar({
           Trash
         </button>
       </div>
-      <div className="local-note">
-        <span className="local-dot" />
-        {demo
-          ? "Demo: files are saved in this browser."
-          : window.suiteleaf
-            ? "Your files, on this computer."
-            : "Your workspace, in this browser."}
-        <small>
+      <div className="sidebar-foot">
+        <div className="local-note">
+          <span className="local-dot" />
           {demo
-            ? "Download a copy to keep your work."
+            ? "Demo: files are saved in this browser."
             : window.suiteleaf
-              ? "Offline ready. No account needed."
-              : "Offline ready. Download a file to back it up or move it."}
-        </small>
-        {locked ? null : (
-          <button
-            className="sign-in-link"
-            onClick={() => setConnecting(true)}
-          >
-            <LogIn size={14} />
-            Connect to a server
-          </button>
-        )}
+              ? "Your files, on this computer."
+              : "Your workspace, in this browser."}
+          <small>
+            {demo
+              ? "Download a copy to keep your work."
+              : window.suiteleaf
+                ? "Offline ready. No account needed."
+                : "Offline ready. Download a file to back it up or move it."}
+          </small>
+        </div>
+        <SettingsButton />
       </div>
     </aside>
   );

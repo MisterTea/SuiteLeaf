@@ -329,8 +329,9 @@ test.describe("cluster mode", () => {
         .evaluate((el) => el.scrollIntoView({ behavior: "smooth", block: "center" }));
       await expect(page.getByRole("link", { name: /Tomato planting notes/ })).toBeVisible();
       await caption(page, "Leo keeps his own files in SuiteLeaf, on this computer.", 1800);
-      await caption(page, "Now the garden club has a SuiteLeaf server. In the sidebar: Connect to a server.", 1600);
+      await caption(page, "Now the garden club has a SuiteLeaf server. In Settings: Connect to a server.", 1600);
       const host = new URL((await starting).url).host;
+      await page.getByRole("button", { name: "Settings" }).click();
       await page.getByRole("button", { name: "Connect to a server" }).click();
 
       const dialog = page.getByRole("dialog", { name: "Connect to a SuiteLeaf server" });
@@ -608,6 +609,7 @@ test.describe("cluster mode", () => {
       await page.getByRole("button", { name: "Back to files" }).click();
 
       await caption(page, "He connects to the team server to work on shared files.", 1000);
+      await page.getByRole("button", { name: "Settings" }).click();
       await page.getByRole("button", { name: "Connect to a server" }).click();
       const dialog = page.getByRole("dialog", { name: "Connect to a SuiteLeaf server" });
       await dialog.getByLabel("Server address").fill(server.url);

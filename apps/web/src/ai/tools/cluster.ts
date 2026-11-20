@@ -21,7 +21,7 @@ export function connectTools(ctx: { probe: (address: string) => Promise<string>;
       authorize: () => {},
       label: "Connect to a server",
       description:
-        "Connect SuiteLeaf to the team's SuiteLeaf server at `address` (for example https://suiteleaf.example.org or 192.168.1.20:8787). Files then live in SuiteDrive on that server. The page reloads; the user then signs in themselves.",
+        "Connect SuiteLeaf to the team's SuiteLeaf server at `address` (for example https://suiteleaf.example.org or 192.168.1.20:8787). Files then live in SuiteDrive on that server. The Connect to a server button is in Settings. The page reloads; the user then signs in themselves.",
       parameters: Type.Object({ address: Type.String() }),
       target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Connect to a server")),
       async execute({ address }) {

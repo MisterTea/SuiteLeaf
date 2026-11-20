@@ -104,6 +104,8 @@ function create() {
   const handlers = new Map<string, Listener>();
   const ipcListeners = new Map<string, Listener>();
   const app = Object.assign(new Emitter(), {
+    name: "SuiteLeaf",
+    getName: () => "SuiteLeaf",
     isPackaged: false,
     paths: {} as Record<string, string>,
     setPath(name: string, path: string) {
@@ -117,7 +119,7 @@ function create() {
     quit: vi.fn(),
     exit: vi.fn(),
     whenReady: () => whenReady,
-    dock: { hide: vi.fn() },
+    dock: { hide: vi.fn(), setIcon: vi.fn() },
   });
   const menus: any[] = [];
   return {
@@ -150,6 +152,12 @@ function create() {
       },
       protocol: { registerSchemesAsPrivileged: vi.fn() },
       shell: { openExternal: vi.fn(async () => {}) },
+      nativeImage: {
+        createFromPath: vi.fn((path: string) => ({
+          isEmpty: () => !path,
+          getSize: () => ({ width: 512, height: 512 }),
+        })),
+      },
     },
   };
 }

@@ -105,23 +105,31 @@ describe("the AI button and layer", () => {
     }
   });
 
-  it("turns the assistant on with the first click and opens and closes the panel", async () => {
+  it("opens and closes the panel, and disables the button while the assistant is off", async () => {
     render(wrap(<><AiButton /><AgentLayer /></>));
-    const button = screen.getByRole("button", { name: "AI assistant" });
-    expect(button.getAttribute("aria-pressed")).toBe("false");
-    expect(screen.queryByRole("complementary", { name: "AI assistant" })).toBeNull();
-    fireEvent.click(button);
+    const button = () => screen.getByRole("button", { name: "AI assistant" }) as HTMLButtonElement;
     expect(readAiPreferences().enabled).toBe(true);
+    expect(button().disabled).toBe(false);
+    expect(button().getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("complementary", { name: "AI assistant" })).toBeNull();
+    fireEvent.click(button());
     expect(await screen.findByRole("complementary", { name: "AI assistant" })).toBeTruthy();
-    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button().getAttribute("aria-pressed")).toBe("true");
     expect(document.body.classList.contains("agent-open")).toBe(true);
     expect(sessionStorage.getItem("suiteleaf.ai.open")).toBe("1");
     expect(session.warmUp).toHaveBeenCalled();
     expect(session.resume).toHaveBeenCalled();
-    fireEvent.click(button);
+    fireEvent.click(button());
     expect(screen.queryByRole("complementary", { name: "AI assistant" })).toBeNull();
-    fireEvent.click(button);
+    fireEvent.click(button());
     fireEvent.click(screen.getByRole("button", { name: "Close assistant" }));
+    expect(screen.queryByRole("complementary", { name: "AI assistant" })).toBeNull();
+    act(() => writeAiPreferences({ enabled: false }));
+    expect(button().disabled).toBe(true);
+    expect(button().getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("complementary", { name: "AI assistant" })).toBeNull();
+    fireEvent.click(button());
+    expect(readAiPreferences().enabled).toBe(false);
     expect(screen.queryByRole("complementary", { name: "AI assistant" })).toBeNull();
   });
 

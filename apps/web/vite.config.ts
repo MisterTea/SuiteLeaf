@@ -53,6 +53,25 @@ export const dictionaryAlias = {
     createRequire(import.meta.url).resolve("dictionary-en"),
   ),
 };
+export const officeDeps = [
+  "officeparser",
+  "cfb",
+  "docx",
+  "fast-xml-parser",
+  "mammoth",
+  "mtx-decompressor",
+  "pptxgenjs",
+  "xlsx",
+  "jszip",
+  "dingbat-to-unicode",
+  "htmlparser2",
+  "pako",
+  "katex",
+  "@noble/ciphers/aes.js",
+  "@noble/hashes/legacy.js",
+  "@noble/hashes/sha2.js",
+  "@noble/hashes/hmac.js",
+];
 const supermailStub = resolve(
   import.meta.dirname,
   "src/mail/SuperMailStub.tsx",
@@ -184,6 +203,9 @@ export default defineConfig(async (): Promise<UserConfig> => ({
       })),
       ...supermailAliases(supermailStub),
     ],
+  },
+  optimizeDeps: {
+    include: officeDeps,
   },
   base: "./",
   worker: {

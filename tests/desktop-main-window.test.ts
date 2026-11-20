@@ -222,18 +222,23 @@ describe("desktop app start", () => {
 });
 
 describe("app window", () => {
-  it("allows clipboard access to the app page only", () => {
+  it("allows clipboard and fullscreen access to the app page only", () => {
     const contents = win().webContents;
     const callback = vi.fn();
     contents.permissionRequest!(contents, "clipboard-read", callback);
+    contents.permissionRequest!(contents, "fullscreen", callback);
     contents.permissionRequest!(contents, "camera", callback);
     contents.permissionRequest!({}, "clipboard-read", callback);
-    expect(callback.mock.calls).toEqual([[true], [false], [false]]);
+    contents.permissionRequest!({}, "fullscreen", callback);
+    expect(callback.mock.calls).toEqual([[true], [true], [false], [false], [false]]);
     expect(contents.permissionCheck!(contents, "clipboard-sanitized-write")).toBe(true);
+    expect(contents.permissionCheck!(contents, "fullscreen")).toBe(true);
     contents.url = "https://elsewhere.example/";
     expect(contents.permissionCheck!(contents, "clipboard-read")).toBe(false);
+    expect(contents.permissionCheck!(contents, "fullscreen")).toBe(false);
     process.env.ELECTRON_RENDERER_URL = "https://elsewhere.example/";
     expect(contents.permissionCheck!(contents, "clipboard-read")).toBe(true);
+    expect(contents.permissionCheck!(contents, "fullscreen")).toBe(true);
     delete process.env.ELECTRON_RENDERER_URL;
     contents.url = "suiteleaf://app/index.html";
   });

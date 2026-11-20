@@ -25,6 +25,8 @@ import { convertOffice } from "./office-converter";
 import { consumeFailedStart, restartWhileDirty, startReleasePoll } from "./updates";
 import { initDesktopAutoUpdater, getDesktopAutoUpdater } from "./auto-updater";
 import { closeSupermailHost, initSupermailHost } from "./supermail-host";
+import { setupAppIcon } from "./app-icon";
+import { authWindow } from "./auth-window";
 
 async function ringDeviceId(userData: string): Promise<string | undefined> {
   const path = join(userData, "update-ring-id");
@@ -89,6 +91,8 @@ import {
 import { registerAi } from "./ai";
 import { registerIssueReporter } from "./issue-reporter";
 import { attachWindowTabs, type WindowTabs } from "./window-tabs";
+app.name = "SuiteLeaf";
+
 // Test runs need their own Electron profile and single-instance lock as well as registry.
 if (process.env.SUITELEAF_TEST_DATA) {
   mkdirSync(process.env.SUITELEAF_TEST_DATA, { recursive: true });
@@ -176,47 +180,6 @@ async function setMode(next: AppMode) {
   buildMenu();
   if (windowTabs) windowTabs.reloadAll();
   else window?.webContents.reload();
-}
-/** Run a provider's sign-in on the node's own origin in a child window, and
- * resolve with the one-time token it redirects back with. */
-function authWindow(startUrl: string): Promise<string | null> {
-  const start = new URL(startUrl);
-  if (start.protocol !== "https:" && start.protocol !== "http:")
-    throw new Error("Invalid sign-in address.");
-  return new Promise((done) => {
-    const child = new BrowserWindow({
-      parent: window ?? undefined,
-      modal: true,
-      width: 520,
-      height: 720,
-      title: "Sign in",
-      webPreferences: {
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        partition: "persist:suiteleaf-auth",
-      },
-    });
-    let finished = false;
-    const finish = (token: string | null) => {
-      if (finished) return;
-      finished = true;
-      done(token);
-      if (!child.isDestroyed()) child.close();
-    };
-    const intercept = (event: Electron.Event, url: string) => {
-      const match = /#\/auth-complete\?token=([^&]+)/.exec(url);
-      if (match) {
-        event.preventDefault();
-        finish(decodeURIComponent(match[1]));
-      }
-    };
-    child.webContents.on("will-redirect", intercept);
-    child.webContents.on("will-navigate", intercept);
-    child.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-    child.on("closed", () => finish(null));
-    void child.loadURL(start.toString());
-  });
 }
 function authorize(event: IpcMainInvokeEvent) {
   if (!isPage(event.sender) || event.senderFrame !== event.sender.mainFrame)
@@ -350,6 +313,8 @@ async function openFile() {
 function send(action: string) {
   activePage()?.send("menu", action);
 }
+/** Application icon for windows and dock. */
+let appIcon: Electron.NativeImage | undefined;
 /** Automated tests keep the app off screen so it does not take focus. */
 const hideWindows = process.env.SUITELEAF_HIDE_WINDOWS === "1";
 function createWindow() {
@@ -360,6 +325,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     title: "SuiteLeaf",
+    icon: appIcon,
     show: false,
     skipTaskbar: hideWindows,
     webPreferences: {
@@ -369,22 +335,25 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  const allowClipboard = (
+  const allowPagePermission = (
     contents: Electron.WebContents | null,
     permission: string,
   ) =>
     isPage(contents) &&
     (permission === "clipboard-read" ||
-      permission === "clipboard-sanitized-write") &&
+      permission === "clipboard-sanitized-write" ||
+      // The toolbar button and slideshow call the Fullscreen API. Denying it
+      // makes requestFullscreen() fail on every desktop page, including tabs.
+      permission === "fullscreen") &&
     (contents?.getURL().startsWith("suiteleaf://app/") ||
       (!!process.env.ELECTRON_RENDERER_URL &&
         contents?.getURL().startsWith(process.env.ELECTRON_RENDERER_URL)));
   window.webContents.session.setPermissionRequestHandler(
     (contents, permission, callback) =>
-      callback(!!allowClipboard(contents, permission)),
+      callback(!!allowPagePermission(contents, permission)),
   );
   window.webContents.session.setPermissionCheckHandler(
-    (contents, permission) => !!allowClipboard(contents, permission),
+    (contents, permission) => !!allowPagePermission(contents, permission),
   );
   // The Vite dev page starts with an inline React preamble. The packaged page does not.
   const scriptSrc = process.env.ELECTRON_RENDERER_URL
@@ -711,6 +680,7 @@ else {
       initDesktopAutoUpdater({ getWindow: () => window });
       void getDesktopAutoUpdater()?.checkForUpdates(false);
     }
+    appIcon = setupAppIcon();
     if (hideWindows) app.dock?.hide();
     if (!process.env.SUITELEAF_TEST_DATA)
       await migrateLocalData(app.getPath("userData"), localDirectory);
@@ -975,7 +945,7 @@ else {
     register("mode:set", (next) => setMode(next));
     register("auth:window", (url) => {
       if (typeof url !== "string") throw new Error("Invalid sign-in address.");
-      return authWindow(url);
+      return authWindow(url, { parent: window ?? undefined, icon: appIcon });
     });
     registerAi(
       register,

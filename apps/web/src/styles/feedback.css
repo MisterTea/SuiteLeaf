@@ -7,7 +7,7 @@
   gap: 6px;
   border: 1px solid var(--border, #dadce0);
   background: var(--surface, #ffffff);
-  color: var(--text-color, #444746);
+  color: var(--green, #188038);
   border-radius: 18px;
   padding: 5px 10px;
   font: 600 13px/1.2 inherit;
@@ -16,8 +16,8 @@
 }
 
 .debug-button:hover {
-  background: var(--surface-hover, #f1f3f4);
-  color: var(--text-color, #1f1f1f);
+  background: var(--sidebar-selected, #dce9dd);
+  color: var(--green, #188038);
 }
 
 .feedback-popover-overlay {
@@ -32,8 +32,8 @@
 }
 
 .feedback-popover {
-  background: var(--surface, #ffffff);
-  color: var(--text-color, #1f1f1f);
+  background: var(--dialog-bg, var(--surface, #ffffff));
+  color: var(--text-primary, #202124);
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
   border: 1px solid var(--border, #dadce0);
@@ -58,23 +58,25 @@
   font-size: 16px;
   font-weight: 600;
   margin: 0;
-  color: inherit;
+  color: var(--text-primary, inherit);
 }
 
 .feedback-popover-header .close-btn {
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #5f6368;
+  color: var(--text-secondary, #5f6368);
   padding: 4px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.15s, color 0.15s;
 }
 
 .feedback-popover-header .close-btn:hover {
   background: var(--surface-hover, #f1f3f4);
+  color: var(--text-primary, inherit);
 }
 
 .feedback-thumbnail-wrapper {
@@ -86,7 +88,7 @@
 .feedback-thumbnail-wrapper label {
   font-size: 12px;
   font-weight: 500;
-  color: #5f6368;
+  color: var(--text-secondary, #5f6368);
 }
 
 .feedback-thumbnail-container {
@@ -111,7 +113,7 @@
 .feedback-no-screenshot {
   padding: 24px;
   font-size: 13px;
-  color: #888;
+  color: var(--text-muted, #80868b);
   text-align: center;
 }
 
@@ -125,6 +127,7 @@
   font-size: 13px;
   font-weight: 600;
   margin: 0;
+  color: var(--text-primary, inherit);
 }
 
 .feedback-type-group {
@@ -138,10 +141,11 @@
   gap: 6px;
   font-size: 13px;
   cursor: pointer;
+  color: var(--text-primary, inherit);
 }
 
 .feedback-type-label input[type="radio"] {
-  accent-color: #1a73e8;
+  accent-color: var(--google-blue, #1a73e8);
   cursor: pointer;
   margin: 0;
 }
@@ -160,24 +164,28 @@
   padding: 10px 12px;
   font-family: inherit;
   font-size: 13px;
-  color: inherit;
-  background: var(--surface, #ffffff);
+  color: var(--text-primary, inherit);
+  background: var(--input-bg, var(--surface, #ffffff));
   resize: vertical;
   min-height: 90px;
 }
 
+.feedback-textarea::placeholder {
+  color: var(--text-muted, #80868b);
+}
+
 .feedback-textarea:focus {
   outline: none;
-  border-color: #1a73e8;
-  box-shadow: 0 0 0 1px #1a73e8;
+  border-color: var(--google-blue, #1a73e8);
+  box-shadow: 0 0 0 1px var(--google-blue, #1a73e8);
 }
 
 .feedback-textarea.has-error {
-  border-color: #d93025;
+  border-color: var(--google-red, #d93025);
 }
 
 .feedback-error {
-  color: #d93025;
+  color: var(--google-red, #d93025);
   font-size: 12px;
   margin: 0;
 }
@@ -200,12 +208,12 @@
 .feedback-success p {
   margin: 0;
   font-size: 14px;
-  color: #188038;
+  color: var(--green, #188038);
   font-weight: 500;
 }
 
 .feedback-success a {
-  color: #1a73e8;
+  color: var(--google-blue, #1a73e8);
   word-break: break-all;
   font-size: 13px;
 }

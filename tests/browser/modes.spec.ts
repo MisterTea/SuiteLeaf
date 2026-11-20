@@ -12,6 +12,7 @@ test("single-node mode keeps files in the browser without accounts", async ({
     0,
   );
 
+  await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Connect to a server" }).click();
   const dialog = page.getByRole("dialog", {
     name: "Connect to a SuiteLeaf server",
@@ -22,6 +23,7 @@ test("single-node mode keeps files in the browser without accounts", async ({
     "No SuiteLeaf server answered at that address.",
   );
   await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Back to files" }).click();
 
   await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "New document" }).click();
@@ -69,6 +71,7 @@ test("connecting accepts a server address without http:// or https://", async ({
   await page.goto("/");
 
   const connect = async (address: string) => {
+    await page.getByRole("button", { name: "Settings" }).click();
     await page.getByRole("button", { name: "Connect to a server" }).click();
     const dialog = page.getByRole("dialog", {
       name: "Connect to a SuiteLeaf server",

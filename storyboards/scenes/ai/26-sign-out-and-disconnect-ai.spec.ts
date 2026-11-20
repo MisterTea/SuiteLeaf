@@ -69,6 +69,7 @@ test.describe("cluster mode", () => {
       await page.getByRole("button", { name: "Back to files" }).click();
 
       await caption(page, "He connects to the garden club's server to work on shared files.", 1000);
+      await page.getByRole("button", { name: "Settings" }).click();
       await page.getByRole("button", { name: "Connect to a server" }).click();
       const dialog = page.getByRole("dialog", { name: "Connect to a SuiteLeaf server" });
       await dialog.getByLabel("Server address").fill(server.url);

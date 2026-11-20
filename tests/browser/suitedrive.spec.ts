@@ -785,6 +785,7 @@ test.describe("SuiteDrive across two nodes", () => {
     const page = await (await snapshotContext(browser)).newPage();
     await page.goto("/");
     const connect = async () => {
+      await page.getByRole("button", { name: "Settings" }).click();
       await page.getByRole("button", { name: "Connect to a server" }).click();
       const dialog = page.getByRole("dialog", {
         name: "Connect to a SuiteLeaf server",

@@ -30,6 +30,14 @@ if (existsSync(target)) renameSync(target, previous);
 renameSync(incoming, target);
 rmSync(previous, { recursive: true, force: true });
 
+try {
+  execFileSync("touch", [target]);
+  execFileSync(
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    ["-f", target],
+  );
+} catch {}
+
 const version = execFileSync("/usr/libexec/PlistBuddy", [
   "-c",
   "Print CFBundleShortVersionString",

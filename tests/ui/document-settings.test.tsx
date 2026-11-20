@@ -3,12 +3,31 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
+
+vi.hoisted(() => {
+  const store = new Map<string, string>();
+  const memory = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, String(value)),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    value: memory,
+    configurable: true,
+  });
+});
 import type { DesktopBridge, DocumentScanProgress } from "../../packages/core/src";
 import {
   DocumentSettings,
   SettingsButton,
   SettingsPage,
 } from "../../apps/web/src/document-settings";
+import { readAiPreferences, reloadAiPreferences } from "../../apps/web/src/ai/preferences";
 import { ModeContext } from "../../apps/web/src/mode";
 
 afterEach(() => {
@@ -172,6 +191,41 @@ it("opens settings through the application settings action", async () => {
   act(() => window.dispatchEvent(new Event("suiteleaf:settings")));
   expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
   expect(screen.getByText(/Files are saved in this browser/)).toBeTruthy();
+});
+it("starts with the assistant on and connects to a server from settings", async () => {
+  localStorage.removeItem("suiteleaf.ai.enabled");
+  reloadAiPreferences();
+  render(<SettingsApp />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  expect(screen.queryByRole("region", { name: "What SuiteLeaf includes" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Optional expansion" })).toBeNull();
+  const assistant = screen.getByRole("checkbox", { name: "Assistant" }) as HTMLInputElement;
+  expect(assistant.checked).toBe(true);
+  expect(readAiPreferences().enabled).toBe(true);
+  await user.click(assistant);
+  expect(assistant.checked).toBe(false);
+  expect(readAiPreferences().enabled).toBe(false);
+  expect(localStorage.getItem("suiteleaf.ai.enabled")).toBe("0");
+  await user.click(screen.getByRole("button", { name: "Connect to a server" }));
+  expect(screen.getByRole("dialog", { name: "Connect to a SuiteLeaf server" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+it("hides connect to a server when the mode cannot be switched", () => {
+  render(
+    <ModeContext.Provider
+      value={{ mode: { kind: "single" }, locked: true, demo: true }}
+    >
+      <MemoryRouter initialEntries={["/settings"]}>
+        <Routes>
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ModeContext.Provider>,
+  );
+  expect(screen.getByRole("checkbox", { name: "Assistant" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Connect to a server" })).toBeNull();
 });
 it("hides document directory settings in cluster mode", () => {
   render(

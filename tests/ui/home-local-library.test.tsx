@@ -518,12 +518,10 @@ describe("LocalHome in the browser", () => {
     );
   });
 
-  it("connects to a server, and hides that in a locked build", async () => {
+  it("leaves connect to a server out of the sidebar, including a locked build", async () => {
     renderHome();
-    fireEvent.click(await screen.findByRole("button", { name: "Connect to a server" }));
-    expect(screen.getByRole("dialog", { name: "Connect to a SuiteLeaf server" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(await screen.findByText("Your workspace, in this browser.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Connect to a server" })).toBeNull();
     cleanup();
     hoisted.mode = { locked: true, demo: true };
     renderHome();

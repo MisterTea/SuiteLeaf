@@ -182,6 +182,8 @@
 }
 :root.dark-theme .slides-sidebar,
 :root[data-theme="dark"] .slides-sidebar,
+:root.dark-theme .slides-sidebar-header,
+:root[data-theme="dark"] .slides-sidebar-header,
 :root.dark-theme .slides-sidebar-footer,
 :root[data-theme="dark"] .slides-sidebar-footer {
   background: #000;

@@ -160,7 +160,7 @@
 .dialog-text-btn {
   border: 0;
   background: transparent;
-  color: #1a73e8;
+  color: var(--google-blue, #1a73e8);
   font-size: 13px;
   font-weight: 500;
   padding: 7px 12px;
@@ -168,10 +168,10 @@
   cursor: pointer;
 }
 .dialog-text-btn:hover {
-  background: #f1f3f4;
+  background: var(--surface-hover, #f1f3f4);
 }
 .dialog-text-btn:disabled {
-  color: #9aa0a6;
+  color: var(--text-muted, #9aa0a6);
   cursor: default;
   background: transparent;
 }

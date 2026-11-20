@@ -15,7 +15,7 @@ export const DEFAULT_MODEL = "frognano-4b";
 export type AiPlace = "server" | "remote";
 
 export interface AiPreferences {
-  /** The assistant stays off until this is turned on. Editing does not need it. */
+  /** The assistant is on until this is turned off. Editing does not need it. */
   enabled: boolean;
   /**
    * When true, a remote endpoint is refused. Choosing that endpoint turns this off.
@@ -49,7 +49,7 @@ function load(): AiPreferences {
   const place = stored(PLACE);
   const model = stored(MODEL).trim();
   return {
-    enabled: stored(ENABLED) === "1",
+    enabled: stored(ENABLED) !== "0",
     localOnly: stored(LOCAL_ONLY) !== "0",
     place: place === "remote" ? "remote" : "server",
     model: model || DEFAULT_MODEL,

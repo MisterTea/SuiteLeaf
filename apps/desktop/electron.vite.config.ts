@@ -4,7 +4,10 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { conditionalFormatDefaults } from "../web/conditional-format-defaults";
 import { rollupWarnings } from "../web/build-warnings";
-import { dictionaryAlias } from "../web/vite.config";
+import { dictionaryAlias, officeDeps } from "../web/vite.config";
+import { brandDevApp } from "./src/brand-dev-app";
+
+brandDevApp();
 
 const supermailAppPath = resolve(import.meta.dirname, "../../packages/supermail/src/App.tsx");
 const supermailDepsExist = existsSync(
@@ -80,6 +83,9 @@ export default defineConfig({
         })),
         ...supermailAliases,
       ],
+    },
+    optimizeDeps: {
+      include: officeDeps,
     },
     // Dev stays on "/" so Vite can hot-replace the page. The production preset uses "./".
     worker: {

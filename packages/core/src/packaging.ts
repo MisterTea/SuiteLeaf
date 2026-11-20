@@ -56,7 +56,7 @@ export const COST_CATEGORIES: readonly CostCategory[] = [
     charge: "not-published",
     optional: true,
     summary:
-      "The assistant is off until you turn it on. A remote model endpoint is your own choice and is not a SuiteLeaf price.",
+      "The assistant is on until you turn it off. A remote model endpoint is your own choice and is not a SuiteLeaf price.",
   },
 ];
 
