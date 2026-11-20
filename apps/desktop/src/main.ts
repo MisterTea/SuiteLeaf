@@ -558,8 +558,11 @@ function buildMenu() {
   );
 }
 // Linux without a root-owned chrome-sandbox needs --no-sandbox; Chromium reads it anywhere on the line.
-const commandArgs = process.argv
-  .slice(app.isPackaged ? 1 : 2)
+const rawArgs = process.argv.slice(1);
+const scriptIndex = rawArgs.findIndex(
+  (arg) => /\b(index|main)\.[cm]?js$/.test(arg) || arg.endsWith(".js"),
+);
+const commandArgs = (scriptIndex >= 0 ? rawArgs.slice(scriptIndex + 1) : (app.isPackaged ? rawArgs : rawArgs.slice(1)))
   .filter((arg) => arg !== "--no-sandbox");
 const command = commandArgs[0];
 if (

@@ -167,15 +167,15 @@ test("the desktop app works as a cluster client and can switch back", async () =
       await expect(
         page.getByText("Your files, on this computer."),
       ).toBeVisible();
-      await page.getByRole("button", { name: "Settings" }).click();
-      await expect(
-        page.getByRole("button", { name: "Connect to a server" }),
-      ).toBeVisible();
       await expect(page.getByRole("link", { name: /Team budget/ })).toHaveCount(
         0,
       );
       await expect(
         page.getByRole("link", { name: /Kept locally/ }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Settings" }).click();
+      await expect(
+        page.getByRole("button", { name: "Connect to a server" }),
       ).toBeVisible();
       expect(await cachedFromDrive()).toEqual([]);
       // Disconnecting signs out, so the next connection asks for a password.
