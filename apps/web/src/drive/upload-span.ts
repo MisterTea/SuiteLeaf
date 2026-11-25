@@ -16,6 +16,7 @@ export async function uploadDriveSpan(
   start: number,
   end: number,
   body = new TextEncoder().encode(serializeFile(file)),
+  signal?: AbortSignal,
 ): Promise<{ done: false; accepted: number } | { done: true; link: DriveLink; accepted: number }> {
   // Ranges count UTF-8 bytes, as the server does, not string characters.
   const range = contentRangeHeader(start, end, body.length);
@@ -31,6 +32,7 @@ export async function uploadDriveSpan(
     method: "PUT",
     headers,
     body: body.subarray(start, end),
+    ...(signal ? { signal } : {}),
   });
   if (response.status === 202) {
     const result = (await response.json()) as { accepted?: unknown };
@@ -57,15 +59,27 @@ export async function uploadDriveSpan(
 }
 
 /** Upload a new file in bounded requests, including imports on hosted servers. */
-export async function uploadDriveChunks(file: SuiteFile, link: DriveLink, onProgress?: (accepted: number, total: number) => void): Promise<DriveLink> {
+export async function uploadDriveChunks(
+  file: SuiteFile,
+  link: DriveLink,
+  onProgress?: (accepted: number, total: number) => void,
+  signal?: AbortSignal,
+): Promise<DriveLink> {
+  if (signal?.aborted) {
+    throw new Error("Import cancelled. The original file is unchanged.");
+  }
   if (file.kind === "slide") {
     try {
       const synced = await syncSectionedDelta(file, link, {
         onProgress,
         requireSectionedSupport: true,
+        signal,
       });
       return synced.link;
     } catch (err) {
+      if (signal?.aborted) {
+        throw new Error("Import cancelled. The original file is unchanged.");
+      }
       const status =
         typeof err === "object" && err && "status" in err && typeof err.status === "number"
           ? err.status
@@ -84,12 +98,18 @@ export async function uploadDriveChunks(file: SuiteFile, link: DriveLink, onProg
     upload: async ({ start, end }) => {
       let lastErr: unknown;
       for (let attempt = 0; attempt < 3; attempt++) {
+        if (signal?.aborted) {
+          throw new Error("Import cancelled. The original file is unchanged.");
+        }
         try {
-          const result = await uploadDriveSpan(file, link, start, end, body);
+          const result = await uploadDriveSpan(file, link, start, end, body, signal);
           onProgress?.(result.accepted, body.length);
           if (result.done) saved = result.link;
           return result;
         } catch (err) {
+          if (signal?.aborted) {
+            throw new Error("Import cancelled. The original file is unchanged.");
+          }
           lastErr = err;
           if (attempt < 2) {
             await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));

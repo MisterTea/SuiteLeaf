@@ -118,17 +118,17 @@ it("streams private content and handles missing blobs", async () => {
 });
 it("writes immutable content, handles retries and concurrent creation", async () => {
   fake.head
-    .mockRejectedValueOnce(new BlobNotFoundError())
     .mockResolvedValueOnce({})
-    .mockRejectedValueOnce(new BlobNotFoundError())
-    .mockResolvedValueOnce({});
+    .mockRejectedValueOnce(new BlobNotFoundError());
   fake.put
     .mockResolvedValueOnce({})
-    .mockRejectedValueOnce(new Error("already exists"));
+    .mockRejectedValueOnce(new Error("already exists"))
+    .mockRejectedValueOnce(new Error("transient"))
+    .mockResolvedValueOnce({});
   expect((await blob("PUT", "document")).status).toBe(204);
   expect((await blob("PUT", "document")).status).toBe(204);
   expect((await blob("PUT", "document")).status).toBe(204);
-  expect(fake.put).toHaveBeenCalledTimes(2);
+  expect(fake.put).toHaveBeenCalledTimes(4);
   expect(fake.put.mock.calls[0][2]).toMatchObject({
     access: "private",
     addRandomSuffix: false,

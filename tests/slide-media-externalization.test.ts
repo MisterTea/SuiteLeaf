@@ -264,6 +264,30 @@ describe("externalized slide media and chunked blob upload", () => {
     expect(store.getMemory(h2)?.bytes).toEqual(clip2);
   });
 
+  it("aborts syncSlideDelta immediately when signal is cancelled", async () => {
+    const deck = createFile("slide", "Cancelled") as SlideFile;
+    const controller = new AbortController();
+    let calls = 0;
+    const mockApi = vi.fn(async (path: string, init?: RequestInit) => {
+      calls++;
+      if (path.endsWith("/sections/missing")) {
+        const body = JSON.parse(String(init?.body)) as { hashes: string[] };
+        controller.abort();
+        return new Response(JSON.stringify({ missing: body.hashes }), { status: 200 });
+      }
+      throw new Error("Should not upload blobs after abort");
+    });
+
+    await expect(
+      syncSlideDelta(
+        deck,
+        { nodeUrl: "https://node.test", itemId: "item-cancel", name: "Cancelled.slslides" },
+        { apiFetch: mockApi, signal: controller.signal },
+      ),
+    ).rejects.toThrow("Import cancelled");
+    expect(calls).toBe(1);
+  });
+
   it("chunked uint8ToBase64 matches Buffer base64 for multi-chunk payloads", () => {
     const big = new Uint8Array(100_000);
     for (let i = 0; i < big.length; i++) big[i] = i & 0xff;

@@ -197,12 +197,12 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
                 uploading
                 dropImporter={dropImporter}
                 openDroppedFile={false}
-                onImport={async (r, _name, onProgress) => {
+                onImport={async (r, _name, onProgress, signal) => {
                   if (r.drive) navigate(`/file/${r.file.id}`);
-                  else await createInDrive(r.file, folder.current, navigate, onProgress);
+                  else await createInDrive(r.file, folder.current, navigate, onProgress, true, signal);
                 }}
                 onError={setError}
-                placeInFolder={async (file, directory, onProgress) => {
+                placeInFolder={async (file, directory, onProgress, signal) => {
                   let parentId = folder.current;
                   const known = await drive.listFolders();
                   for (const part of directory.split("/").filter(Boolean)) {
@@ -225,10 +225,10 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
                     });
                     parentId = created.id;
                   }
-                  return keepCreated(file, parentId, true, onProgress);
+                  return keepCreated(file, parentId, true, onProgress, true, signal);
                 }}
-                keepImported={async (file, onProgress) => {
-                  await keepCreated(file, folder.current, true, onProgress);
+                keepImported={async (file, onProgress, signal) => {
+                  await keepCreated(file, folder.current, true, onProgress, true, signal);
                 }}
                 onBatchDone={() => setListed((n) => n + 1)}
               />

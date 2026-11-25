@@ -330,9 +330,6 @@ impl Drive {
         if Hash::of(bytes) != hash {
             return Err(DriveError::BadRequest("Blob hash mismatch.".into()));
         }
-        if self.blobs.has(&hash) {
-            return Ok(());
-        }
         self.ensure_room_bytes(bytes.len() as u64)?;
         self.blobs
             .put_verified(&hash, bytes)

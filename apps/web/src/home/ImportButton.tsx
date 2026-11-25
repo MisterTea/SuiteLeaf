@@ -47,7 +47,7 @@ export function ImportButton({
   onBatchDone,
 }: {
   /** `name` is the chosen file's name when it came from the file picker. */
-  onImport: (r: FileRecord, name?: string, onProgress?: ProgressCallback) => Promise<void>;
+  onImport: (r: FileRecord, name?: string, onProgress?: ProgressCallback, signal?: AbortSignal) => Promise<void>;
   onError: (s: string) => void;
   /** Always use the browser file picker, even on desktop. */
   filePicker?: boolean;
@@ -62,9 +62,9 @@ export function ImportButton({
    * Save one converted Office file into `folder`, a path relative to the
    * library folder that is open. The path includes the folder that was dropped.
    */
-  placeInFolder?: (file: SuiteFile, folder: string, onProgress?: ProgressCallback) => Promise<FileRecord | void>;
+  placeInFolder?: (file: SuiteFile, folder: string, onProgress?: ProgressCallback, signal?: AbortSignal) => Promise<FileRecord | void>;
   /** Save one file from a batch without leaving the current page. */
-  keepImported?: (file: SuiteFile, onProgress?: ProgressCallback) => Promise<void>;
+  keepImported?: (file: SuiteFile, onProgress?: ProgressCallback, signal?: AbortSignal) => Promise<void>;
   /** Called after a batch import that stayed on this page. */
   onBatchDone?: () => void | Promise<void>;
 }) {
@@ -75,6 +75,16 @@ export function ImportButton({
   const [dropOver, setDropOver] = useState(false);
   const [importing, setImporting] = useState(false);
   const stopImport = useRef(false);
+  const uploadAbort = useRef<AbortController | null>(null);
+  const startImportSession = () => {
+    stopImport.current = false;
+    uploadAbort.current?.abort();
+    uploadAbort.current = new AbortController();
+  };
+  const cancelImport = () => {
+    stopImport.current = true;
+    uploadAbort.current?.abort();
+  };
   const [progress, setProgress] = useState<{ completed: number; total: number | null; name: string } | null>(null);
   const [conversion, setConversion] = useState<number | null>(null);
   const [upload, setUpload] = useState(0);
@@ -132,13 +142,14 @@ export function ImportButton({
     );
     if (!file) { advance(); return; }
     converted();
-    if (open) await onImport({ file }, f.name, uploaded);
-    else if (keepImported) await keepImported(file, uploaded);
-    else await onImport({ file }, f.name, uploaded);
+    const signal = uploadAbort.current?.signal;
+    if (open) await onImport({ file }, f.name, uploaded, signal);
+    else if (keepImported) await keepImported(file, uploaded, signal);
+    else await onImport({ file }, f.name, uploaded, signal);
     advance();
   };
   const importChosen = async (f: File) => {
-    stopImport.current = false;
+    startImportSession();
     setImporting(true);
     setProgress({ completed: 0, total: 1, name: f.name });
     try {
@@ -171,12 +182,13 @@ export function ImportButton({
         );
         if (!file) { advance(); continue; }
         converted();
+        const signal = uploadAbort.current?.signal;
         const open = opensImportedFile(office.length) && openSingle;
         if (placeInFolder) {
-          const placed = await placeInFolder(file, item.folder, uploaded);
-          if (open) await onImport(placed ?? { file }, item.file.file.name, uploaded);
-        } else if (open || !keepImported) await onImport({ file }, item.file.file.name, uploaded);
-        else await keepImported(file, uploaded);
+          const placed = await placeInFolder(file, item.folder, uploaded, signal);
+          if (open) await onImport(placed ?? { file }, item.file.file.name, uploaded, signal);
+        } else if (open || !keepImported) await onImport({ file }, item.file.file.name, uploaded, signal);
+        else await keepImported(file, uploaded, signal);
         advance();
       }
       return opensImportedFile(office.length) && openSingle;
@@ -202,9 +214,10 @@ export function ImportButton({
     );
     if (!file) { advance(); return false; }
     converted();
-    if (openSingle) await onImport({ file }, markdown.file.name, uploaded);
-    else if (keepImported) await keepImported(file, uploaded);
-    else await onImport({ file }, markdown.file.name, uploaded);
+    const signal = uploadAbort.current?.signal;
+    if (openSingle) await onImport({ file }, markdown.file.name, uploaded, signal);
+    else if (keepImported) await keepImported(file, uploaded, signal);
+    else await onImport({ file }, markdown.file.name, uploaded, signal);
     advance();
     return openSingle || !keepImported;
   };
@@ -249,7 +262,7 @@ export function ImportButton({
     const entries = [...data.items]
       .map((item) => item.webkitGetAsEntry?.() ?? null)
       .filter((entry): entry is FileSystemEntry => !!entry);
-    stopImport.current = false;
+    startImportSession();
     setImporting(true);
     setProgress({ completed: 0, total: null, name: "" });
     let opened = false;
@@ -352,7 +365,7 @@ export function ImportButton({
             <progress aria-label="Files processed" max={progress.total || 1}
               value={progress.total === null ? undefined : progress.completed} />
             <p role="status">{progress.total === null ? "Preparing import…" : `${progress.completed} of ${progress.total} files processed`}</p>
-            <button type="button" onClick={() => { stopImport.current = true; }}>Cancel import</button>
+            <button type="button" onClick={cancelImport}>Cancel import</button>
           </div>
         ) : null}
         {menu ? (
@@ -410,7 +423,7 @@ export function ImportButton({
             await importChosen(files[0]);
             return;
           }
-          stopImport.current = false;
+          startImportSession();
           setImporting(true);
           setProgress({ completed: 0, total: files.length, name: "" });
           try {
@@ -433,7 +446,7 @@ export function ImportButton({
           const list = [...(e.target.files ?? [])];
           e.target.value = "";
           if (!list.length) return;
-          stopImport.current = false;
+          startImportSession();
           setImporting(true);
           setProgress({ completed: 0, total: null, name: "" });
           try {

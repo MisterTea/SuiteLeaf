@@ -640,8 +640,9 @@ export async function uploadDriveFileUnlocked(
   file: SuiteFile,
   link: DriveLink,
   onProgress?: (accepted: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<DriveLink> {
-  return uploadDriveChunks(file, link, onProgress);
+  return uploadDriveChunks(file, link, onProgress, signal);
 }
 
 /** Upload `file` as a new version. Throws [`DriveConflict`] if someone else
@@ -650,8 +651,9 @@ export async function uploadDriveFile(
   file: SuiteFile,
   link: DriveLink,
   onProgress?: (accepted: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<DriveLink> {
-  return withDriveLock(() => uploadDriveFileUnlocked(file, link, onProgress));
+  return withDriveLock(() => uploadDriveFileUnlocked(file, link, onProgress, signal));
 }
 
 export async function currentAccount(): Promise<NodeUser> {
@@ -891,8 +893,15 @@ export async function saveNewDriveFile(
   file: SuiteFile,
   parentId: string | null,
   name: string,
-  options?: { fallbackToRoot?: boolean; onProgress?: (accepted: number, total: number) => void },
+  options?: {
+    fallbackToRoot?: boolean;
+    onProgress?: (accepted: number, total: number) => void;
+    signal?: AbortSignal;
+  },
 ): Promise<DriveLink> {
+  if (options?.signal?.aborted) {
+    throw new Error("Import cancelled. The original file is unchanged.");
+  }
   const { url } = requireSession();
   const mime = mimeFor(file.kind);
   const create = (folderId: string | null) =>
@@ -909,5 +918,5 @@ export async function saveNewDriveFile(
     nodeUrl: url,
     itemId: item.id,
     name: item.name,
-  }, options?.onProgress);
+  }, options?.onProgress, options?.signal);
 }

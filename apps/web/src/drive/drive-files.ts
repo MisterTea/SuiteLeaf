@@ -100,12 +100,14 @@ export async function keepCreated(
   cluster: boolean,
   onProgress?: (accepted: number, total: number) => void,
   fallbackToRoot = true,
+  signal?: AbortSignal,
 ) {
   if (cluster) {
     if (await storage.get(file.id)) file = duplicateFile(file, file.title);
     const linked = await saveNewDriveFile(file, folderId, nativeFilename(file), {
       fallbackToRoot,
       ...(onProgress ? { onProgress } : {}),
+      ...(signal ? { signal } : {}),
     });
     return storage.save({ file, drive: linked });
   }
@@ -118,8 +120,9 @@ export async function createInDrive(
   navigate: NavigateFunction,
   onProgress?: (accepted: number, total: number) => void,
   fallbackToRoot = true,
+  signal?: AbortSignal,
 ) {
-  const saved = await keepCreated(file, folderId, true, onProgress, fallbackToRoot);
+  const saved = await keepCreated(file, folderId, true, onProgress, fallbackToRoot, signal);
   navigate(`/file/${saved.file.id}`);
 }
 

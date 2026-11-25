@@ -19,7 +19,12 @@ import { contentRangeHeader } from "../upload-queue";
 import { mediaBlobStore } from "../media-blob-store";
 
 /** Max single-request blob PUT size before switching to `Content-Range` chunks (under hosted proxy limits). */
-export const DEFAULT_BLOB_CHUNK_BYTES = 2 * 1024 * 1024;
+export const DEFAULT_BLOB_CHUNK_BYTES = Math.floor(3.5 * 1024 * 1024);
+
+const IMPORT_CANCELLED = "Import cancelled. The original file is unchanged.";
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error(IMPORT_CANCELLED);
+}
 
 export type DeltaApiFetch = (path: string, init?: RequestInit) => Promise<Response>;
 
@@ -78,8 +83,11 @@ export async function syncSectionedDelta(
     onProgress?: (accepted: number, total: number) => void;
     blobChunkBytes?: number;
     requireSectionedSupport?: boolean;
+    signal?: AbortSignal;
   } = {},
 ): Promise<SectionDeltaSyncResult> {
+  const signal = options.signal;
+  throwIfAborted(signal);
   const apiFetch = options.apiFetch ?? api;
   const blobChunkBytes =
     options.blobChunkBytes && options.blobChunkBytes > 0
@@ -125,12 +133,14 @@ export async function syncSectionedDelta(
   const candidateHashes = [...changedBlobs.keys()];
   let missingHashes: string[] = [];
   if (candidateHashes.length > 0) {
+    throwIfAborted(signal);
     const missingRes = await apiFetch(
       `/api/drive/items/${encodeURIComponent(link.itemId)}/sections/missing`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ hashes: candidateHashes }),
+        ...(signal ? { signal } : {}),
       },
     );
     const body = (await missingRes.json()) as { missing?: string[] };
@@ -152,13 +162,16 @@ export async function syncSectionedDelta(
   const putWithRetry = async (path: string, headers: Record<string, string>, payload: Uint8Array) => {
     let lastErr: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
+      throwIfAborted(signal);
       try {
         return await apiFetch(path, {
           method: "PUT",
           headers,
           body: payload as unknown as BodyInit,
+          ...(signal ? { signal } : {}),
         });
       } catch (err) {
+        if (signal?.aborted) throw new Error(IMPORT_CANCELLED);
         lastErr = err;
         const status =
           typeof err === "object" && err && "status" in err && typeof err.status === "number"
@@ -169,7 +182,17 @@ export async function syncSectionedDelta(
           throw err;
         }
         if (attempt < 2) {
-          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(resolve, 1000 * (attempt + 1));
+            signal?.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timer);
+                reject(new Error(IMPORT_CANCELLED));
+              },
+              { once: true },
+            );
+          });
         }
       }
     }
@@ -178,6 +201,7 @@ export async function syncSectionedDelta(
 
   let uploadedBytes = 0;
   const uploadOneBlob = async (hash: string) => {
+    throwIfAborted(signal);
     const bytes = changedBlobs.get(hash) ?? allBlobs.get(hash);
     if (!bytes) return;
     const blobPath = `/api/drive/items/${encodeURIComponent(link.itemId)}/blobs/${encodeURIComponent(hash)}`;
@@ -197,6 +221,7 @@ export async function syncSectionedDelta(
     // reverse proxies and report smooth progress.
     let sent = 0;
     while (sent < bytes.byteLength) {
+      throwIfAborted(signal);
       const end = Math.min(bytes.byteLength, sent + blobChunkBytes);
       const range = contentRangeHeader(sent, end, bytes.byteLength);
       if (!range) throw new Error("Invalid blob upload range.");
@@ -234,15 +259,18 @@ export async function syncSectionedDelta(
     else smallHashes.push(hash);
   }
 
-  const SMALL_BATCH = 4;
+  const SMALL_BATCH = 16;
   for (let i = 0; i < smallHashes.length; i += SMALL_BATCH) {
+    throwIfAborted(signal);
     await Promise.all(smallHashes.slice(i, i + SMALL_BATCH).map(uploadOneBlob));
   }
-  const LARGE_BATCH = 2;
+  const LARGE_BATCH = 3;
   for (let i = 0; i < largeHashes.length; i += LARGE_BATCH) {
+    throwIfAborted(signal);
     await Promise.all(largeHashes.slice(i, i + LARGE_BATCH).map(uploadOneBlob));
   }
 
+  throwIfAborted(signal);
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
@@ -257,6 +285,7 @@ export async function syncSectionedDelta(
       method: "POST",
       headers,
       body: manifestPayload,
+      ...(signal ? { signal } : {}),
     },
   );
   const commitBody = await commitRes.json();

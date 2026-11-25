@@ -14,6 +14,8 @@ import {
 
 const prefix = "suiteleaf/objects/";
 export const MAX_CLOUD_BLOB_BYTES = 512 * 1024 * 1024;
+const USAGE_CACHE_TTL_MS = 30_000;
+let cachedUsage: { total: number; at: number } | null = null;
 export function acceptsBridgeToken(
   offered: string | undefined,
   expected: string,
@@ -69,13 +71,19 @@ export async function cloudBlobRequest(
     "/internal/cloud/blobs/".length,
   );
   if (hash === "usage" && req.method === "GET") {
-    let cursor: string | undefined;
-    let total = 0;
-    do {
-      const page = await list({ prefix, cursor });
-      total += page.blobs.reduce((sum, blob) => sum + blob.size, 0);
-      cursor = page.hasMore ? page.cursor : undefined;
-    } while (cursor);
+    let total: number;
+    if (cachedUsage && Date.now() - cachedUsage.at < USAGE_CACHE_TTL_MS) {
+      total = cachedUsage.total;
+    } else {
+      let cursor: string | undefined;
+      total = 0;
+      do {
+        const page = await list({ prefix, cursor });
+        total += page.blobs.reduce((sum, blob) => sum + blob.size, 0);
+        cursor = page.hasMore ? page.cursor : undefined;
+      } while (cursor);
+      cachedUsage = { total, at: Date.now() };
+    }
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify(total));
     return;
@@ -120,44 +128,44 @@ export async function cloudBlobRequest(
       }
       chunks.push(Buffer.from(chunk));
     }
-    if (!(await exists(path))) {
-      const body = Buffer.concat(chunks);
-      const multipart = body.length > 5 * 1024 * 1024;
-      let lastError: unknown;
-      for (let attempt = 0; attempt < 4; attempt++) {
-        try {
-          await put(path, body, {
-            access: "private",
-            addRandomSuffix: false,
-            allowOverwrite: false,
-            contentType: "application/octet-stream",
-            ...(multipart ? { multipart: true } : {}),
-          });
+    const body = Buffer.concat(chunks);
+    const multipart = body.length > 5 * 1024 * 1024;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        await put(path, body, {
+          access: "private",
+          addRandomSuffix: false,
+          allowOverwrite: false,
+          contentType: "application/octet-stream",
+          ...(multipart ? { multipart: true } : {}),
+        });
+        if (cachedUsage) cachedUsage.total += body.length;
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (await exists(path)) {
           lastError = null;
           break;
-        } catch (error) {
-          lastError = error;
-          if (await exists(path)) {
-            lastError = null;
-            break;
-          }
-          if (attempt < 3) {
-            const delay =
-              error instanceof BlobServiceRateLimited ||
-              (error as { status?: number })?.status === 429
-                ? 1500 * (attempt + 1)
-                : 400 * (attempt + 1);
-            await new Promise((resolve) => setTimeout(resolve, delay));
-          }
+        }
+        if (attempt < 3) {
+          const delay =
+            error instanceof BlobServiceRateLimited ||
+            (error as { status?: number })?.status === 429
+              ? 1500 * (attempt + 1)
+              : 400 * (attempt + 1);
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
-      if (lastError) throw lastError;
     }
+    if (lastError) throw lastError;
     res.writeHead(204).end();
     return;
   }
   if (req.method === "DELETE") {
     await del(path);
+    cachedUsage = null;
     res.writeHead(204).end();
     return;
   }
