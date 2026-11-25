@@ -387,8 +387,84 @@
 .drive-list-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
   margin-bottom: -8px;
+}
+.drive-select-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.drive-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--google-blue, #1a73e8);
+  cursor: pointer;
+}
+.drive-checkbox:disabled {
+  cursor: default;
+}
+.drive-bulk-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  margin-left: 4px;
+}
+.drive-bulk-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 0 4px;
+  white-space: nowrap;
+}
+.drive-bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.drive-bulk-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.drive-bulk-btn.danger:hover:not(:disabled) {
+  color: var(--danger, #b3261e);
+  border-color: var(--danger, #b3261e);
+}
+.drive-bulk-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.drive-bulk-clear:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 .drive-sort {
   position: relative;
@@ -478,6 +554,14 @@
   display: block;
   width: 100%;
 }
+.drive-progress-detail {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .drive-empty {
   color: var(--text-secondary);
@@ -491,6 +575,9 @@
 }
 .drive-row:hover {
   background: var(--surface-hover);
+}
+.drive-row.is-selected {
+  background: var(--sidebar-selected, #e8f0fe);
 }
 .drive-row.just-edited {
   background: #e8f0fe;

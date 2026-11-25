@@ -99,15 +99,31 @@ for (const width of [320, 390, 700, 1024]) {
       window.scrollTo(0, 0);
     });
 
-    // Sort icon button sits just above the first item and sorts the list
+    // Sort icon button and Select all checkbox sit on the same row just above the first item
     const sortBtn = page.getByRole("button", { name: "Sort" });
+    const selectAll = page.getByRole("checkbox", { name: "Select all" });
     const firstItem = page.locator(".drive-list .drive-row").first();
+    const firstCheckbox = firstItem.getByRole("checkbox");
     await expect(sortBtn).toBeVisible();
+    await expect(selectAll).toBeVisible();
     await expect(firstItem).toBeVisible();
+    await expect(firstCheckbox).toBeVisible();
     const sortBox = (await sortBtn.boundingBox())!;
+    const selectAllBox = (await selectAll.boundingBox())!;
     const firstBox = (await firstItem.boundingBox())!;
+    const firstCheckboxBox = (await firstCheckbox.boundingBox())!;
+    expect(Math.abs(selectAllBox.y + selectAllBox.height / 2 - (sortBox.y + sortBox.height / 2))).toBeLessThan(6);
+    expect(Math.abs(selectAllBox.x - firstCheckboxBox.x)).toBeLessThan(2);
     expect(sortBox.y + sortBox.height).toBeLessThanOrEqual(firstBox.y + 1);
     expect(firstBox.y - (sortBox.y + sortBox.height)).toBeLessThan(24);
+
+    // Selecting all checks every row and shows bulk actions without horizontal overflow
+    await selectAll.click();
+    await expect(page.getByRole("toolbar", { name: "Selected items actions" })).toBeVisible();
+    await expect(page.getByText("2 selected")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    await selectAll.click();
+    await expect(page.getByRole("toolbar", { name: "Selected items actions" })).toHaveCount(0);
 
     await sortBtn.click();
     await page.getByRole("menuitemradio", { name: "File size" }).click();

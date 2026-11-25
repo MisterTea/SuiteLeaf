@@ -117,3 +117,64 @@ export function OpeningDialog({
     document.body,
   );
 }
+
+export interface BulkProgressState {
+  label: string;
+  completed: number;
+  total: number;
+  currentName?: string;
+}
+
+/** Modal popover with a determinate progress bar shown during multi-file SuiteDrive operations. */
+export function BulkProgressDialog({
+  label,
+  completed,
+  total,
+  currentName,
+  onCancel,
+}: BulkProgressState & {
+  onCancel?: () => void;
+}) {
+  return createPortal(
+    <div
+      className="modal-overlay"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Escape" && onCancel) onCancel();
+      }}
+    >
+      <div
+        className="gdocs-dialog node-dialog drive-opening-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="dialog-body drive-opening">
+          <label>
+            <span>{label}…</span>
+            <progress value={completed} max={total} aria-label={label} />
+          </label>
+          <p className="drive-progress-detail" aria-live="polite">
+            {completed} of {total}
+            {currentName ? ` — ${currentName}` : ""}
+          </p>
+        </div>
+        {onCancel ? (
+          <div className="dialog-footer">
+            <button
+              type="button"
+              className="dialog-text-btn"
+              onClick={onCancel}
+              autoFocus
+            >
+              Cancel
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
+}

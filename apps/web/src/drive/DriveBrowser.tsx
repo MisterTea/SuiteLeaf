@@ -26,7 +26,12 @@ import {
   type DriveItem,
   type DriveSearchHit,
 } from "../node-client";
-import { DriveDialog, OpeningDialog } from "./drive-dialog";
+import {
+  BulkProgressDialog,
+  DriveDialog,
+  OpeningDialog,
+  type BulkProgressState,
+} from "./drive-dialog";
 import { NameDialog } from "./name-dialog";
 export { NameDialog } from "./name-dialog";
 import { MoveBanner, type MoveNotice } from "./file-folder";
@@ -57,7 +62,10 @@ import {
   sortDriveItems,
   type DriveSort,
 } from "./drive-sort";
-import { DriveSortMenu } from "./DriveSortMenu";
+import { DriveSelectionBar } from "./DriveSelectionBar";
+import { MY_DRIVE, type MoveDestination } from "./folder-paths";
+import { BulkMoveDialog } from "./BulkMoveDialog";
+import { useDriveSelection } from "./drive-selection";
 export { rememberDriveFolder } from "./drive-place";
 export { DriveDialog } from "./drive-dialog";
 
@@ -152,6 +160,8 @@ export function DriveBrowser({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<BulkProgressState | null>(null);
+  const bulkCancelled = useRef(false);
   const openAbort = useRef<AbortController | null>(null);
   const openToken = useRef(0);
   const [error, setError] = useState("");
@@ -160,18 +170,23 @@ export function DriveBrowser({
   const [asking, setAsking] = useState<
     | { action: "new-folder" }
     | { action: "rename" | "delete-forever"; item: DriveItem }
+    | { action: "delete-forever-bulk"; items: DriveItem[] }
     | null
   >(null);
-  const [notice, setNotice] = useState<{ id: string; name: string } | null>(
-    null,
-  );
+  const [notice, setNotice] = useState<{
+    items: { id: string; name: string }[];
+  } | null>(null);
   const [moving, setMoving] = useState<DriveItem | null>(null);
+  const [bulkMoving, setBulkMoving] = useState<DriveItem[] | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(null);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const menuPopup = useRef<HTMLDivElement>(null);
+  const shiftPressed = useRef(false);
   const [moveNotice, setMoveNotice] = useState<
-    (MoveNotice & { id: string }) | null
+    (MoveNotice & {
+      items: { id: string; name: string; previousParentId: string | null }[];
+    }) | null
   >(null);
   const restored = useRef(initial.path.length > 1);
   const seenEdit = useRef(new Map<string, string>());
@@ -359,28 +374,154 @@ export function DriveBrowser({
     routing.visit(rootOf("trash"));
     setKept("");
   };
-  const moveToTrash = (item: DriveItem) => {
+  const runBulk = useCallback(
+    async <T extends { name?: string }>(
+      label: string,
+      targets: readonly T[],
+      step: (target: T) => Promise<void>,
+    ): Promise<T[]> => {
+      const showProgress = targets.length > 1;
+      bulkCancelled.current = false;
+      if (showProgress) {
+        setBulkProgress({
+          label,
+          completed: 0,
+          total: targets.length,
+          currentName: targets[0]?.name,
+        });
+      }
+      const processed: T[] = [];
+      try {
+        for (let i = 0; i < targets.length; i++) {
+          if (bulkCancelled.current) break;
+          const target = targets[i];
+          if (showProgress) {
+            setBulkProgress({
+              label,
+              completed: i,
+              total: targets.length,
+              currentName: target.name,
+            });
+          }
+          await step(target);
+          processed.push(target);
+          if (showProgress) {
+            setBulkProgress({
+              label,
+              completed: i + 1,
+              total: targets.length,
+              currentName: targets[i + 1]?.name,
+            });
+          }
+        }
+        return processed;
+      } finally {
+        if (showProgress) setBulkProgress(null);
+        bulkCancelled.current = false;
+      }
+    },
+    [],
+  );
+
+  const moveItemsToTrash = (targets: readonly DriveItem[], onDone?: () => void) => {
+    if (targets.length === 0) return;
     void act(async () => {
-      await drive.update(item.id, { trashed: true });
-      setNotice({ id: item.id, name: item.name });
+      const trashed = await runBulk(
+        `Moving ${targets.length} items to Trash`,
+        targets,
+        async (target) => {
+          await drive.update(target.id, { trashed: true });
+        },
+      );
+      if (trashed.length > 0) {
+        setNotice({ items: trashed.map((t) => ({ id: t.id, name: t.name })) });
+      }
+      onDone?.();
+      await refresh();
+    });
+  };
+  const moveToTrash = (item: DriveItem) => moveItemsToTrash([item]);
+  const restoreItems = (targets: readonly DriveItem[], onDone?: () => void) => {
+    if (targets.length === 0) return;
+    void act(async () => {
+      const restored = await runBulk(
+        `Restoring ${targets.length} items`,
+        targets,
+        async (target) => {
+          await drive.update(target.id, { trashed: false });
+        },
+      );
+      const restoredIds = new Set(restored.map((t) => t.id));
+      if (restoredIds.size > 0) {
+        setNotice((current) => {
+          if (!current) return null;
+          const remaining = current.items.filter((i) => !restoredIds.has(i.id));
+          return remaining.length > 0 ? { items: remaining } : null;
+        });
+      }
+      onDone?.();
       await refresh();
     });
   };
   const undoNotice = () => {
     if (!notice) return;
-    const id = notice.id;
+    const snapshot = notice;
     void act(async () => {
-      await drive.update(id, { trashed: false });
-      setNotice((current) => (current?.id === id ? null : current));
+      await runBulk(
+        `Restoring ${snapshot.items.length} items`,
+        snapshot.items,
+        async (item) => {
+          await drive.update(item.id, { trashed: false });
+        },
+      );
+      setNotice((current) => (current === snapshot ? null : current));
       await refresh();
     });
   };
   const undoMove = () => {
     if (!moveNotice) return;
-    const { id, previousParentId } = moveNotice;
+    const snapshot = moveNotice;
     void act(async () => {
-      await drive.update(id, { parentId: previousParentId });
-      setMoveNotice((current) => (current?.id === id ? null : current));
+      await runBulk(
+        `Moving ${snapshot.items.length} files`,
+        snapshot.items,
+        async (moved) => {
+          await drive.update(moved.id, { parentId: moved.previousParentId });
+        },
+      );
+      setMoveNotice((current) => (current === snapshot ? null : current));
+      await refresh();
+    });
+  };
+  const moveMultipleFiles = (
+    targets: readonly DriveItem[],
+    destination: MoveDestination,
+  ) => {
+    const toMove = targets.filter((item) => item.parentId !== destination.id);
+    if (toMove.length === 0) return;
+    void act(async () => {
+      let folderName = destination.id == null ? MY_DRIVE : destination.name;
+      const moved: { id: string; name: string; previousParentId: string | null }[] = [];
+      await runBulk(`Moving ${toMove.length} files`, toMove, async (item) => {
+        const updated = await drive.update(item.id, { parentId: destination.id });
+        if (destination.id != null && updated.parentName) {
+          folderName = updated.parentName;
+        }
+        moved.push({
+          id: item.id,
+          name: item.name,
+          previousParentId: item.parentId,
+        });
+      });
+      if (moved.length > 0) {
+        setMoveNotice({
+          items: moved,
+          fileName: moved.length === 1 ? moved[0].name : `${moved.length} files`,
+          folderName,
+          previousParentId: moved[0].previousParentId,
+        });
+      }
+      selection.clear();
       await refresh();
     });
   };
@@ -448,20 +589,28 @@ export function DriveBrowser({
     sharing,
     setSharing,
     downloadDriveFile,
+    downloadDriveFiles,
     copyDriveFile,
+    copyDriveFiles,
     shareDriveFile,
     renameLoaded,
     moveLoaded,
-  } = useDriveFileActions(act, refresh, setKept, setAsking, setMoving);
+  } = useDriveFileActions(act, refresh, setKept, setAsking, setMoving, runBulk);
 
   // The shared root is a list, not a folder; the node enforces folder roles.
   const canWrite = view === "mine" || folder.id !== null;
+  const canSelect = mode === "open";
 
   const visible = sortDriveItems(
     items.filter(
       (i) => !routing.error && (i.kind === "folder" || mode === "save" || isNativeName(i.name)),
     ),
     sort,
+  );
+  const typed = query.trim();
+  const selection = useDriveSelection(
+    visible,
+    `${view}:${folder.id ?? "root"}:${typed ? "search" : "list"}`,
   );
   if (control)
     control.current = {
@@ -487,7 +636,6 @@ export function DriveBrowser({
     if (name.trim()) void act(async () => onSave?.(folder.id, name.trim()));
   };
 
-  const typed = query.trim();
   const found =
     typed && outcome && outcome.query === typed && !("failed" in outcome)
       ? outcome.hits
@@ -573,6 +721,14 @@ export function DriveBrowser({
       {opening !== null ? (
         <OpeningDialog name={opening} onCancel={cancelOpen} />
       ) : null}
+      {bulkProgress !== null ? (
+        <BulkProgressDialog
+          {...bulkProgress}
+          onCancel={() => {
+            bulkCancelled.current = true;
+          }}
+        />
+      ) : null}
       {inline && mode === "open" && onOpen ? (
         <ShareNotices
           onOpen={(item) => open(item.name, async (signal) => onOpen(item, signal))}
@@ -585,7 +741,11 @@ export function DriveBrowser({
       ) : null}
       {notice ? (
         <div className="drive-trash-banner" role="status">
-          <p>{notice.name} is in Trash.</p>
+          <p>
+            {notice.items.length === 1
+              ? `${notice.items[0].name} is in Trash.`
+              : `${notice.items.length} items are in Trash.`}
+          </p>
           <span className="drive-trash-banner-actions">
             <button type="button" onClick={undoNotice} disabled={busy}>
               Undo
@@ -609,10 +769,32 @@ export function DriveBrowser({
         />
       ) : null}
       {!typed && !routing.error ? (
-        <DriveSortMenu
+        <DriveSelectionBar
+          selectable={canSelect}
+          view={view}
           sort={sort}
-          onChange={setSort}
+          onSortChange={setSort}
+          totalCount={visible.length}
+          selected={selection.selected}
+          allSelected={selection.allSelected}
+          someSelected={selection.someSelected}
           disabled={busy || loading || routing.pending}
+          onToggleAll={selection.toggleAll}
+          onClearSelection={selection.clear}
+          onDownload={(files) => downloadDriveFiles(files)}
+          onMove={(files) => {
+            if (files.length === 1) setMoving(files[0]);
+            else if (files.length > 1) setBulkMoving(files);
+          }}
+          onCopy={(files) => copyDriveFiles(files, selection.clear)}
+          onTrash={(targets) => moveItemsToTrash(targets, selection.clear)}
+          onRestore={(targets) => restoreItems(targets, selection.clear)}
+          onDeleteForever={(targets) => {
+            if (targets.length === 1)
+              setAsking({ action: "delete-forever", item: targets[0] });
+            else if (targets.length > 1)
+              setAsking({ action: "delete-forever-bulk", items: targets });
+          }}
         />
       ) : null}
       <div
@@ -718,7 +900,7 @@ export function DriveBrowser({
               : undefined;
             return (
               <div
-                className={`drive-row${justEdited.has(item.id) ? " just-edited" : ""}`}
+                className={`drive-row${justEdited.has(item.id) ? " just-edited" : ""}${canSelect && selection.isSelected(item.id) ? " is-selected" : ""}`}
                 role="listitem"
                 key={item.id}
                 onContextMenu={(e) => {
@@ -729,6 +911,34 @@ export function DriveBrowser({
                   setMenuId(item.id);
                 }}
               >
+                {canSelect ? (
+                  <label
+                    className="drive-select-cell"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      className="drive-checkbox"
+                      aria-label={`Select ${item.name}`}
+                      checked={selection.isSelected(item.id)}
+                      disabled={busy}
+                      onMouseDown={(e) => {
+                        shiftPressed.current = e.shiftKey;
+                      }}
+                      onClickCapture={(e) => {
+                        shiftPressed.current = e.shiftKey;
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                      onChange={() => {
+                        const shift = shiftPressed.current;
+                        shiftPressed.current = false;
+                        selection.toggle(item.id, shift);
+                      }}
+                    />
+                  </label>
+                ) : null}
                 <button
                   className="drive-item"
                   aria-label={item.name}
@@ -822,15 +1032,7 @@ export function DriveBrowser({
                       className="drive-keep"
                       aria-label={`Restore ${item.name}`}
                       disabled={busy}
-                      onClick={() =>
-                        void act(async () => {
-                          await drive.update(item.id, { trashed: false });
-                          setNotice((current) =>
-                            current?.id === item.id ? null : current,
-                          );
-                          await refresh();
-                        })
-                      }
+                      onClick={() => restoreItems([item])}
                     >
                       Restore
                     </button>
@@ -960,9 +1162,12 @@ export function DriveBrowser({
             setAsking(null);
             void act(async () => {
               await drive.deleteForever(item.id);
-              setNotice((current) =>
-                current?.id === item.id ? null : current,
-              );
+              setNotice((current) => {
+                if (!current) return null;
+                const remaining = current.items.filter((i) => i.id !== item.id);
+                return remaining.length > 0 ? { items: remaining } : null;
+              });
+              selection.clear();
               await refresh();
             });
           }}
@@ -970,6 +1175,40 @@ export function DriveBrowser({
           <p className="dialog-note">
             &ldquo;{asking.item.name}&rdquo; will be deleted forever. This
             cannot be undone.
+          </p>
+        </DriveDialog>
+      ) : asking?.action === "delete-forever-bulk" ? (
+        <DriveDialog
+          title="Delete forever"
+          submitLabel="Delete forever"
+          onClose={() => setAsking(null)}
+          onSubmit={() => {
+            const targets = asking.items;
+            setAsking(null);
+            void act(async () => {
+              const deleted = await runBulk(
+                `Deleting ${targets.length} items forever`,
+                targets,
+                async (target) => {
+                  await drive.deleteForever(target.id);
+                },
+              );
+              const deletedIds = new Set(deleted.map((t) => t.id));
+              if (deletedIds.size > 0) {
+                setNotice((current) => {
+                  if (!current) return null;
+                  const remaining = current.items.filter((i) => !deletedIds.has(i.id));
+                  return remaining.length > 0 ? { items: remaining } : null;
+                });
+              }
+              selection.clear();
+              await refresh();
+            });
+          }}
+        >
+          <p className="dialog-note">
+            {asking.items.length} items will be deleted forever. This cannot be
+            undone.
           </p>
         </DriveDialog>
       ) : null}
@@ -994,13 +1233,31 @@ export function DriveBrowser({
           onClose={() => setMoving(null)}
           onMoved={(result) => {
             setMoveNotice({
-              id: result.item.id,
+              items: [
+                {
+                  id: result.item.id,
+                  name: result.item.name,
+                  previousParentId: result.previousParentId,
+                },
+              ],
               fileName: result.item.name,
               folderName: result.folderName,
               previousParentId: result.previousParentId,
             });
             setMoving(null);
+            selection.clear();
             void refresh();
+          }}
+        />
+      ) : null}
+      {bulkMoving ? (
+        <BulkMoveDialog
+          items={bulkMoving}
+          onClose={() => setBulkMoving(null)}
+          onConfirm={(destination) => {
+            const targets = bulkMoving;
+            setBulkMoving(null);
+            moveMultipleFiles(targets, destination);
           }}
         />
       ) : null}
