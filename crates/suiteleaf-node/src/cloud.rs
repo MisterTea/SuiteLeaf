@@ -44,11 +44,32 @@ pub fn registration(db: &Db, headers: &HeaderMap, body: &[u8]) -> anyhow::Result
     Ok((matches && current && !users.is_empty()).then_some(digest))
 }
 
+fn bypasses_mutation_lock(method: &Method, path: &str) -> bool {
+    if path.starts_with("/api/ai/") {
+        return true;
+    }
+    // Immutable content-addressed blob uploads (idempotent; chunked uploads take
+    // their own per-blob item lock only around fast DB chunk writes, never across
+    // remote blob storage HTTP I/O) and read-only missing-blob probes must not
+    // hold or wait on the global cloud-mutations lock.
+    if *method == Method::PUT && path.starts_with("/api/drive/items/") && path.contains("/blobs/") {
+        return true;
+    }
+    if *method == Method::POST
+        && path.starts_with("/api/drive/items/")
+        && path.ends_with("/sections/missing")
+    {
+        return true;
+    }
+    false
+}
+
 pub async fn serialize_mutation(State(db): State<Arc<Db>>, req: Request, next: Next) -> Response {
     let mutation = req.method() != Method::GET
         && req.method() != Method::HEAD
         && req.method() != Method::OPTIONS;
-    let guarded = db.is_postgres() && mutation && !req.uri().path().starts_with("/api/ai/");
+    let guarded =
+        db.is_postgres() && mutation && !bypasses_mutation_lock(req.method(), req.uri().path());
     let lock = if guarded {
         match db.exclusive("cloud-mutations") {
             Ok(lock) => lock,
@@ -106,4 +127,37 @@ pub async fn invite(
     }
     Json(serde_json::json!({"url":format!("{}/#/?invite={token}",state.config.public_url())}))
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blob_uploads_and_missing_probes_bypass_global_mutation_lock() {
+        assert!(bypasses_mutation_lock(
+            &Method::PUT,
+            "/api/drive/items/abc/blobs/deadbeef"
+        ));
+        assert!(bypasses_mutation_lock(
+            &Method::POST,
+            "/api/drive/items/abc/sections/missing"
+        ));
+        assert!(bypasses_mutation_lock(&Method::POST, "/api/ai/chat"));
+
+        // Stateful mutations remain serialized.
+        assert!(!bypasses_mutation_lock(
+            &Method::POST,
+            "/api/drive/items/abc/sections/commit"
+        ));
+        assert!(!bypasses_mutation_lock(&Method::POST, "/api/drive/items"));
+        assert!(!bypasses_mutation_lock(
+            &Method::PUT,
+            "/api/drive/items/abc/content"
+        ));
+        assert!(!bypasses_mutation_lock(
+            &Method::DELETE,
+            "/api/drive/items/abc"
+        ));
+    }
 }

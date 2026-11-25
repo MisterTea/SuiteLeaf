@@ -217,7 +217,7 @@ impl PostgresStore {
     fn connect(url: &str) -> Result<Self> {
         Ok(Self {
             pool: Self::pool(url, 8)?,
-            operation_locks: Self::pool(url, 2)?,
+            operation_locks: Self::pool(url, 8)?,
             item_locks: Self::pool(url, 8)?,
         })
     }
