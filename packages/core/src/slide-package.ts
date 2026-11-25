@@ -25,8 +25,8 @@ import {
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
-/** Default minimum string length to externalize a data: URI into a binary blob. */
-export const DEFAULT_MEDIA_THRESHOLD_BYTES = 4096;
+/** Default minimum string length to externalize a data: URI into a binary blob (4 MB). */
+export const DEFAULT_MEDIA_THRESHOLD_BYTES = 4 * 1024 * 1024;
 
 /** ZIP local file header magic bytes (`PK\x03\x04`). */
 export function isSlidePackageBytes(bytes: Uint8Array): boolean {
@@ -309,22 +309,9 @@ export function splitPresentation(
     slideBytes[slideId] = bytes;
     blobs.set(hash, bytes);
 
-    let thumbHash: string | undefined;
-    let thumbMime: string | undefined;
-    if (generateThumbnails) {
-      const svg = renderSlideThumbnailSvg(extSlide, global);
-      const svgBytes = textEncoder.encode(svg);
-      thumbHash = blake3Hex(svgBytes);
-      thumbMime = "image/svg+xml";
-      if (!blobs.has(thumbHash)) blobs.set(thumbHash, svgBytes);
-      if (!media[thumbHash]) {
-        media[thumbHash] = {
-          mime: thumbMime,
-          size: svgBytes.byteLength,
-          ext: "svg",
-        };
-      }
-    }
+    const thumbSvg = generateThumbnails
+      ? renderSlideThumbnailSvg(extSlide, global)
+      : undefined;
 
     const summary: SlideSummary = {
       hash,
@@ -333,7 +320,7 @@ export function splitPresentation(
       ...(extSlide.layout !== undefined ? { layout: extSlide.layout } : {}),
       ...(extSlide.hidden !== undefined ? { hidden: extSlide.hidden } : {}),
       ...(extSlide.masterId !== undefined ? { masterId: extSlide.masterId } : {}),
-      ...(thumbHash ? { thumbHash, thumbMime } : {}),
+      ...(thumbSvg ? { thumbSvg } : {}),
     };
     slideSummaries[slideId] = summary;
   }

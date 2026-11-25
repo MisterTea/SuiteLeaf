@@ -100,10 +100,10 @@ describe("web slide delta sync & background streaming", () => {
       name: "Roadmap.slslides",
     };
 
-    // Initial sync uploads global + 4 slides + 4 thumbnails + 1 PNG = 10 blobs
+    // Initial sync uploads global + 4 slides = 5 blobs (thumbnails inline in manifest, 5KB PNG under 4MB threshold)
     const first = await syncSlideDelta(deck, link, { apiFetch: mockApi });
     expect(first.link.versionId).toBe("v2");
-    expect(first.uploadedBlobs).toBe(10);
+    expect(first.uploadedBlobs).toBe(5);
 
     // Edit ONLY slide-3
     uploadedHashes.length = 0;
@@ -113,9 +113,9 @@ describe("web slide delta sync & background streaming", () => {
 
     const second = await syncSlideDelta(edited, first.link, { apiFetch: mockApi });
     expect(second.link.versionId).toBe("v3");
-    // Only slide-3 JSON + slide-3 updated SVG thumbnail are uploaded (NOT global, s1, s2, s4, or the 5KB PNG!)
-    expect(second.uploadedBlobs).toBe(2);
-    expect(uploadedHashes).toHaveLength(2);
+    // Only slide-3 JSON is uploaded (thumbnail lives in manifest.json!)
+    expect(second.uploadedBlobs).toBe(1);
+    expect(uploadedHashes).toHaveLength(1);
   });
 
   it("bootstraps slide 1 immediately and streams remaining slides via NDJSON", async () => {

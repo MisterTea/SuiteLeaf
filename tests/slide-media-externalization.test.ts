@@ -13,7 +13,7 @@ import {
 } from "../packages/core/src";
 import { uint8ToBase64 } from "../packages/core/src/pptx-media";
 import { syncSlideDelta } from "../apps/web/src/workspace/slide-delta-sync";
-import { MediaBlobStore } from "../apps/web/src/media-blob-store";
+import { MediaBlobStore, mediaBlobStore } from "../apps/web/src/media-blob-store";
 
 async function pptxWithVideo(videoBytes: Uint8Array, ext = "mp4"): Promise<Uint8Array> {
   const zip = new JSZip();
@@ -124,6 +124,7 @@ describe("externalized slide media and chunked blob upload", () => {
     const clip = new Uint8Array(3500);
     for (let i = 0; i < clip.length; i++) clip[i] = (i * 7) % 256;
     const hash = blake3Hex(clip);
+    await mediaBlobStore.put(hash, "video/mp4", clip);
     deck.content.slides[slideId].elements.push({
       id: "vid-1",
       type: "video",
@@ -131,7 +132,7 @@ describe("externalized slide media and chunked blob upload", () => {
       y: 0,
       width: 400,
       height: 225,
-      src: `data:video/mp4;base64,${uint8ToBase64(clip)}`,
+      src: slmediaUri(hash),
     });
 
     const receivedRanges: string[] = [];

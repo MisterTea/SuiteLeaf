@@ -131,6 +131,7 @@ pub(super) fn apply_slide_room_with_drive(
                         master_id,
                         thumb_hash: prev.and_then(|p| p.thumb_hash.clone()),
                         thumb_mime: prev.and_then(|p| p.thumb_mime.clone()),
+                        thumb_svg: prev.and_then(|p| p.thumb_svg.clone()),
                     },
                 );
             }

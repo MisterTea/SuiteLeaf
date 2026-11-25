@@ -43,6 +43,8 @@ pub struct SlideSummary {
     pub thumb_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thumb_mime: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumb_svg: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

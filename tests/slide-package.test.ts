@@ -83,7 +83,7 @@ function makeDeckWithMedia(): SlideFile {
 describe("slslides v2 sectioned package", () => {
   it("splits a presentation into global, per-slide, deduplicated media, thumbnails, and history", () => {
     const deck = makeDeckWithMedia();
-    const parts = splitPresentation(deck);
+    const parts = splitPresentation(deck, { mediaThresholdBytes: 4096 });
 
     expect(parts.manifest.version).toBe(2);
     expect(parts.manifest.kind).toBe("slide");
@@ -99,15 +99,13 @@ describe("slslides v2 sectioned package", () => {
     expect(isSlmediaUri(s1Img!)).toBe(true);
     expect(s1Img).toBe(s2Img);
 
-    // Thumbnails are generated and registered in manifest.slides[id] & manifest.media
+    // Thumbnails are inlined directly in manifest.slides[id].thumbSvg (no separate thumbnail blobs)
     const s1Summary = parts.manifest.slides[s1Id];
     const s2Summary = parts.manifest.slides[s2Id];
-    expect(s1Summary.thumbHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(s1Summary.thumbMime).toBe("image/svg+xml");
-    expect(s2Summary.thumbHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(parts.manifest.media[s1Summary.thumbHash!]).toBeDefined();
+    expect(s1Summary.thumbSvg).toContain("<svg");
+    expect(s2Summary.thumbSvg).toContain("<svg");
 
-    // Only 1 PNG entry in media (deduplicated across 2 slides) + 2 SVG thumbnails
+    // Only 1 PNG entry in media (deduplicated across 2 slides)
     const pngEntries = Object.values(parts.manifest.media).filter(
       (m) => m.mime === "image/png",
     );
@@ -167,12 +165,12 @@ describe("slslides v2 sectioned package", () => {
 
   it("computes minimal deltas when only one slide is edited", () => {
     const deck = makeDeckWithMedia();
-    const v1Parts = splitPresentation(deck);
+    const v1Parts = splitPresentation(deck, { mediaThresholdBytes: 4096 });
 
     // Edit only slide-2's text; slide-1, global, media, and history are untouched
     const edited = structuredClone(deck);
     edited.content.slides["slide-2"].elements[0].content = "Updated headline";
-    const v2Parts = splitPresentation(edited);
+    const v2Parts = splitPresentation(edited, { mediaThresholdBytes: 4096 });
 
     const delta = diffSlidePackage(v1Parts.manifest, v2Parts);
     expect(delta.globalChanged).toBe(false);
@@ -180,12 +178,10 @@ describe("slslides v2 sectioned package", () => {
     expect(delta.removedSlideIds).toEqual([]);
     expect(delta.changedSlideIds).toEqual(["slide-2"]);
 
-    // Only slide-2 JSON + slide-2 updated SVG thumbnail should be in changedBlobs!
-    expect(delta.changedBlobs.size).toBe(2);
+    // Only slide-2 JSON should be in changedBlobs (thumbnail lives in manifest.json)!
+    expect(delta.changedBlobs.size).toBe(1);
     expect(delta.changedBlobs.has(v2Parts.manifest.slides["slide-2"].hash)).toBe(true);
-    expect(
-      delta.changedBlobs.has(v2Parts.manifest.slides["slide-2"].thumbHash!),
-    ).toBe(true);
+    expect(v2Parts.manifest.slides["slide-2"].thumbSvg).toContain("Updated headline");
     // The 4800-byte PNG is NOT re-uploaded
     const pngHash = Object.entries(v1Parts.manifest.media).find(
       ([, m]) => m.mime === "image/png",
@@ -195,7 +191,7 @@ describe("slslides v2 sectioned package", () => {
 
   it("validates slmedia:// URIs in parseFile", async () => {
     const deck = makeDeckWithMedia();
-    const parts = splitPresentation(deck);
+    const parts = splitPresentation(deck, { mediaThresholdBytes: 4096 });
     const unhydrated = assemblePresentation(parts, { hydrateMedia: false });
     const parsed = parseFile(JSON.stringify(unhydrated), "slide") as SlideFile;
     expect(isSlmediaUri(parsed.content.slides["slide-2"].elements[1].src!)).toBe(true);

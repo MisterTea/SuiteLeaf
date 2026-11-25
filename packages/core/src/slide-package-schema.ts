@@ -59,6 +59,7 @@ export const slideSummarySchema = z.object({
   masterId: z.string().min(1).max(80).optional(),
   thumbHash: z.string().regex(BLAKE3_HEX_RE).optional(),
   thumbMime: z.string().min(1).max(80).optional(),
+  thumbSvg: z.string().optional(),
 });
 export type SlideSummary = z.infer<typeof slideSummarySchema>;
 

@@ -55,7 +55,7 @@ describe("sldoc & slsheet v2 ZIP sectioned packages", () => {
       },
     ];
 
-    const parts = splitDoc(doc);
+    const parts = splitDoc(doc, { mediaThresholdBytes: 4096 });
     expect(parts.manifest.version).toBe(2);
     expect(parts.manifest.kind).toBe("doc");
     expect(parts.manifest.tabOrder).toEqual([DOC_MAIN_TAB_ID, "appendix"]);
@@ -81,7 +81,7 @@ describe("sldoc & slsheet v2 ZIP sectioned packages", () => {
     // Editing only tab 2 produces a 1-blob delta (no re-upload of main tab, global, or PNG)
     const edited = structuredClone(doc);
     edited.tabs![0].content.content![0].content![0].text = "Updated appendix";
-    const delta = diffDocPackage(parts.manifest, splitDoc(edited));
+    const delta = diffDocPackage(parts.manifest, splitDoc(edited, { mediaThresholdBytes: 4096 }));
     expect(delta.globalChanged).toBe(false);
     expect(delta.changedSectionIds).toEqual(["appendix"]);
     expect(delta.changedBlobs.size).toBe(1);
@@ -123,7 +123,7 @@ describe("sldoc & slsheet v2 ZIP sectioned packages", () => {
       },
     ];
 
-    const parts = splitSheet(sheet);
+    const parts = splitSheet(sheet, { mediaThresholdBytes: 4096 });
     expect(parts.manifest.version).toBe(2);
     expect(parts.manifest.kind).toBe("sheet");
     expect(parts.manifest.sheetOrder).toEqual([s1, "rev"]);
@@ -155,7 +155,7 @@ describe("sldoc & slsheet v2 ZIP sectioned packages", () => {
       0: { 0: { v: 200 } },
       1: { 0: { v: 50 } },
     };
-    const delta = diffSheetPackage(parts.manifest, splitSheet(edited));
+    const delta = diffSheetPackage(parts.manifest, splitSheet(edited, { mediaThresholdBytes: 4096 }));
     expect(delta.globalChanged).toBe(false);
     expect(delta.changedSectionIds).toEqual(["rev"]);
     expect(delta.changedBlobs.size).toBe(1);

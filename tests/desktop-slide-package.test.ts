@@ -70,14 +70,10 @@ describe("desktop FileStore v2 slslides auto-upgrade & random-access reader", ()
       const boot = await reader.bootstrap(s1);
       expect(boot.manifest.version).toBe(2);
       expect(Object.keys(boot.slides)).toEqual([s1]);
-      expect(boot.manifest.slides["s2"].thumbHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(boot.manifest.slides["s2"].thumbSvg).toContain("<svg");
 
       const s2 = await reader.readSlide("s2");
       expect(s2?.elements[0].content).toBe("Updated on desktop");
-
-      const thumb = await reader.readMedia(boot.manifest.slides["s2"].thumbHash!);
-      expect(thumb).not.toBeNull();
-      expect(new TextDecoder().decode(thumb!)).toContain("<svg");
 
       // Also verify legacy v1 .sldoc and .slsheet auto-upgrade to v2 ZIP on save
       const doc = createFile("doc", "Notes") as DocFile;
