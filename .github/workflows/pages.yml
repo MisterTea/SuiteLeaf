@@ -1,4 +1,4 @@
-name: Deploy demo to GitHub Pages
+name: Deploy website & demo to GitHub Pages
 
 on:
   push:
@@ -38,18 +38,24 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Ensure ffmpeg is installed
+        run: command -v ffmpeg >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Build web application
+      - name: Build web demo application
         run: npm run build:web
         env:
           # The demo is single-node mode: files stay in this browser's storage.
           VITE_SUITELEAF_DEMO: "1"
           VITE_SUITELEAF_CAST_APP_ID: ${{ vars.VITE_SUITELEAF_CAST_APP_ID }}
 
+      - name: Build SuiteLeaf marketing website & narrated videos
+        run: npm run build:website
+
       - name: Record deployed commit
-        run: printf '%s\n' "$GITHUB_SHA" > apps/web/dist/deployment-version.txt
+        run: printf '%s\n' "$GITHUB_SHA" > website/dist/deployment-version.txt
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -57,7 +63,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/web/dist
+          path: website/dist
 
       - name: Deploy to GitHub Pages
         id: deployment

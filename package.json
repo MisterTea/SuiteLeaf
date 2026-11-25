@@ -17,6 +17,7 @@
     "dev:desktop": "npm run dev -w @suiteleaf/desktop",
     "build": "npm run build -w @suiteleaf/web && npm run build -w @suiteleaf/desktop",
     "build:web": "npm run build -w @suiteleaf/web",
+    "build:website": "node scripts/build-website.mjs",
     "build:desktop": "npm run build -w @suiteleaf/desktop",
     "package:desktop": "npm run package -w @suiteleaf/desktop",
     "publish:desktop": "npm run publish -w @suiteleaf/desktop",

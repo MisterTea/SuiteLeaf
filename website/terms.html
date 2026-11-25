@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Terms of Service — SuiteLeaf</title>
+    <meta name="description" content="SuiteLeaf Terms of Service covering the website, live browser demo, open-source license, and self-hosted deployments." />
+    <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("suiteleaf-theme");
+          var theme =
+            saved === "dark" || saved === "light"
+              ? saved
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="assets/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container nav-inner">
+        <a class="brand-link" href="./">
+          <img class="brand-logo" src="assets/icon.svg" alt="SuiteLeaf logo" width="32" height="32" />
+          <span>SuiteLeaf</span>
+        </a>
+
+        <nav class="nav-links" id="nav-links" aria-label="Main navigation">
+          <a href="./">Home</a>
+          <a href="features.html">Features &amp; Videos</a>
+          <a href="demo/">Live Demo</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="terms.html" aria-current="page">Terms</a>
+          <a href="https://github.com/MisterTea/SuiteLeaf" target="_blank" rel="noopener">GitHub</a>
+        </nav>
+
+        <div class="nav-actions">
+          <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle color theme" aria-pressed="false">
+            <span class="theme-label">Theme</span>
+          </button>
+          <button
+            type="button"
+            id="nav-menu-btn"
+            class="nav-menu-btn"
+            aria-label="Open menu"
+            aria-expanded="false"
+            aria-controls="nav-links"
+          >
+            ☰
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="page-hero">
+        <div class="container container-narrow">
+          <div class="section-kicker">Legal &amp; License</div>
+          <h1>Terms of Service</h1>
+          <p>Clear terms for using the SuiteLeaf website, online demo, and open-source software.</p>
+        </div>
+      </section>
+
+      <article class="container container-narrow prose">
+        <div class="prose-meta">Last updated: November 24, 2026</div>
+
+        <h2>1. Acceptance of Terms</h2>
+        <p>
+          By accessing the SuiteLeaf website or using the hosted browser demo, you agree to these Terms of Service. If
+          you download, modify, or self-host the SuiteLeaf software, your use of the source code and binaries is also
+          governed by the <a href="https://github.com/MisterTea/SuiteLeaf/blob/main/LICENSE" target="_blank" rel="noopener">Apache License, Version 2.0</a>.
+        </p>
+
+        <h2>2. Open-Source License &amp; Ownership</h2>
+        <ul>
+          <li><strong>Software:</strong> SuiteLeaf is free and open-source software distributed under the Apache-2.0 License. You may use, copy, modify, and distribute it in accordance with that license.</li>
+          <li><strong>Your content:</strong> You retain full ownership and intellectual property rights to all documents, spreadsheets, presentations, drawings, forms, and other content you create or open in SuiteLeaf.</li>
+        </ul>
+
+        <h2>3. Hosted Browser Demo</h2>
+        <p>
+          The online demo hosted on GitHub Pages runs in serverless mode directly in your browser. We provide the demo
+          as a convenience for evaluation and personal use without uptime guarantees. Because demo files are stored
+          locally in your browser's storage, you are responsible for exporting or backing up any files you wish to keep.
+        </p>
+
+        <h2>4. Self-Hosted Clusters &amp; Third-Party Servers</h2>
+        <p>
+          When you connect SuiteLeaf to a self-hosted <code>suiteleaf-node</code> server or cluster operated by yourself
+          or a third party, that server operator is solely responsible for server availability, security, account
+          management, backups, and compliance with applicable laws.
+        </p>
+
+        <h2>5. AI Assistant &amp; Agent Outputs</h2>
+        <p>
+          SuiteLeaf includes on-device and optional external AI assistant capabilities that can edit documents,
+          spreadsheets, and presentations on your behalf. AI-generated text, formulas, charts, and formatting may contain
+          errors or inaccuracies. You are responsible for reviewing and verifying AI-assisted work before relying on it
+          for financial, legal, medical, or other critical decisions.
+        </p>
+
+        <h2>6. Acceptable Use</h2>
+        <p>
+          You agree not to misuse this website or demo infrastructure, attempt to disrupt service availability, or use
+          SuiteLeaf trademarks in a misleading way that implies official endorsement where none exists.
+        </p>
+
+        <h2>7. Disclaimer of Warranties &amp; Limitation of Liability</h2>
+        <p>
+          Consistent with the Apache-2.0 License, SuiteLeaf and this website are provided on an <strong>"AS IS" AND "AS
+          AVAILABLE"</strong> basis, without warranties or conditions of any kind, either express or implied, including
+          warranties of merchantability, fitness for a particular purpose, or non-infringement. In no event shall the
+          SuiteLeaf authors or contributors be liable for any indirect, incidental, special, consequential, or data-loss
+          damages arising out of your use of the software or website.
+        </p>
+
+        <h2>8. Changes &amp; Contact</h2>
+        <p>
+          We may update these Terms of Service from time to time by updating the date at the top of this page. Questions
+          can be directed to the maintainers via
+          <a href="https://github.com/MisterTea/SuiteLeaf/issues" target="_blank" rel="noopener">GitHub Issues</a>.
+        </p>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <a class="brand-link" href="./">
+          <img class="brand-logo" src="assets/icon.svg" alt="SuiteLeaf logo" width="28" height="28" />
+          <span>SuiteLeaf</span>
+        </a>
+        <div class="footer-links">
+          <a href="./">Home</a>
+          <a href="features.html">Features &amp; Videos</a>
+          <a href="demo/">Live Demo</a>
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="https://github.com/MisterTea/SuiteLeaf" target="_blank" rel="noopener">GitHub</a>
+        </div>
+        <div class="footer-copy">Open-source under the Apache-2.0 License.</div>
+      </div>
+    </footer>
+
+    <script src="assets/theme.js"></script>
+  </body>
+</html>

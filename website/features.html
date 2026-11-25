@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Features &amp; Narrated Storyboards — SuiteLeaf</title>
+    <meta
+      name="description"
+      content="Explore all 137 narrated storyboard videos demonstrating SuiteLeaf across Docs, Sheets, Slides, Forms, SuiteDrive, and on-device AI agents."
+    />
+    <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("suiteleaf-theme");
+          var theme =
+            saved === "dark" || saved === "light"
+              ? saved
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="assets/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container nav-inner">
+        <a class="brand-link" href="./">
+          <img class="brand-logo" src="assets/icon.svg" alt="SuiteLeaf logo" width="32" height="32" />
+          <span>SuiteLeaf</span>
+        </a>
+
+        <nav class="nav-links" id="nav-links" aria-label="Main navigation">
+          <a href="./">Home</a>
+          <a href="features.html" aria-current="page">Features &amp; Videos</a>
+          <a href="demo/">Live Demo</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="terms.html">Terms</a>
+          <a href="https://github.com/MisterTea/SuiteLeaf" target="_blank" rel="noopener">GitHub</a>
+        </nav>
+
+        <div class="nav-actions">
+          <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle color theme" aria-pressed="false">
+            <span class="theme-label">Theme</span>
+          </button>
+          <button
+            type="button"
+            id="nav-menu-btn"
+            class="nav-menu-btn"
+            aria-label="Open menu"
+            aria-expanded="false"
+            aria-controls="nav-links"
+          >
+            ☰
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <div class="section-kicker">Narrated Feature Gallery</div>
+          <h1>All <span id="hero-total-count">137</span> SuiteLeaf Storyboards</h1>
+          <p>
+            Every storyboard below is a real, end-to-end recording of SuiteLeaf with voiceover narration and closed
+            captions. Over <strong id="hero-ai-count">83</strong> storyboards also include a side-by-side recording of
+            the on-device AI agent completing the exact same task autonomously.
+          </p>
+        </div>
+      </section>
+
+      <div class="filter-toolbar">
+        <div class="container filter-row">
+          <div class="filter-pills" id="category-pills" role="group" aria-label="Filter by app"></div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+            <button type="button" id="filter-ai" class="pill pill-ai" aria-pressed="false">
+              ✦ Has AI Agent Video
+            </button>
+            <div class="search-wrap">
+              <input
+                type="search"
+                id="storyboard-search"
+                class="search-input"
+                placeholder="Search storyboards (e.g. pivot, margin, roman, chart)..."
+                aria-label="Search storyboards"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section class="container">
+        <div class="results-bar">
+          <span id="results-count">Loading narrated storyboards...</span>
+          <a href="demo/" class="btn btn-secondary btn-sm">Open Live Demo →</a>
+        </div>
+        <div class="storyboard-grid" id="storyboard-grid"></div>
+      </section>
+    </main>
+
+    <!-- Theater Video Modal -->
+    <div class="modal-backdrop" id="video-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div>
+            <div class="sb-meta" id="modal-meta"></div>
+            <h2 id="modal-title">Storyboard</h2>
+          </div>
+          <button type="button" id="modal-close" class="modal-close" aria-label="Close video player">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-video-wrap">
+            <video id="modal-video" controls playsinline>
+              <track id="modal-track" kind="captions" srclang="en" label="English narration" default />
+            </video>
+          </div>
+          <div class="modal-controls">
+            <div class="variant-tabs" id="modal-variant-tabs"></div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="modal-prev" class="btn btn-secondary btn-sm">← Previous</button>
+              <button type="button" id="modal-next" class="btn btn-secondary btn-sm">Next →</button>
+            </div>
+          </div>
+
+          <details class="transcript-box" open>
+            <summary>Narration transcript</summary>
+            <p id="modal-transcript"></p>
+          </details>
+
+          <div class="modal-scenes">
+            <h3>Storyboard scenes</h3>
+            <ol class="scene-list" id="modal-scenes"></ol>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <a class="brand-link" href="./">
+          <img class="brand-logo" src="assets/icon.svg" alt="SuiteLeaf logo" width="28" height="28" />
+          <span>SuiteLeaf</span>
+        </a>
+        <div class="footer-links">
+          <a href="./">Home</a>
+          <a href="demo/">Live Demo</a>
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+          <a href="https://github.com/MisterTea/SuiteLeaf" target="_blank" rel="noopener">GitHub</a>
+        </div>
+        <div class="footer-copy">Open-source under the Apache-2.0 License.</div>
+      </div>
+    </footer>
+
+    <script src="assets/theme.js"></script>
+    <script src="assets/features.js"></script>
+  </body>
+</html>

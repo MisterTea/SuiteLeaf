@@ -73,6 +73,7 @@ SuiteLeaf/
 │   ├── scenes/                  # Playwright recording scripts (generates .mp4 with slowMo & captions)
 │   └── scenes/ai/               # Autonomous on-device AI agent workflow tests
 ├── scripts/                     # Build tools, parity benchmarking, secrets check, font pipelines
+├── website/                     # GitHub Pages marketing site (dark/light theme, narrated storyboards, legal)
 ├── docs/                        # Deep-dive architecture specs, runbooks, and parity guides
 └── deploy/                      # Dockerfiles and multi-node Docker Compose topologies
 ```
