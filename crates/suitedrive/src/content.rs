@@ -227,12 +227,28 @@ impl Drive {
                         "That upload does not continue the saved part.".into(),
                     ));
                 };
-                if entry.total != total || entry.bytes.len() != start {
+                if entry.total != total {
                     return Err(DriveError::BadRequest(
                         "That upload does not continue the saved part.".into(),
                     ));
                 }
-                entry.bytes.extend_from_slice(chunk);
+                let end = start.saturating_add(chunk.len());
+                if end <= entry.bytes.len() {
+                    if &entry.bytes[start..end] != chunk {
+                        return Err(DriveError::BadRequest(
+                            "That upload does not continue the saved part.".into(),
+                        ));
+                    }
+                    if entry.bytes.len() < entry.total {
+                        return Ok(None);
+                    }
+                } else if entry.bytes.len() == start {
+                    entry.bytes.extend_from_slice(chunk);
+                } else {
+                    return Err(DriveError::BadRequest(
+                        "That upload does not continue the saved part.".into(),
+                    ));
+                }
             }
             let entry = partials.get(key).expect("upload");
             if entry.bytes.len() < entry.total {

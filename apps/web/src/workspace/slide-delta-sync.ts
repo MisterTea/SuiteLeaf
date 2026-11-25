@@ -160,6 +160,14 @@ export async function syncSectionedDelta(
         });
       } catch (err) {
         lastErr = err;
+        const status =
+          typeof err === "object" && err && "status" in err && typeof err.status === "number"
+            ? err.status
+            : undefined;
+        // Do not retry deterministic 4xx client errors (except 429 rate-limit).
+        if (status && status >= 400 && status < 500 && status !== 429) {
+          throw err;
+        }
         if (attempt < 2) {
           await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
         }

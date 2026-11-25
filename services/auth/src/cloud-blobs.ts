@@ -13,6 +13,7 @@ import {
 } from "@vercel/blob";
 
 const prefix = "suiteleaf/objects/";
+export const MAX_CLOUD_BLOB_BYTES = 512 * 1024 * 1024;
 export function acceptsBridgeToken(
   offered: string | undefined,
   expected: string,
@@ -104,25 +105,33 @@ export async function cloudBlobRequest(
     return;
   }
   if (req.method === "PUT") {
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > MAX_CLOUD_BLOB_BYTES) {
+      res.writeHead(413).end();
+      return;
+    }
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of req) {
       size += chunk.length;
-      if (size > 2 * 1024 * 1024) {
+      if (size > MAX_CLOUD_BLOB_BYTES) {
         res.writeHead(413).end();
         return;
       }
       chunks.push(Buffer.from(chunk));
     }
     if (!(await exists(path))) {
+      const body = Buffer.concat(chunks);
+      const multipart = body.length > 5 * 1024 * 1024;
       let lastError: unknown;
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          await put(path, Buffer.concat(chunks), {
+          await put(path, body, {
             access: "private",
             addRandomSuffix: false,
             allowOverwrite: false,
             contentType: "application/octet-stream",
+            ...(multipart ? { multipart: true } : {}),
           });
           lastError = null;
           break;

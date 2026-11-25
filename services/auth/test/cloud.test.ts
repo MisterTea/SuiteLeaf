@@ -139,7 +139,27 @@ it("does not acknowledge failed or oversized storage writes", async () => {
   fake.head.mockRejectedValue(new BlobNotFoundError());
   fake.put.mockRejectedValue(new Error("offline"));
   expect((await blob("PUT", "document")).status).toBe(503);
-  expect((await blob("PUT", "x".repeat(2 * 1024 * 1024 + 1))).status).toBe(413);
+  const oversizedStatus = await new Promise<number>((resolve, reject) => {
+    const req = nodeRequest(
+      `${base}/internal/cloud/blobs/${hash}`,
+      {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-length": String(512 * 1024 * 1024 + 1),
+          connection: "close",
+        },
+      },
+      (res) => {
+        res.resume();
+        req.destroy();
+        resolve(res.statusCode ?? 0);
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+  expect(oversizedStatus).toBe(413);
   fake.head.mockRejectedValueOnce(new Error("store unavailable"));
   expect((await blob("HEAD")).status).toBe(503);
 });

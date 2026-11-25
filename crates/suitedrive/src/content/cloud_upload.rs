@@ -209,21 +209,30 @@ impl Drive {
                 bytes.extend_from_slice(body);
             }
         }
+        let mut clear_partial = true;
         let result = if bytes.len() != total {
             Err(DriveError::Unavailable)
+        } else if Hash::of(&bytes) != hash {
+            Err(DriveError::BadRequest("Blob hash mismatch.".into()))
         } else {
-            self.blobs
-                .put_verified(&hash, &bytes)
-                .map_err(|_| DriveError::BadRequest("Blob hash mismatch.".into()))
-        };
-        let _ = self.db.transact(|tx| {
-            for part in parts {
-                if let Some(cid) = text(&part, "id") {
-                    tx.delete("drive_upload_chunk", &cid)?;
+            match self.blobs.put_verified(&hash, &bytes) {
+                Ok(()) => Ok(()),
+                Err(err) => {
+                    clear_partial = false;
+                    Err(DriveError::Other(err))
                 }
             }
-            tx.delete("drive_upload", partial_key)
-        });
+        };
+        if clear_partial {
+            let _ = self.db.transact(|tx| {
+                for part in parts {
+                    if let Some(cid) = text(&part, "id") {
+                        tx.delete("drive_upload_chunk", &cid)?;
+                    }
+                }
+                tx.delete("drive_upload", partial_key)
+            });
+        }
         result?;
         Ok(Some(()))
     }

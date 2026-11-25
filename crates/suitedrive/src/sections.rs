@@ -327,16 +327,16 @@ impl Drive {
         if text(&row, "kind").as_deref() != Some("file") {
             return Err(DriveError::BadRequest("Folders have no content.".into()));
         }
+        if Hash::of(bytes) != hash {
+            return Err(DriveError::BadRequest("Blob hash mismatch.".into()));
+        }
         if self.blobs.has(&hash) {
-            if Hash::of(bytes) != hash {
-                return Err(DriveError::BadRequest("Blob hash mismatch.".into()));
-            }
             return Ok(());
         }
         self.ensure_room_bytes(bytes.len() as u64)?;
         self.blobs
             .put_verified(&hash, bytes)
-            .map_err(|_| DriveError::BadRequest("Blob hash mismatch.".into()))?;
+            .map_err(DriveError::Other)?;
         Ok(())
     }
 
@@ -383,9 +383,12 @@ impl Drive {
         let Some(finished) = self.append_partial_upload(&partial_key, start, total, chunk)? else {
             return Ok(None);
         };
+        if Hash::of(&finished) != hash {
+            return Err(DriveError::BadRequest("Blob hash mismatch.".into()));
+        }
         self.blobs
             .put_verified(&hash, &finished)
-            .map_err(|_| DriveError::BadRequest("Blob hash mismatch.".into()))?;
+            .map_err(DriveError::Other)?;
         Ok(Some(()))
     }
 
