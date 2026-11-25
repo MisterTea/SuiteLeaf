@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Cloud, LogOut, Mail, Unplug } from "lucide-react";
+import { LogOut, Mail, Unplug } from "lucide-react";
 import { createFile } from "@suiteleaf/core";
 import { drive, signOut } from "../node-client";
 import { DriveBrowser, type DriveControl } from "../drive/DriveBrowser";
 import { useNodeSession } from "../drive/SignIn";
 import { useServerSync } from "../drive/status";
-import { ServerStatusIcon } from "../drive/server-status";
 import { AdminLink } from "../admin/Admin";
 import { disconnect, useMode } from "../mode";
 import { formsEnabled } from "../flags";
@@ -172,35 +171,18 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
   });
   return (
     <div
-      className="home"
+      className="home cluster-home"
       {...driveFileDrop(dropImporter)}
     >
-      <aside className="sidebar">
+      <header className="cluster-menubar" aria-label="SuiteDrive navigation">
         <Logo />
-        <MailLink />
-        <AdminLink cluster role={session?.user.role} />
+        <nav className="cluster-menubar-nav" aria-label="Workspace">
+          <MailLink />
+          <AdminLink cluster role={session?.user.role} />
+        </nav>
         <AccountChip serverUrl={serverUrl} onError={setError} />
-      </aside>
+      </header>
       <main className="home-main">
-        <header className="home-top">
-          <div className="cluster-note">
-            <Cloud size={16} />
-            Your organization&apos;s workspace.
-            <small>
-              Files are saved to SuiteDrive on {new URL(serverUrl).host}.
-              {locked
-                ? null
-                : " Your files on this computer are kept for when you disconnect."}
-            </small>
-            <ServerStatusIcon sync={sync} host={new URL(serverUrl).host} />
-          </div>
-          <span className="version">OPEN SOURCE · v0.1</span>
-          <div className="home-app-buttons">
-            <AiButton />
-            <FeedbackButton />
-            <InstallButton />
-          </div>
-        </header>
         <div className="home-new">
           <NewMenu onCreate={make} folder={folderName} />
           {folderName ? <span className="home-new-where">In {folderName}</span> : null}
@@ -209,46 +191,53 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
         <section className="file-section">
           <header>
             <h2>SuiteDrive</h2>
-            <ImportButton
-              filePicker
-              uploading
-              dropImporter={dropImporter}
-              openDroppedFile={false}
-              onImport={async (r, _name, onProgress) => {
-                if (r.drive) navigate(`/file/${r.file.id}`);
-                else await createInDrive(r.file, folder.current, navigate, onProgress);
-              }}
-              onError={setError}
-              placeInFolder={async (file, directory, onProgress) => {
-                let parentId = folder.current;
-                const known = await drive.listFolders();
-                for (const part of directory.split("/").filter(Boolean)) {
-                  const found = known.find(
-                    (item) => item.name === part && item.parentId === parentId,
-                  );
-                  if (found) {
-                    parentId = found.id;
-                    continue;
+            <div className="file-section-actions">
+              <ImportButton
+                filePicker
+                uploading
+                dropImporter={dropImporter}
+                openDroppedFile={false}
+                onImport={async (r, _name, onProgress) => {
+                  if (r.drive) navigate(`/file/${r.file.id}`);
+                  else await createInDrive(r.file, folder.current, navigate, onProgress);
+                }}
+                onError={setError}
+                placeInFolder={async (file, directory, onProgress) => {
+                  let parentId = folder.current;
+                  const known = await drive.listFolders();
+                  for (const part of directory.split("/").filter(Boolean)) {
+                    const found = known.find(
+                      (item) => item.name === part && item.parentId === parentId,
+                    );
+                    if (found) {
+                      parentId = found.id;
+                      continue;
+                    }
+                    const created = await drive.create({
+                      name: part,
+                      parentId,
+                      kind: "folder",
+                    });
+                    known.push({
+                      id: created.id,
+                      name: created.name,
+                      parentId: created.parentId,
+                    });
+                    parentId = created.id;
                   }
-                  const created = await drive.create({
-                    name: part,
-                    parentId,
-                    kind: "folder",
-                  });
-                  known.push({
-                    id: created.id,
-                    name: created.name,
-                    parentId: created.parentId,
-                  });
-                  parentId = created.id;
-                }
-                return keepCreated(file, parentId, true, onProgress);
-              }}
-              keepImported={async (file, onProgress) => {
-                await keepCreated(file, folder.current, true, onProgress);
-              }}
-              onBatchDone={() => setListed((n) => n + 1)}
-            />
+                  return keepCreated(file, parentId, true, onProgress);
+                }}
+                keepImported={async (file, onProgress) => {
+                  await keepCreated(file, folder.current, true, onProgress);
+                }}
+                onBatchDone={() => setListed((n) => n + 1)}
+              />
+              <div className="home-app-buttons">
+                <AiButton />
+                <FeedbackButton />
+                <InstallButton />
+              </div>
+            </div>
           </header>
           <DriveBrowser
             inline
@@ -256,7 +245,9 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
             mode="open"
             control={driveControl}
             onFolderChange={onFolderChange}
-            onOpen={(item) => openFromDrive(item, navigate)}
+            onOpen={(item, signal) =>
+              signal ? openFromDrive(item, navigate, signal) : openFromDrive(item, navigate)
+            }
             refreshKey={sync ? `${sync.heads}:${sync.replicating}:${listed}` : String(listed)}
           />
         </section>

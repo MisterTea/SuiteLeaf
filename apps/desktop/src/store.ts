@@ -20,8 +20,10 @@ import {
   kindFromName,
   nativeFilename,
   parseFile,
+  parseFileBytes,
   readLibraryMarks,
   serializeFile,
+  serializeFileBytes,
   type DocumentScanProgress,
   type DriveLink,
   type FileRecord,
@@ -43,7 +45,11 @@ export async function atomicWrite(path: string, text: string | Uint8Array) {
   try {
     const handle = await open(temp, "wx");
     try {
-      await handle.writeFile(text, "utf8");
+      if (typeof text === "string") {
+        await handle.writeFile(text, "utf8");
+      } else {
+        await handle.writeFile(text);
+      }
       await handle.sync();
     } finally {
       await handle.close();
@@ -53,8 +59,8 @@ export async function atomicWrite(path: string, text: string | Uint8Array) {
     await unlink(temp).catch(() => {});
   }
 }
-const fingerprint = (text: string) =>
-  createHash("sha256").update(text).digest("hex");
+const fingerprint = (data: string | Uint8Array) =>
+  createHash("sha256").update(data).digest("hex");
 /** An on-disk file is read from its path; all other bodies live in SQLite. */
 function onDisk(record: FileRecord) {
   return !!record.path && !record.recovery;
@@ -267,17 +273,17 @@ export class FileStore {
       let next: FileRecord;
       if (!record.path) {
         const path = await freePath(folder, nativeFilename(record.file));
-        const text = serializeFile(record.file);
-        await atomicWrite(path, text);
-        next = { ...record, path, fingerprint: fingerprint(text), recovery: false };
+        const outBytes = await serializeFileBytes(record.file);
+        await atomicWrite(path, outBytes);
+        next = { ...record, path, fingerprint: fingerprint(outBytes), recovery: false };
       } else {
         if (resolve(dirname(record.path)) === resolve(folder)) {
           if (record.recovery) return structuredClone(record);
-          const text = await readFile(record.path, "utf8");
+          const bytes = await readFile(record.path);
           return structuredClone({
             ...record,
-            file: parseFile(text),
-            fingerprint: fingerprint(text),
+            file: await parseFileBytes(bytes),
+            fingerprint: fingerprint(bytes),
           });
         }
         const path = await freePath(folder, basename(record.path));
@@ -288,11 +294,11 @@ export class FileStore {
       this.records.set(id, stored);
       await this.persist();
       if (stored.path && !stored.recovery) {
-        const text = await readFile(stored.path, "utf8");
+        const bytes = await readFile(stored.path);
         return structuredClone({
           ...stored,
-          file: parseFile(text),
-          fingerprint: fingerprint(text),
+          file: await parseFileBytes(bytes),
+          fingerprint: fingerprint(bytes),
         });
       }
       return structuredClone(next);
@@ -357,13 +363,13 @@ export class FileStore {
         )
       )
         continue;
-      let text: string;
+      let bytes: Uint8Array;
       try {
-        text = await readFile(full, "utf8");
+        bytes = await readFile(full);
       } catch {
         continue;
       }
-      if (this.dismissed.get(full) === fingerprint(text)) continue;
+      if (this.dismissed.get(full) === fingerprint(bytes)) continue;
       try {
         await this.openPath(full);
       } catch {
@@ -552,12 +558,12 @@ export class FileStore {
     const record = this.records.get(id);
     if (!record) return;
     if (record.path && !record.recovery) {
-      const text = await readFile(record.path, "utf8");
+      const bytes = await readFile(record.path);
       const full = applyLibraryMarks(
         {
           ...record,
-          file: parseFile(text),
-          fingerprint: fingerprint(text),
+          file: await parseFileBytes(bytes),
+          fingerprint: fingerprint(bytes),
         },
         readLibraryMarks(record),
       );
@@ -570,29 +576,29 @@ export class FileStore {
   async openPath(path: string) {
     return this.transaction(async () => {
       const full = resolve(path),
-        text = await readFile(full, "utf8"),
-        file = parseFile(text, kindFromName(full));
+        bytes = await readFile(full),
+        file = await parseFileBytes(bytes, kindFromName(full));
       const existing = this.records.get(file.id);
       if (existing?.recovery && existing.path === full)
         return this.hydrate(existing);
       // A different version of this file is already in the library (a draft,
       // or saved elsewhere): return it unsaved, so the user chooses which to keep.
       const sameBytes = existing?.fingerprint
-        ? existing.fingerprint === fingerprint(text)
+        ? existing.fingerprint === fingerprint(bytes)
         : existing && !onDisk(existing) &&
           serializeFile(this.hydrate(existing).file) === serializeFile(file);
       if (existing && !existing.drive && existing.path !== full && !sameBytes)
         return structuredClone({
           file,
           path: full,
-          fingerprint: fingerprint(text),
+          fingerprint: fingerprint(bytes),
           recovery: false,
         });
       const r = applyLibraryMarks(
         {
           file,
           path: full,
-          fingerprint: fingerprint(text),
+          fingerprint: fingerprint(bytes),
           recovery: false,
         },
         { starred: existing?.starred === true ? true : undefined },
@@ -624,9 +630,9 @@ export class FileStore {
       const pending = keep({ ...old, file, recovery: true, drive });
       await this.persist();
       if (!old.path) return structuredClone(pending);
-      let disk: string;
+      let disk: Uint8Array;
       try {
-        disk = await readFile(old.path, "utf8");
+        disk = await readFile(old.path);
       } catch {
         throw new Error(
           "The saved file is missing or inaccessible. Use Save As; your recovery draft is safe.",
@@ -634,12 +640,12 @@ export class FileStore {
       }
       if (fingerprint(disk) !== (input.fingerprint ?? old.fingerprint))
         throw new FileConflict();
-      const text = serializeFile(file);
-      await atomicWrite(old.path, text);
+      const outBytes = await serializeFileBytes(file);
+      await atomicWrite(old.path, outBytes);
       const saved = keep({
         file,
         path: old.path,
-        fingerprint: fingerprint(text),
+        fingerprint: fingerprint(outBytes),
         recovery: false,
         drive,
       });
@@ -650,14 +656,14 @@ export class FileStore {
   async saveAs(input: FileRecord, path: string) {
     return this.transaction(async () => {
       const file = parseFile(serializeFile(input.file)),
-        text = serializeFile(file),
+        outBytes = await serializeFileBytes(file),
         full = resolve(path);
-      await atomicWrite(full, text);
+      await atomicWrite(full, outBytes);
       const r = applyLibraryMarks(
         {
           file,
           path: full,
-          fingerprint: fingerprint(text),
+          fingerprint: fingerprint(outBytes),
           recovery: false,
           drive: input.drive ?? this.records.get(file.id)?.drive,
         },
@@ -673,12 +679,12 @@ export class FileStore {
     return this.transaction(async () => {
       const old = this.records.get(id);
       if (!old?.path) return old ? this.hydrate(old) : undefined;
-      const text = await readFile(old.path, "utf8");
+      const bytes = await readFile(old.path);
       const r = applyLibraryMarks(
         {
-          file: parseFile(text),
+          file: await parseFileBytes(bytes),
           path: old.path,
-          fingerprint: fingerprint(text),
+          fingerprint: fingerprint(bytes),
           recovery: false,
           drive: old.drive,
         },

@@ -349,12 +349,14 @@ export function SlideThumbnails({
       >
         {deck.slideOrder.map((id, index) => {
           const slide = deck.slides[id];
+          const summary = (deck as { slideSummaries?: Record<string, { title?: string; thumbUrl?: string }> }).slideSummaries?.[id];
           const isActive = id === activeSlideId;
           const isChosen = selectedSlideIds.includes(id);
-          const heading = slide?.elements
-            .find((el) => el.type === "text" && !el.wordArt && el.content?.trim())
-            ?.content?.trim()
-            .split("\n")[0];
+          const heading =
+            slide?.elements
+              .find((el) => el.type === "text" && !el.wordArt && el.content?.trim())
+              ?.content?.trim()
+              .split("\n")[0] ?? summary?.title;
           const bg = slide?.background?.color || "#ffffff";
           const dropClass =
             slideDrag?.over === index
@@ -380,13 +382,40 @@ export function SlideThumbnails({
                 style={{ backgroundColor: bg }}
               >
                 <div className="thumbnail-preview">
-                  <SlideStill
-                    deck={deck}
-                    slide={slide}
-                    index={index}
-                    pages={marpPages}
-                    lazy
-                  />
+                  {slide ? (
+                    <SlideStill
+                      deck={deck}
+                      slide={slide}
+                      index={index}
+                      pages={marpPages}
+                      lazy
+                    />
+                  ) : summary?.thumbUrl ? (
+                    <img
+                      src={summary.thumbUrl}
+                      alt={heading || `Slide ${index + 1}`}
+                      className="thumbnail-manifest-preview"
+                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                    />
+                  ) : (
+                    <div
+                      className="thumbnail-skeleton"
+                      aria-busy="true"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 11,
+                        color: "#64748b",
+                        padding: 6,
+                        textAlign: "center",
+                      }}
+                    >
+                      {summary?.title || `Slide ${index + 1}`}
+                    </div>
+                  )}
                 </div>
                 {slide?.transition && slide.transition.type !== "none" ? (
                   <span

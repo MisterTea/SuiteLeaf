@@ -34,6 +34,7 @@ mod row;
 mod schema;
 pub mod seal;
 mod search;
+pub mod sections;
 pub mod share_migration;
 mod sharing;
 mod versions;
@@ -52,6 +53,9 @@ pub use public_sharing::PublicLink;
 pub use replication::{BlobRequest, BlobResponse, BlobTransport};
 pub use schema::{SCHEMA_VERSION, tables};
 pub use search::{SearchHit, SpreadsheetHit};
+pub use sections::{
+    DOC_V2_MIME, SHEET_V2_MIME, SLIDES_V2_MIME, SectionManifest, SlideSectionManifest,
+};
 pub use share_migration::{AccessChange, MemberPlan, RestrictPlan};
 pub use sharing::{AccessGrant, AclEntry, InheritedFrom, ItemAccess, ShareNotice};
 pub use versions::Version;

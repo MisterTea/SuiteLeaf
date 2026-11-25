@@ -2,6 +2,57 @@
   display: flex;
   min-height: 100vh;
 }
+.cluster-home {
+  flex-direction: column;
+}
+.cluster-menubar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+.cluster-menubar-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cluster-menubar .mail-link {
+  margin: 0;
+}
+.cluster-menubar .sidebar-icon-button,
+.cluster-menubar .admin-icon-button {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+}
+.cluster-menubar .account-chip {
+  margin-top: 0;
+  margin-left: auto;
+  padding: 4px 8px;
+  gap: 8px;
+}
+.cluster-home .home-main {
+  margin-left: 0;
+  width: 100%;
+  max-width: 1500px;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+.cluster-home .home-new {
+  margin-top: 0;
+}
+.home-app-buttons,
+.file-section-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .sidebar {
   width: 242px;
   padding: 32px 22px;

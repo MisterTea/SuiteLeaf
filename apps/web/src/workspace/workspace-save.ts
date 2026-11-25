@@ -5,6 +5,7 @@ import { recordSaveStatus, unackedEditCount } from "../save-state";
 import { retriesAutomatically, sameUploadBody, sendUploadSpans, uploadDelay, uploadQueue } from "../upload-queue";
 import { DriveConflict, drive, getSession, uploadDriveFile } from "../node-client";
 import { uploadDriveSpan } from "../drive/upload-span";
+import { syncSectionedDelta } from "./slide-delta-sync";
 import { requestLastEditRefresh } from "../drive/last-edit";
 import { noteLocalSnapshot } from "../editors/local-versions";
 import { message } from "../error-message";
@@ -85,17 +86,28 @@ export function useWorkspaceSave(ws: WorkspaceState) {
           }
         }
         let link: Awaited<ReturnType<typeof uploadDriveFile>> | undefined;
-        const spans = await sendUploadSpans({
-          bytes,
-          sent: pending.sent ?? 0,
-          upload: async (span) => {
-            const result = await uploadDriveSpan(snapshot, base, span.start, span.end);
-            uploadQueue.acknowledge(base.itemId, snapshot.updatedAt, result.accepted);
-            if (result.done) link = result.link;
-            return { done: result.done, accepted: result.accepted };
-          },
-        });
-        if (!spans.done) return;
+        if (
+          !("mock" in uploadDriveSpan) &&
+          (snapshot.kind === "slide" ||
+            snapshot.kind === "sheet" ||
+            snapshot.kind === "doc")
+        ) {
+          const deltaResult = await syncSectionedDelta(snapshot, base);
+          link = deltaResult.link;
+          uploadQueue.acknowledge(base.itemId, snapshot.updatedAt, bytes);
+        } else {
+          const spans = await sendUploadSpans({
+            bytes,
+            sent: pending.sent ?? 0,
+            upload: async (span) => {
+              const result = await uploadDriveSpan(snapshot, base, span.start, span.end);
+              uploadQueue.acknowledge(base.itemId, snapshot.updatedAt, result.accepted);
+              if (result.done) link = result.link;
+              return { done: result.done, accepted: result.accepted };
+            },
+          });
+          if (!spans.done) return;
+        }
         if (!link) return;
         if (driveGeneration.current !== generation || driveConflictRef.current)
           return;

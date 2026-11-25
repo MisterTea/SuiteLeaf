@@ -41,6 +41,156 @@ fn slide_id_ok(id: &str) -> bool {
     !id.is_empty() && id.len() <= 80 && !id.chars().any(|c| c.is_control())
 }
 
+/// Write the shared slide maps into a presentation file.
+/// Supports both v1 monolithic JSON and v2 sectioned `.slslides` manifests
+/// (writing only modified slide/global blobs into `drive.blobs()`).
+pub(super) fn apply_slide_room_with_drive(
+    drive: &suitedrive::Drive,
+    bytes: &[u8],
+    room: &SlideRoom,
+    at: &str,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    if let Some(mut manifest) = suitedrive::SlideSectionManifest::try_parse(bytes) {
+        if manifest.kind != "slide" {
+            return Ok(None);
+        }
+        if room.slides.is_empty()
+            && room.elements.is_empty()
+            && room.order.is_none()
+            && room.removed.is_empty()
+            && room.master.is_none()
+        {
+            return Ok(None);
+        }
+        let mut changed = false;
+        for (id, json) in &room.slides {
+            if !slide_id_ok(id) {
+                continue;
+            }
+            let Ok(mut shell) = serde_json::from_str::<Value>(json) else {
+                continue;
+            };
+            let Some(shell_object) = shell.as_object_mut() else {
+                continue;
+            };
+            let order = shell_object
+                .remove("elementOrder")
+                .and_then(|value| value.as_array().cloned())
+                .unwrap_or_default();
+            let mut bodies = std::collections::BTreeMap::new();
+            for (key, body_json) in &room.elements {
+                let Some((slide, element)) = key.split_once('\u{1f}') else {
+                    continue;
+                };
+                if slide != id || !slide_id_ok(element) {
+                    continue;
+                }
+                let Ok(body) = serde_json::from_str::<Value>(body_json) else {
+                    continue;
+                };
+                bodies.insert(element.to_owned(), body);
+            }
+            let mut list = Vec::new();
+            for item in order {
+                let Some(element) = item.as_str() else {
+                    continue;
+                };
+                if let Some(body) = bodies.remove(element) {
+                    list.push(body);
+                }
+            }
+            list.extend(bodies.into_values());
+            shell_object.insert("elements".into(), Value::Array(list));
+            let title = shell_object
+                .get("title")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned);
+            let layout = shell_object
+                .get("layout")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned);
+            let hidden = shell_object.get("hidden").and_then(|v| v.as_bool());
+            let master_id = shell_object
+                .get("masterId")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned);
+            let slide_bytes = serde_json::to_vec(&shell).context("slide section json")?;
+            let hash = drive.blobs().put(&slide_bytes)?;
+            let hash_hex = hash.to_string();
+            let prev = manifest.slides.get(id);
+            if prev.map(|p| p.hash.as_str()) != Some(hash_hex.as_str()) {
+                changed = true;
+                manifest.slides.insert(
+                    id.clone(),
+                    suitedrive::sections::SlideSummary {
+                        hash: hash_hex,
+                        size: slide_bytes.len() as u64,
+                        title,
+                        layout,
+                        hidden,
+                        master_id,
+                        thumb_hash: prev.and_then(|p| p.thumb_hash.clone()),
+                        thumb_mime: prev.and_then(|p| p.thumb_mime.clone()),
+                    },
+                );
+            }
+        }
+        for id in &room.removed {
+            if manifest.slides.remove(id).is_some() {
+                changed = true;
+            }
+        }
+        if let Some(order_json) = &room.order
+            && let Ok(Value::Array(items)) = serde_json::from_str::<Value>(order_json)
+        {
+            let mut ids = Vec::new();
+            for item in items {
+                let Some(id) = item.as_str() else {
+                    continue;
+                };
+                if room.removed.iter().any(|removed| removed == id)
+                    || !manifest.slides.contains_key(id)
+                {
+                    continue;
+                }
+                if !ids.iter().any(|seen: &String| seen == id) {
+                    ids.push(id.to_owned());
+                }
+            }
+            if ids != manifest.slide_order {
+                manifest.slide_order = ids;
+                changed = true;
+            }
+        }
+        if let Some(master_json) = &room.master
+            && let Ok(master) = serde_json::from_str::<Value>(master_json)
+            && master.is_object()
+            && let Ok(global_hash) = manifest.global.hash.parse::<suitedrive::Hash>()
+            && let Ok(Some(global_bytes)) = drive.blobs().get(&global_hash)
+            && let Ok(mut global_val) = serde_json::from_slice::<Value>(&global_bytes)
+            && let Some(global_obj) = global_val.as_object_mut()
+            && global_obj.get("master") != Some(&master)
+        {
+            global_obj.insert("master".into(), master);
+            let next_global = serde_json::to_vec(&global_val).context("global json")?;
+            let next_hash = drive.blobs().put(&next_global)?;
+            manifest.global = suitedrive::sections::SectionRef {
+                hash: next_hash.to_string(),
+                size: next_global.len() as u64,
+            };
+            changed = true;
+        }
+        if !changed {
+            return Ok(Some(bytes.to_vec()));
+        }
+        manifest.updated_at = at.to_owned();
+        return Ok(Some(
+            serde_json::to_vec(&manifest).context("manifest json")?,
+        ));
+    }
+    apply_slide_room(bytes, room)
+}
+
 /// Write the shared slide maps into a presentation file. A spreadsheet is left alone.
 pub(super) fn apply_slide_room(bytes: &[u8], room: &SlideRoom) -> anyhow::Result<Option<Vec<u8>>> {
     if room.slides.is_empty()
@@ -213,5 +363,74 @@ mod tests {
         assert_ne!(next, file);
         assert!(String::from_utf8_lossy(&next).contains("West"));
         assert!(!String::from_utf8_lossy(&next).contains("secret-value"));
+    }
+
+    #[test]
+    fn v2_sectioned_compaction_writes_only_modified_slide_blobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = libp2p_identity::ed25519::Keypair::generate();
+        let schema = suitedb::Schema {
+            version: suitedrive::SCHEMA_VERSION,
+            tables: suitedrive::tables(),
+        };
+        let db = std::sync::Arc::new(
+            suitedb::Db::open(&dir.path().join("db.sqlite"), key, schema).unwrap(),
+        );
+        let drive = suitedrive::Drive::open(db, &dir.path().join("blobs")).unwrap();
+
+        let global_bytes = br#"{"id":"f","width":960,"height":540}"#;
+        let s1_bytes = br#"{"id":"s1","title":"Unchanged","elements":[]}"#;
+        let s2_bytes = br#"{"id":"s2","title":"Old","elements":[]}"#;
+        let gh = drive.blobs().put(global_bytes).unwrap();
+        let s1h = drive.blobs().put(s1_bytes).unwrap();
+        let s2h = drive.blobs().put(s2_bytes).unwrap();
+
+        let manifest_bytes = serde_json::to_vec(&json!({
+            "format": "suiteleaf",
+            "version": 2,
+            "kind": "slide",
+            "id": "f",
+            "title": "Show",
+            "createdAt": "2026-11-25T15:00:00.000Z",
+            "updatedAt": "2026-11-25T15:00:00.000Z",
+            "global": { "hash": gh.to_string(), "size": global_bytes.len() },
+            "slideOrder": ["s1", "s2"],
+            "slides": {
+                "s1": { "hash": s1h.to_string(), "size": s1_bytes.len(), "title": "Unchanged" },
+                "s2": { "hash": s2h.to_string(), "size": s2_bytes.len(), "title": "Old" }
+            },
+            "media": {}
+        }))
+        .unwrap();
+
+        let room = SlideRoom {
+            slides: vec![(
+                "s2".into(),
+                r#"{"id":"s2","title":"Edited","elementOrder":["el1"]}"#.into(),
+            )],
+            elements: vec![(
+                "s2\u{1f}el1".into(),
+                r#"{"id":"el1","type":"text","content":"Delta update"}"#.into(),
+            )],
+            order: Some(r#"["s1","s2"]"#.into()),
+            removed: vec![],
+            master: None,
+        };
+
+        let next_bytes =
+            apply_slide_room_with_drive(&drive, &manifest_bytes, &room, "2026-11-25T15:05:00.000Z")
+                .unwrap()
+                .expect("v2 manifest");
+        let next = suitedrive::SlideSectionManifest::try_parse(&next_bytes).expect("valid v2");
+        // s1 and global hashes remain untouched
+        assert_eq!(next.global.hash, gh.to_string());
+        assert_eq!(next.slides["s1"].hash, s1h.to_string());
+        // s2 hash changed and points to the newly written blob
+        assert_ne!(next.slides["s2"].hash, s2h.to_string());
+        assert_eq!(next.slides["s2"].title.as_deref(), Some("Edited"));
+        let new_s2_hash: suitedrive::Hash = next.slides["s2"].hash.parse().unwrap();
+        let new_s2_raw = drive.blobs().get(&new_s2_hash).unwrap().unwrap();
+        let new_s2: Value = serde_json::from_slice(&new_s2_raw).unwrap();
+        assert_eq!(new_s2["elements"][0]["content"], "Delta update");
     }
 }

@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, readdir, rename, writeFile, rm } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileStore, atomicWrite } from "../apps/desktop/src/store";
-import { createFile, serializeFile } from "../packages/core/src";
+import { createFile, parseFileBytes, serializeFile } from "../packages/core/src";
 let dir: string, store: FileStore;
 const stores: FileStore[] = [];
 function trackedStore(path: string) {
@@ -41,7 +41,7 @@ it("keeps an on-disk document body out of the catalog", async () => {
     (await reopened.list()).find((record) => record.file.id === file.id)?.file.content,
   ).toBeUndefined();
   expect((await reopened.get(file.id))?.file.content).toEqual(file.content);
-  expect(JSON.parse(await readFile(path, "utf8")).content).toEqual(file.content);
+  expect((await parseFileBytes(await readFile(path))).content).toEqual(file.content);
 });
 it("trashes and restores a batch using only the catalog", async () => {
   const saved = createFile("doc", "Saved");
@@ -63,7 +63,7 @@ it("trashes and restores a batch using only the catalog", async () => {
   expect(trashed.find((record) => record.file.id === saved.id)?.starred).toBe(true);
   expect(await reopened.setTrashed(ids, false)).toEqual(ids);
   expect((await reopened.list()).every((record) => !record.trashedAt)).toBe(true);
-  expect(await readFile(movedPath, "utf8")).toBe(serializeFile(saved));
+  expect(await parseFileBytes(await readFile(movedPath))).toEqual(saved);
 });
 
 it("autosaves regular files and reopens from a new store", async () => {
@@ -72,7 +72,7 @@ it("autosaves regular files and reopens from a new store", async () => {
   let r = await store.saveAs({ file: f }, path);
   r.file.title = "Edited";
   r = await store.save(r);
-  expect(JSON.parse(await readFile(path, "utf8")).title).toBe("Edited");
+  expect((await parseFileBytes(await readFile(path))).title).toBe("Edited");
   const reopened = trackedStore(join(dir, "data"));
   await reopened.init();
   expect((await reopened.get(f.id))?.file.title).toBe("Edited");
@@ -370,19 +370,19 @@ it("moves a file into a folder on disk, and writes a file that was not on disk y
 
   const moved = await store.moveFile(saved.id, join(docs, "Garden"));
   expect(moved.path).toBe(join(docs, "Garden", "Plan (2).sldoc"));
-  expect(JSON.parse(await readFile(moved.path!, "utf8")).id).toBe(saved.id);
+  expect((await parseFileBytes(await readFile(moved.path!))).id).toBe(saved.id);
   expect(await readdir(docs)).toEqual(["Garden"]);
   expect(await store.syncFolder(docs)).toBe(false);
   moved.file.title = "Plan, edited";
   await store.save(moved);
-  expect(JSON.parse(await readFile(moved.path!, "utf8")).title).toBe("Plan, edited");
+  expect((await parseFileBytes(await readFile(moved.path!))).title).toBe("Plan, edited");
 
   const draft = { ...createFile("sheet"), title: "Seed list" };
   await store.save({ file: draft });
   const written = await store.moveFile(draft.id, join(docs, "Garden"));
   expect(written.path).toBe(join(docs, "Garden", "Seed list.slsheet"));
   expect(written.recovery).toBe(false);
-  expect(JSON.parse(await readFile(written.path!, "utf8")).title).toBe("Seed list");
+  expect((await parseFileBytes(await readFile(written.path!))).title).toBe("Seed list");
   await expect(store.moveFile(draft.id, join(docs, "Nowhere"))).rejects.toThrow("no longer there");
 });
 it("moves and renames a folder on disk with the library's files inside it", async () => {
@@ -483,7 +483,9 @@ it("archives complete folder trees and trashes folder records without affecting 
   const zip = await JSZip.loadAsync(await folderSelectionArchive(store, [folder], [sibling.id]));
   expect(zip.files["Lessons/Empty/"].dir).toBe(true);
   expect(await zip.file("Lessons/Original.pptx")!.async("uint8array")).toEqual(pptx);
-  expect(await zip.file("Lessons/Notes.sldoc")!.async("string")).toBe(serializeFile(file));
+  expect(
+    await parseFileBytes(await zip.file("Lessons/Notes.sldoc")!.async("uint8array")),
+  ).toEqual(file);
   expect(zip.file("Sibling.sldoc")).toBeTruthy();
 
   const trash = join(dir, "system-trash");

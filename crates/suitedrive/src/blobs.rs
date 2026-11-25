@@ -214,6 +214,8 @@ impl BlobStore {
 
     /// Blobs still needed to assemble `content` locally. Chunks are unknown
     /// until the manifest arrives, so a missing manifest is reported alone.
+    /// For v2 sectioned `.slslides` manifests, any missing section/media blobs
+    /// are also included so peer replication fetches the complete presentation.
     pub fn missing(&self, content: &Hash) -> Result<Vec<Hash>> {
         if self.remote.is_some() {
             return Ok(Vec::new());
@@ -221,10 +223,22 @@ impl BlobStore {
         let Some(manifest) = self.get(content)? else {
             return Ok(vec![*content]);
         };
-        Ok(Manifest::decode(&manifest)?
+        let decoded = Manifest::decode(&manifest)?;
+        let missing_chunks: Vec<Hash> = decoded
             .chunks
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|c| !self.has(c))
-            .collect())
+            .collect();
+        if !missing_chunks.is_empty() {
+            return Ok(missing_chunks);
+        }
+        if let Some(bytes) = self.get_content(content)?
+            && let Some(sectioned) = crate::sections::SlideSectionManifest::try_parse(&bytes)
+            && let Ok(refs) = sectioned.referenced_hashes()
+        {
+            return Ok(refs.into_iter().filter(|h| !self.has(h)).collect());
+        }
+        Ok(Vec::new())
     }
 }

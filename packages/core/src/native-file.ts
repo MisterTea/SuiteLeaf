@@ -19,9 +19,17 @@ export type {
 } from "./file-schema";
 import { safeLink } from "./link-target";
 import { packSharedMedia, unpackSharedMedia } from "./shared-media";
+import { isSlmediaUri } from "./slide-package-schema";
+import { isSlidePackageBytes } from "./slide-package";
+import {
+  isSuitePackageBytes,
+  packSuitePackageZip,
+  parseSuitePackageZip,
+} from "./doc-sheet-package";
 
-/** A slide picture is either embedded, or a relative path filled from the deck's imported files. */
+/** A slide picture is either embedded, a v2 slmedia:// blob ref, or a relative path filled from the deck's imported files. */
 function allowedSlideImage(src: string) {
+  if (isSlmediaUri(src)) return true;
   if (
     /^data:image\/(png|jpeg|gif|webp|bmp|svg\+xml|tiff|emf|wmf|wdp);base64,/i.test(
       src,
@@ -41,6 +49,7 @@ function validateTree(n: JsonNode, depth = 0) {
   if (depth > 100) throw new Error("Document is nested too deeply.");
   if (
     (n.type === "image" || n.type === "inlineImage") &&
+    !isSlmediaUri(String(n.attrs?.src ?? "")) &&
     !/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/i.test(String(n.attrs?.src))
   )
     throw new Error(
@@ -163,6 +172,7 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
         if (
           el.type === "audio" &&
           el.src &&
+          !isSlmediaUri(el.src) &&
           !/^data:audio\/(wav|mpeg|ogg);base64,/i.test(el.src)
         )
           throw new Error(
@@ -171,6 +181,7 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
         if (
           el.type === "video" &&
           el.src &&
+          !isSlmediaUri(el.src) &&
           !/^data:video\/(mp4|webm|quicktime|mpeg);base64,/i.test(el.src)
         )
           throw new Error(
@@ -352,4 +363,41 @@ export function parseNamedFile(name: string, text: string): SuiteFile {
       `SuiteLeaf files use ${NATIVE_EXTENSIONS.map((e) => `.${e}`).join(", ")}.`,
     );
   return parseFile(text, kind);
+}
+
+/**
+ * Parse raw native file bytes, supporting both v2 ZIP packages
+ * (`.slslides`, `.slsheet`, `.sldoc`) and legacy v1 UTF-8 JSON files seamlessly.
+ */
+export async function parseFileBytes(
+  bytes: Uint8Array,
+  expectedKind?: Kind | null,
+): Promise<SuiteFile> {
+  if (bytes.byteLength > NATIVE_FILE_LIMIT) {
+    throw new Error(
+      `Native files must be smaller than ${NATIVE_FILE_LIMIT / (1024 * 1024)} MB.`,
+    );
+  }
+  if (isSuitePackageBytes(bytes) || isSlidePackageBytes(bytes)) {
+    const file = await parseSuitePackageZip(bytes);
+    if (expectedKind && file.kind !== expectedKind) {
+      throw new Error(
+        `This .${nativeExtensions[expectedKind]} file contains a ${file.kind}, not a ${expectedKind}.`,
+      );
+    }
+    return file;
+  }
+  const text = new TextDecoder().decode(bytes);
+  return parseFile(text, expectedKind);
+}
+
+/**
+ * Serialize a SuiteFile to bytes. Docs, Sheets, and Slides automatically
+ * upgrade to the v2 sectioned ZIP format; Forms and Drawings stay UTF-8 JSON.
+ */
+export async function serializeFileBytes(file: SuiteFile): Promise<Uint8Array> {
+  if (file.kind === "slide" || file.kind === "sheet" || file.kind === "doc") {
+    return packSuitePackageZip(file);
+  }
+  return new TextEncoder().encode(serializeFile(file));
 }

@@ -51,6 +51,9 @@ pub async fn session(
     let drive = state.drive.clone();
     let rooms = state.rooms.clone();
     let auth = state.auth.clone();
+    let upgrade = upgrade
+        .max_message_size(64 * 1024 * 1024)
+        .max_frame_size(16 * 1024 * 1024);
     if let Some(user) = preauth {
         let role = match accepted_role(drive, &user, &id).await {
             Ok(role) => role,
@@ -66,7 +69,9 @@ pub async fn session(
         return upgrade
             .on_upgrade(move |socket| async move {
                 let signed = Signed { auth, credentials };
-                let _ = run_socket(socket, rooms, id, user, role, signed).await;
+                if let Err(err) = run_socket(socket, rooms, id.clone(), user, role, signed).await {
+                    tracing::warn!(item = %id, error = %err, "collaboration socket closed with error");
+                }
             })
             .into_response();
     }
@@ -98,7 +103,9 @@ pub async fn session(
                 }
             };
             let signed = Signed { auth, credentials };
-            let _ = run_socket(socket, rooms, id, user, role, signed).await;
+            if let Err(err) = run_socket(socket, rooms, id.clone(), user, role, signed).await {
+                tracing::warn!(item = %id, error = %err, "collaboration socket closed with error");
+            }
         })
         .into_response()
 }
@@ -361,22 +368,32 @@ async fn run_socket(
                 };
                 let name = user.name.clone().unwrap_or_else(|| "You".into());
                 let made_in = value.get("generation").and_then(|v| v.as_i64());
-                let outcome = rooms.apply_update_in(
-                    LiveUpdate {
-                        item: &item,
-                        user_id: &user.id,
-                        name: &name,
-                        role,
-                        bytes: &bytes,
-                        unit,
-                        key,
-                        at: &at,
-                    },
-                    made_in,
-                )?;
-                if outcome == Outcome::Stored {
-                    rooms.activity(&item, &connection, now_ms())?;
-                }
+                let rooms_bg = rooms.clone();
+                let item_bg = item.clone();
+                let user_id_bg = user.id.clone();
+                let unit_bg = unit.to_owned();
+                let key_bg = key.to_owned();
+                let connection_bg = connection.clone();
+                let outcome = tokio::task::spawn_blocking(move || {
+                    let outcome = rooms_bg.apply_update_in(
+                        LiveUpdate {
+                            item: &item_bg,
+                            user_id: &user_id_bg,
+                            name: &name,
+                            role,
+                            bytes: &bytes,
+                            unit: &unit_bg,
+                            key: &key_bg,
+                            at: &at,
+                        },
+                        made_in,
+                    )?;
+                    if outcome == Outcome::Stored {
+                        rooms_bg.activity(&item_bg, &connection_bg, now_ms())?;
+                    }
+                    Ok::<_, anyhow::Error>(outcome)
+                })
+                .await??;
                 if let Some(reply) = update_reply(
                     outcome,
                     value.get("id").and_then(|v| v.as_str()).unwrap_or(""),

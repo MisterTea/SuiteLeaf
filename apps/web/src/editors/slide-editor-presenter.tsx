@@ -1,5 +1,5 @@
 import { marpAudienceDocument, marpFragmentStep, showBuildIds } from "./slide-marp-fragments";
-import { ChevronLeft, ChevronRight, Monitor, Pause, Play, StickyNote, Video, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Monitor, Pause, Play, StickyNote, Video, X } from "lucide-react";
 import { useSlideMobileSwipe } from "./slide-mobile-swipe";
 import { useState } from "react";
 import { filename, type SlideFile } from "@suiteleaf/core";
@@ -200,6 +200,8 @@ export function SlideShowOverlay({
       >
         <button
           type="button"
+          className="presenter-nav-btn"
+          aria-label="Previous"
           onClick={() => moveShowRef.current("prev")}
           disabled={cannotRetreat}
           title={
@@ -208,13 +210,23 @@ export function SlideShowOverlay({
               : "Previous slide (Left arrow)"
           }
         >
-          <ChevronLeft size={16} />
-          <span>Previous</span>
-          <kbd className="presenter-key-badge" aria-hidden="true">←</kbd>
+          <ArrowLeft size={16} aria-hidden="true" />
         </button>
         <span className="presenter-counter">
           Slide {presentSlideIndex + 1} of {deck.slideOrder.length}
         </span>
+        <button
+          type="button"
+          className="presenter-nav-btn"
+          aria-label="Next"
+          onClick={() => moveShowRef.current("next")}
+          disabled={cannotAdvance}
+          title={
+            fadeWaiting ? "Fade in (Right arrow)" : "Next slide (Right arrow)"
+          }
+        >
+          <ArrowRight size={16} aria-hidden="true" />
+        </button>
         <button
           type="button"
           className="presenter-audience-btn"
@@ -249,18 +261,6 @@ export function SlideShowOverlay({
         >
           <Monitor size={14} aria-hidden="true" />
           <span>Audience screen</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => moveShowRef.current("next")}
-          disabled={cannotAdvance}
-          title={
-            fadeWaiting ? "Fade in (Right arrow)" : "Next slide (Right arrow)"
-          }
-        >
-          <span>Next</span>
-          <ChevronRight size={16} />
-          <kbd className="presenter-key-badge" aria-hidden="true">→</kbd>
         </button>
         <button
           type="button"

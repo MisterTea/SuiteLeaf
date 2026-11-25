@@ -38,8 +38,17 @@ impl Drop for BlockingPool {
     }
 }
 
-fn error(_: impl std::fmt::Display) -> Error {
-    // Driver errors can include connection strings or document data.
+fn error(err: impl std::fmt::Display) -> Error {
+    // Driver errors can include connection strings or document data; log only
+    // a sanitized first-line summary and return a generic error to callers.
+    let raw = err.to_string();
+    let first = raw.lines().next().unwrap_or("unknown");
+    if first.contains("postgres://") || first.contains("postgresql://") {
+        tracing::warn!("postgres operation failed (connection URI redacted)");
+    } else {
+        let summary: String = first.chars().take(160).collect();
+        tracing::warn!(error = %summary, "postgres operation failed");
+    }
     Error::Postgres(
         "Database operation failed; inspect database health and schema compatibility.".into(),
     )

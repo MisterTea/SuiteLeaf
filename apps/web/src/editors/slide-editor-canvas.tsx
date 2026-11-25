@@ -317,7 +317,7 @@ export function editorCanvasHooks(
         };
       if (el.type === "audio" || el.type === "video")
         props.onMouseDown = (e) => {
-          if ((e.target as HTMLElement).closest?.(".slide-media-play")) return;
+          if ((e.target as HTMLElement).closest?.(".slide-media-play, .slide-video-controls, .slide-video-tap")) return;
           e.preventDefault();
           onElementMouseDown(e, el.id);
         };

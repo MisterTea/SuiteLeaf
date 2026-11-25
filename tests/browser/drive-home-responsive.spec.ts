@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 for (const width of [320, 390, 700, 1024]) {
-  test(`SuiteDrive header scrolls and controls fit at ${width}px`, async ({ page }) => {
+  test(`SuiteDrive top menubar, header actions, sort, and controls fit at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 700 });
     await page.addInitScript(() => {
       localStorage.setItem("suiteleaf:node-session", JSON.stringify({
@@ -17,29 +17,65 @@ for (const width of [320, 390, 700, 1024]) {
         : path === "/api/auth/get-session"
           ? { session: {}, user: { id: "u1", name: "Ann", role: "admin" } }
           : {
-              items: path === "/api/drive/items" ? [{
-                id: "presentation",
-                kind: "file",
-                name: "Presentation.slslides",
-                role: "owner",
-                available: true,
-                updatedAt: "2026-10-02T10:00:00.000Z",
-              }] : [],
+              items: path === "/api/drive/items" ? [
+                {
+                  id: "presentation",
+                  kind: "file",
+                  name: "Presentation.slslides",
+                  size: 4096,
+                  role: "owner",
+                  available: true,
+                  updatedAt: "2026-10-02T10:00:00.000Z",
+                },
+                {
+                  id: "notes",
+                  kind: "file",
+                  name: "Notes.sldoc",
+                  size: 256,
+                  role: "owner",
+                  available: true,
+                  updatedAt: "2026-10-05T10:00:00.000Z",
+                },
+              ] : [],
               folders: [],
               notices: [],
             };
       return route.fulfill({ json: body });
     });
     await page.goto("/");
-    const note = page.locator(".cluster-note");
-    await expect(note).toContainText("Files are saved to SuiteDrive");
+
+    // Workspace heading removed; New button is the topmost item in main
+    await expect(page.locator(".cluster-note")).toHaveCount(0);
+    await expect(page.locator(".sidebar")).toHaveCount(0);
+    const menubar = page.locator("header.cluster-menubar");
+    await expect(menubar).toBeVisible();
+    const newBtn = page.getByRole("button", { name: "New", exact: true });
+    await expect(newBtn).toBeVisible();
+    const menubarBox = (await menubar.boundingBox())!;
+    const newBox = (await newBtn.boundingBox())!;
+    expect(newBox.y).toBeGreaterThanOrEqual(menubarBox.y + menubarBox.height - 1);
+
+    // AI and bug buttons are to the right of the Import button
+    const importBtn = page.getByRole("button", { name: "Import" });
+    const aiBtn = page.locator(".file-section > header .ai-button");
+    const bugBtn = page.locator(".file-section > header .debug-button");
+    await expect(importBtn).toBeVisible();
+    await expect(aiBtn).toBeVisible();
+    await expect(bugBtn).toBeVisible();
+    const importBox = (await importBtn.boundingBox())!;
+    const aiBox = (await aiBtn.boundingBox())!;
+    const bugBox = (await bugBtn.boundingBox())!;
+    expect(aiBox.x).toBeGreaterThanOrEqual(importBox.x + importBox.width - 1);
+    expect(bugBox.x).toBeGreaterThanOrEqual(aiBox.x + aiBox.width - 1);
+
+    // Top menubar controls stay in viewport and fit without horizontal overflow
     const signOut = page.getByRole("button", { name: "Sign out", exact: true });
     await expect(signOut).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     if (width <= 700) {
       const target = (await signOut.boundingBox())!;
       expect(target.width).toBeGreaterThanOrEqual(44);
       expect(target.height).toBeGreaterThanOrEqual(44);
-      // Browser chrome and orientation changes resize the visible viewport.
       for (const viewport of [
         { width, height: 520 },
         { width: 844, height: 390 },
@@ -48,17 +84,34 @@ for (const width of [320, 390, 700, 1024]) {
         await page.setViewportSize(viewport);
         await expect(signOut).toBeInViewport({ ratio: 1 });
       }
-      expect(await page.locator(".sidebar").evaluate((sidebar) =>
-        getComputedStyle(sidebar).height === `${window.innerHeight}px`,
-      )).toBe(true);
     }
-    await expect(note).toBeInViewport();
-    const initialTop = (await note.boundingBox())!.y;
-    await page.evaluate(() => window.scrollTo(0, 250));
+
+    // Sticky top menubar remains visible while scrolling
+    await page.evaluate(() => {
+      document.body.style.paddingBottom = "100vh";
+      window.scrollTo(0, 250);
+    });
     const scrolled = await page.evaluate(() => window.scrollY);
     expect(scrolled).toBeGreaterThan(100);
     await expect(signOut).toBeInViewport({ ratio: 1 });
-    expect((await note.boundingBox())!.y).toBeCloseTo(initialTop - scrolled, 0);
+    await page.evaluate(() => {
+      document.body.style.paddingBottom = "";
+      window.scrollTo(0, 0);
+    });
+
+    // Sort icon button sits just above the first item and sorts the list
+    const sortBtn = page.getByRole("button", { name: "Sort" });
+    const firstItem = page.locator(".drive-list .drive-row").first();
+    await expect(sortBtn).toBeVisible();
+    await expect(firstItem).toBeVisible();
+    const sortBox = (await sortBtn.boundingBox())!;
+    const firstBox = (await firstItem.boundingBox())!;
+    expect(sortBox.y + sortBox.height).toBeLessThanOrEqual(firstBox.y + 1);
+    expect(firstBox.y - (sortBox.y + sortBox.height)).toBeLessThan(24);
+
+    await sortBtn.click();
+    await page.getByRole("menuitemradio", { name: "File size" }).click();
+    await expect(page.locator(".drive-list .drive-item-name").first()).toHaveText("Presentation.slslides");
 
     const toolbar = page.locator(".drive-toolbar");
     await toolbar.scrollIntoViewIfNeeded();

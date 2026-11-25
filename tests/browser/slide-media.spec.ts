@@ -105,7 +105,8 @@ test("audio and video stay on the slide and the audio plays", async ({ page }) =
   });
   const video = onSlide("video");
   await expect(video).toBeVisible();
-  await expect(video).toContainText("clip.webm");
+  await expect(video.locator(".slide-media-name")).toHaveCount(0);
+  await expect(video.locator("video")).toHaveAttribute("aria-label", "clip.webm");
   await expect(video.getByRole("button", { name: "Play video" })).toBeVisible();
   await expect(video.locator("video")).toHaveCount(1);
   await expect(video.locator("video")).toHaveAttribute("src", /^blob:/);
@@ -118,7 +119,9 @@ test("audio and video stay on the slide and the audio plays", async ({ page }) =
   await expect(showAudio.getByRole("button", { name: "Play audio" })).toBeVisible();
   await showAudio.getByRole("button", { name: "Play audio" }).click();
   await expectPlaying(showAudio.locator("audio"));
-  await expect(show.locator('[data-media="video"]')).toContainText("clip.webm");
+  const showVideo = show.locator('[data-media="video"]');
+  await expect(showVideo.locator(".slide-media-name")).toHaveCount(0);
+  await expect(showVideo.locator("video")).toHaveAttribute("aria-label", "clip.webm");
   await expect(show.getByRole("button", { name: "Play video" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(show).toHaveCount(0);
@@ -127,7 +130,8 @@ test("audio and video stay on the slide and the audio plays", async ({ page }) =
   await page.getByRole("link", { name: title }).click();
   await expect(page.locator(".slides-editor")).toBeVisible();
   await expect(audio).toContainText("quiet.wav");
-  await expect(video).toContainText("clip.webm");
+  await expect(video.locator(".slide-media-name")).toHaveCount(0);
+  await expect(video.locator("video")).toHaveAttribute("aria-label", "clip.webm");
   await expect(audio).toHaveAttribute("data-x", movedX!);
   await expect(audio).toHaveAttribute("data-y", movedY!);
   await expect(audio.locator("audio")).toHaveAttribute("src", /^blob:/);

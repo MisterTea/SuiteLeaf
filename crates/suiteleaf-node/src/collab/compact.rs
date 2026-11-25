@@ -43,6 +43,61 @@ fn keep_embedded_images(node: &mut Value) {
     }
 }
 
+/// Compact a doc room onto either a v2 sectioned `.sldoc` manifest (rewriting
+/// only the main tab blob, leaving embedded media and other tabs untouched)
+/// or a legacy v1 JSON document.
+pub(super) fn compact_bytes_with_drive(
+    drive: &suitedrive::Drive,
+    bytes: &[u8],
+    paragraphs: &[String],
+    rich: Option<&Value>,
+    touches: &[Touch],
+    at: &str,
+) -> anyhow::Result<Vec<u8>> {
+    if let Some(mut manifest) = suitedrive::SectionManifest::try_parse(bytes)
+        && manifest.kind == "doc"
+    {
+        let main_id = manifest
+            .tab_order
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "main".into());
+        let prev_summary = manifest.tabs.get(&main_id).cloned();
+        let before: Value = prev_summary
+            .as_ref()
+            .and_then(|s| s.hash.parse::<suitedrive::Hash>().ok())
+            .and_then(|h| drive.blobs().get(&h).ok().flatten())
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_else(|| json!({ "type": "doc", "content": [] }));
+        let mut content = before.clone();
+        if let Some(rich) = rich {
+            content = rich.clone();
+            keep_embedded_images(&mut content);
+        } else {
+            apply_paragraphs(&mut content, paragraphs);
+        }
+        if content == before {
+            return Ok(bytes.to_vec());
+        }
+        let next_tab_bytes = serde_json::to_vec(&content).context("doc tab json")?;
+        let next_hash = drive.blobs().put(&next_tab_bytes)?;
+        let title = prev_summary
+            .map(|s| s.title)
+            .unwrap_or_else(|| "Document".into());
+        manifest.tabs.insert(
+            main_id,
+            suitedrive::sections::DocTabSummary {
+                hash: next_hash.to_string(),
+                size: next_tab_bytes.len() as u64,
+                title,
+            },
+        );
+        manifest.updated_at = at.to_owned();
+        return serde_json::to_vec(&manifest).context("doc manifest json");
+    }
+    compact_bytes(bytes, paragraphs, rich, touches, at)
+}
+
 pub(super) fn compact_bytes(
     bytes: &[u8],
     paragraphs: &[String],

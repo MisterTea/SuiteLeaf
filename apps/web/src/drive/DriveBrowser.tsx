@@ -26,7 +26,7 @@ import {
   type DriveItem,
   type DriveSearchHit,
 } from "../node-client";
-import { DriveDialog } from "./drive-dialog";
+import { DriveDialog, OpeningDialog } from "./drive-dialog";
 import { NameDialog } from "./name-dialog";
 export { NameDialog } from "./name-dialog";
 import { MoveBanner, type MoveNotice } from "./file-folder";
@@ -51,6 +51,13 @@ import { place } from "./drive-place";
 import { DriveMenuPopup } from "./DriveMenuPopup";
 import { ShareDialog } from "./ShareDialog";
 import { listedFileMenu, useDriveFileActions } from "./drive-file-actions";
+import {
+  DEFAULT_DRIVE_SORT,
+  formatDriveSize,
+  sortDriveItems,
+  type DriveSort,
+} from "./drive-sort";
+import { DriveSortMenu } from "./DriveSortMenu";
 export { rememberDriveFolder } from "./drive-place";
 export { DriveDialog } from "./drive-dialog";
 
@@ -108,7 +115,7 @@ export function DriveBrowser({
   inline?: boolean;
   /** Open this folder instead of the top of My Drive. Used by the editor's Open and Save as. */
   startIn?: { id: string; name: string } | null;
-  onOpen?: (item: DriveItem) => void | Promise<void>;
+  onOpen?: (item: DriveItem, signal?: AbortSignal) => void | Promise<void>;
   /** Open a file in a new window or tab. */
   onOpenInNewTab?: (item: DriveItem) => void;
   onSave?: (folderId: string | null, name: string) => void | Promise<void>;
@@ -145,6 +152,8 @@ export function DriveBrowser({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
+  const openAbort = useRef<AbortController | null>(null);
+  const openToken = useRef(0);
   const [error, setError] = useState("");
   const [name, setName] = useState(defaultName);
   const [kept, setKept] = useState("");
@@ -169,6 +178,7 @@ export function DriveBrowser({
   const flash = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [justEdited, setJustEdited] = useState<ReadonlySet<string>>(new Set());
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<DriveSort>(DEFAULT_DRIVE_SORT);
   const [outcome, setOutcome] = useState<
     | { query: string; hits: DriveSearchHit[] }
     | { query: string; failed: true }
@@ -313,7 +323,13 @@ export function DriveBrowser({
     clearTimeout(flash.current);
     flash.current = setTimeout(() => setJustEdited(new Set()), 2400);
   }, [items]);
-  useEffect(() => () => clearTimeout(flash.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(flash.current);
+      openAbort.current?.abort();
+    },
+    [],
+  );
   // Another person can save, or share, while this list is already open.
   useEffect(() => {
     return visiblePoll(refresh, 10_000, { immediate: false, events: [DRIVE_SAVED] });
@@ -369,24 +385,42 @@ export function DriveBrowser({
     });
   };
 
-  const open = (name: string, work: () => Promise<void>) => {
-    if (busy) return;
-    setOpening(name);
-    setError("");
-    return act(async () => {
-      try {
-        await work();
-      } finally {
-        setOpening(null);
-      }
-    });
+  const cancelOpen = () => {
+    openToken.current++;
+    openAbort.current?.abort();
+    openAbort.current = null;
+    setOpening(null);
+    setBusy(false);
   };
 
-  const select = async (item: DriveItem) => {
+  const open = (name: string, work: (signal: AbortSignal) => Promise<void>) => {
+    if (busy) return;
+    const controller = new AbortController();
+    const token = ++openToken.current;
+    openAbort.current = controller;
+    setOpening(name);
+    setError("");
+    setBusy(true);
+    return work(controller.signal)
+      .catch((e) => {
+        if (controller.signal.aborted || openToken.current !== token) return;
+        setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (openToken.current === token) {
+          openAbort.current = null;
+          setOpening(null);
+          setBusy(false);
+        }
+      });
+  };
+
+  const select = async (item: DriveItem, signal?: AbortSignal) => {
+    if (signal?.aborted) return;
     if (item.kind === "folder")
       setPath((p) => [...p, { id: item.id, name: item.name }]);
     else if (mode === "open" && isNativeName(item.name))
-      await onOpen?.(item);
+      await onOpen?.(item, signal);
     else if (mode === "save") setName(item.name);
   };
   const openInNewTab = useCallback(
@@ -405,7 +439,7 @@ export function DriveBrowser({
   );
   const choose = (item: DriveItem) => {
     if (item.kind === "file" && mode === "open" && isNativeName(item.name)) {
-      void open(item.name, () => select(item));
+      void open(item.name, (signal) => select(item, signal));
     } else {
       void select(item);
     }
@@ -423,8 +457,11 @@ export function DriveBrowser({
   // The shared root is a list, not a folder; the node enforces folder roles.
   const canWrite = view === "mine" || folder.id !== null;
 
-  const visible = items.filter(
-    (i) => !routing.error && (i.kind === "folder" || mode === "save" || isNativeName(i.name)),
+  const visible = sortDriveItems(
+    items.filter(
+      (i) => !routing.error && (i.kind === "folder" || mode === "save" || isNativeName(i.name)),
+    ),
+    sort,
   );
   if (control)
     control.current = {
@@ -534,15 +571,12 @@ export function DriveBrowser({
         </p>
       ) : null}
       {opening !== null ? (
-        <div className="drive-opening">
-          <label>
-            Opening {opening}…
-            <progress />
-          </label>
-        </div>
+        <OpeningDialog name={opening} onCancel={cancelOpen} />
       ) : null}
       {inline && mode === "open" && onOpen ? (
-        <ShareNotices onOpen={(item) => open(item.name, async () => onOpen(item))} />
+        <ShareNotices
+          onOpen={(item) => open(item.name, async (signal) => onOpen(item, signal))}
+        />
       ) : null}
       {kept ? (
         <p className="drive-kept" role="status">
@@ -572,6 +606,13 @@ export function DriveBrowser({
           busy={busy}
           onUndo={undoMove}
           onDismiss={() => setMoveNotice(null)}
+        />
+      ) : null}
+      {!typed && !routing.error ? (
+        <DriveSortMenu
+          sort={sort}
+          onChange={setSort}
+          disabled={busy || loading || routing.pending}
         />
       ) : null}
       <div
@@ -610,10 +651,13 @@ export function DriveBrowser({
                       openInNewTab(hit);
                       return;
                     }
-                    const resolveHit = async () => select(await drive.get(hit.id));
+                    const resolveHit = async (signal?: AbortSignal) => {
+                      const loaded = await drive.get(hit.id, signal);
+                      await select(loaded, signal);
+                    };
                     void (mode === "open" && isNativeName(hit.name)
                       ? open(hit.name, resolveHit)
-                      : act(resolveHit));
+                      : act(() => resolveHit()));
                   }}
                   onAuxClick={(e) => {
                     if (mode === "open" && e.button === 1) {
@@ -636,7 +680,10 @@ export function DriveBrowser({
                     busy={busy}
                     popupRef={menuPopup}
                     onOpen={() => {
-                      void open(hit.name, async () => select(await drive.get(hit.id)));
+                      void open(hit.name, async (signal) => {
+                        const loaded = await drive.get(hit.id, signal);
+                        await select(loaded, signal);
+                      });
                     }}
                     onOpenInNewTab={() => openInNewTab(hit)}
                     onDownload={() => downloadDriveFile(hit)}
@@ -729,6 +776,11 @@ export function DriveBrowser({
                       <CloudOff size={14} aria-label="Replicating" />
                       Copying…
                     </small>
+                  ) : null}
+                  {sort.by === "size" && item.kind === "file" ? (
+                    <span className="drive-item-size">
+                      {formatDriveSize(item.size)}
+                    </span>
                   ) : null}
                   {edit ? (
                     <time dateTime={edit.at} title={edited} aria-live="polite">

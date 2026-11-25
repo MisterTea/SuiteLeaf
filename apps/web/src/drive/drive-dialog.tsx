@@ -71,3 +71,49 @@ export function DriveDialog({
     document.body,
   );
 }
+
+/** Modal popover shown while a SuiteDrive file is being downloaded and opened. */
+export function OpeningDialog({
+  name,
+  onCancel,
+}: {
+  name: string;
+  onCancel: () => void;
+}) {
+  return createPortal(
+    <div
+      className="modal-overlay"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Escape") onCancel();
+      }}
+    >
+      <div
+        className="gdocs-dialog node-dialog drive-opening-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Opening ${name}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="dialog-body drive-opening">
+          <label>
+            Opening {name}…
+            <progress />
+          </label>
+        </div>
+        <div className="dialog-footer">
+          <button
+            type="button"
+            className="dialog-text-btn"
+            onClick={onCancel}
+            autoFocus
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}

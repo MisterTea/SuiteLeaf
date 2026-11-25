@@ -332,6 +332,7 @@ export function useDocumentRoom({
         }
         if (message.type === "renewed") return;
         if ((message.type === "ack" || message.type === "reject") && message.id) {
+          attempt = 0;
           queue.settle(message.id);
           remember();
           report();
@@ -346,7 +347,7 @@ export function useDocumentRoom({
         }
         if (message.type !== "joined") return;
         authed = true;
-        attempt = 0;
+        if (queue.length === 0) attempt = 0;
         link = "open";
         if (message.notifications && !hasRoomChannel(itemId)) {
           roomChannel = openRoomChannel(itemId, (message) => next.send(message));

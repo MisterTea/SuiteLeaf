@@ -384,6 +384,71 @@
   font-weight: 600;
   cursor: default;
 }
+.drive-list-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: -8px;
+}
+.drive-sort {
+  position: relative;
+}
+.drive-sort-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.drive-sort-trigger:hover:not(:disabled),
+.drive-sort-trigger[aria-expanded="true"] {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.drive-sort-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 164px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.drive-sort-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.drive-sort-divider {
+  width: 100%;
+  height: 1px;
+  margin: 4px 0;
+  border: 0;
+  background: var(--border-subtle);
+}
+.drive-item-size {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding: 0 4px;
+}
 .drive-list {
   display: flex;
   flex-direction: column;
@@ -394,8 +459,19 @@
 .drive-browser.inline .drive-list {
   max-height: none;
 }
+.drive-opening-dialog {
+  width: min(360px, calc(100vw - 32px));
+}
 .drive-opening {
   padding-block: 8px;
+}
+.drive-opening label {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .drive-opening progress {

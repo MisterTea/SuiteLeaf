@@ -21,12 +21,14 @@ let rustCore: SupermailCore | null = null;
 export function loadSupermailCoreAddon(): SupermailCore | null {
   if (rustCore) return rustCore;
 
+  const appPath = typeof app?.getAppPath === "function" ? app.getAppPath() : process.cwd();
+  const resourcesPath = typeof process.resourcesPath === "string" ? process.resourcesPath : process.cwd();
   const searchDirs = [
-    resolve(app.getAppPath(), "packages/supermail/crates/supermail-core"),
+    resolve(appPath, "packages/supermail/crates/supermail-core"),
     resolve(__dirname, "../../packages/supermail/crates/supermail-core"),
     resolve(process.cwd(), "packages/supermail/crates/supermail-core"),
-    resolve(process.resourcesPath, "supermail-core"),
-    resolve(process.resourcesPath, "packages/supermail/crates/supermail-core"),
+    resolve(resourcesPath, "supermail-core"),
+    resolve(resourcesPath, "packages/supermail/crates/supermail-core"),
   ];
 
   const req = createRequire(import.meta.url);

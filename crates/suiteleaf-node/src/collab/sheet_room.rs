@@ -63,6 +63,123 @@ fn sheet_key(key: &str) -> Option<(String, String, String)> {
     Some((sheet.to_owned(), row.to_owned(), column.to_owned()))
 }
 
+/// Write shared sheet edits into either a v2 sectioned `.slsheet` manifest
+/// (updating only modified worksheet blobs in `drive.blobs()`) or a v1 file.
+pub(super) fn apply_sheet_room_with_drive(
+    drive: &suitedrive::Drive,
+    bytes: &[u8],
+    room: &SheetRoom,
+    at: &str,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    if let Some(mut manifest) = suitedrive::SectionManifest::try_parse(bytes) {
+        if manifest.kind != "sheet" {
+            return Ok(None);
+        }
+        if room.cells.is_empty()
+            && room.names.is_empty()
+            && room.ranges.is_empty()
+            && room.rules.is_empty()
+            && room.charts.is_empty()
+            && room.removed_charts.is_empty()
+            && room.comments.is_empty()
+            && room.merges.is_empty()
+            && room.sizes.is_empty()
+        {
+            return Ok(None);
+        }
+        // Group cell edits by worksheet ID so untouched worksheets are never read or rewritten
+        let mut touched_sheets = std::collections::BTreeSet::new();
+        for (key, _) in &room.cells {
+            if let Some((sheet_id, _, _)) = sheet_key(key) {
+                touched_sheets.insert(sheet_id);
+            }
+        }
+        for (sheet_id, _) in &room.names {
+            touched_sheets.insert(sheet_id.clone());
+        }
+        let mut changed = false;
+        for sheet_id in touched_sheets {
+            let mut ws: Value = manifest
+                .sheets
+                .get(&sheet_id)
+                .and_then(|s| s.hash.parse::<suitedrive::Hash>().ok())
+                .and_then(|h| drive.blobs().get(&h).ok().flatten())
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_else(|| {
+                    json!({
+                        "id": sheet_id,
+                        "name": "Sheet",
+                        "rowCount": 200,
+                        "columnCount": 26,
+                        "cellData": {}
+                    })
+                });
+            let before = ws.clone();
+            if let Some(name) = room
+                .names
+                .iter()
+                .find(|(id, _)| id == &sheet_id)
+                .map(|(_, n)| n)
+                && let Some(obj) = ws.as_object_mut()
+            {
+                obj.insert("name".into(), Value::String(name.clone()));
+            }
+            if !ws.get("cellData").is_some_and(|v| v.is_object()) {
+                ws["cellData"] = json!({});
+            }
+            if let Some(grid) = ws.get_mut("cellData").and_then(|v| v.as_object_mut()) {
+                for (key, cell_json) in &room.cells {
+                    let Some((sid, row, col)) = sheet_key(key) else {
+                        continue;
+                    };
+                    if sid != sheet_id {
+                        continue;
+                    }
+                    let Ok(cell) = serde_json::from_str::<Value>(cell_json) else {
+                        continue;
+                    };
+                    let line = grid.entry(row).or_insert_with(|| json!({}));
+                    if !line.is_object() {
+                        *line = json!({});
+                    }
+                    line.as_object_mut().expect("row").insert(col, cell);
+                }
+            }
+            if ws != before {
+                let ws_bytes = serde_json::to_vec(&ws).context("worksheet json")?;
+                let hash = drive.blobs().put(&ws_bytes)?;
+                let prev = manifest.sheets.get(&sheet_id);
+                let name = ws.get("name").and_then(|v| v.as_str()).map(str::to_owned);
+                let row_count = ws.get("rowCount").and_then(|v| v.as_u64());
+                let column_count = ws.get("columnCount").and_then(|v| v.as_u64());
+                manifest.sheets.insert(
+                    sheet_id.clone(),
+                    suitedrive::sections::SheetSummary {
+                        hash: hash.to_string(),
+                        size: ws_bytes.len() as u64,
+                        name,
+                        row_count,
+                        column_count,
+                        deps: prev.and_then(|p| p.deps.clone()),
+                    },
+                );
+                if !manifest.sheet_order.iter().any(|id| id == &sheet_id) {
+                    manifest.sheet_order.push(sheet_id);
+                }
+                changed = true;
+            }
+        }
+        if !changed {
+            return Ok(Some(bytes.to_vec()));
+        }
+        manifest.updated_at = at.to_owned();
+        return Ok(Some(
+            serde_json::to_vec(&manifest).context("sheet manifest json")?,
+        ));
+    }
+    apply_sheet_room(bytes, room)
+}
+
 /// Write the shared sheet maps into a spreadsheet file. A document is left alone.
 pub(super) fn apply_sheet_room(bytes: &[u8], room: &SheetRoom) -> anyhow::Result<Option<Vec<u8>>> {
     if room.cells.is_empty()

@@ -245,7 +245,7 @@ export const fileSchema = z.discriminatedUnion("kind", [
             sheetId: z.string(),
             src: z
               .string()
-              .regex(/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/i),
+              .regex(/^(data:image\/(png|jpeg|gif|webp|svg\+xml);base64,|slmedia:\/\/[a-f0-9]{64}$)/i),
             row: z.number().int().nonnegative(),
             column: z.number().int().nonnegative(),
             to: z

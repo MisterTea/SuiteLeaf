@@ -127,4 +127,61 @@ describe("slide undo", () => {
     seedSlideRoom(doc, deck);
     expect(doc.getMap("slideElements").has("only\u001fshape")).toBe(false);
   });
+
+  it("skips unchanged elements on edit and chunks large slide deck seeding", () => {
+    const bigImage = `data:image/png;base64,${"A".repeat(150_000)}`;
+    const deck = {
+      slideOrder: ["s1", "s2", "s3"],
+      slides: {
+        s1: {
+          id: "s1",
+          elements: [
+            { id: "title", type: "text", content: "Slide 1" },
+            { id: "img1", type: "image", src: bigImage },
+          ],
+        },
+        s2: {
+          id: "s2",
+          elements: [{ id: "img2", type: "image", src: bigImage }],
+        },
+        s3: {
+          id: "s3",
+          elements: [{ id: "img3", type: "image", src: bigImage }],
+        },
+      },
+    };
+    const doc = new Y.Doc();
+    const seedUpdates: Uint8Array[] = [];
+    doc.on("update", (u: Uint8Array) => seedUpdates.push(u));
+    seedSlideRoom(doc, deck);
+    expect(seedUpdates.length).toBeGreaterThan(1);
+    expect(doc.getMap("slides").size).toBe(3);
+    expect(doc.getMap("slideElements").size).toBe(4);
+    expect(JSON.parse(doc.getMap<string>("slideOrder").get("order")!)).toEqual(["s1", "s2", "s3"]);
+
+    // Editing only the text box on s1 must not re-send the 150 KB image on s1.
+    const editUpdates: Uint8Array[] = [];
+    const onEdit = (u: Uint8Array) => editUpdates.push(u);
+    doc.on("update", onEdit);
+    mirrorSlides(
+      doc,
+      {
+        ...deck,
+        slides: {
+          ...deck.slides,
+          s1: {
+            id: "s1",
+            elements: [
+              { id: "title", type: "text", content: "Slide 1 updated" },
+              { id: "img1", type: "image", src: bigImage },
+            ],
+          },
+        },
+      },
+      { edited: ["s1"] },
+    );
+    doc.off("update", onEdit);
+    expect(editUpdates).toHaveLength(1);
+    expect(editUpdates[0]!.length).toBeLessThan(1_000);
+  });
 });

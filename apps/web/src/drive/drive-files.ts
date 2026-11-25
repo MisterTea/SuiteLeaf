@@ -61,13 +61,20 @@ export async function disconnectFromServer(serverUrl: string) {
 /** Cache a SuiteDrive file locally and open it in the editor. A local file
  * that merely shares the ID gets a fresh one instead of being replaced, and
  * a cached copy with unuploaded edits is kept so the editor can resolve them. */
-export async function openFromDrive(item: DriveItem, navigate: NavigateFunction) {
+export async function openFromDrive(
+  item: DriveItem,
+  navigate: NavigateFunction,
+  signal?: AbortSignal,
+) {
   // An upload finishing after the read below would be replaced by the older version.
   await Promise.all(
     [...driveQueues.values()].map((q) => q.flush().catch(() => {})),
   );
-  const record = await openDriveFile(item);
+  if (signal?.aborted) return;
+  const record = await openDriveFile(item, signal);
+  if (signal?.aborted) return;
   const existing = await storage.get(record.file.id);
+  if (signal?.aborted) return;
   if (existing?.drive?.itemId === item.id) {
     if (
       existing.drive.versionId === record.drive?.versionId ||
@@ -79,6 +86,7 @@ export async function openFromDrive(item: DriveItem, navigate: NavigateFunction)
   } else if (existing)
     record.file = duplicateFile(record.file, record.file.title);
   const saved = await storage.save(record);
+  if (signal?.aborted) return;
   navigate(`/file/${saved.file.id}`);
 }
 /** Use the file's native extension unless the user typed it. */

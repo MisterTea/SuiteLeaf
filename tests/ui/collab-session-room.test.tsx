@@ -508,6 +508,44 @@ describe("document room", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(FakeSocket.instances).toHaveLength(0);
   });
+
+  it("keeps reconnect backoff when unacked edits fail to settle across reconnects", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<Probe />);
+      await vi.advanceTimersByTimeAsync(0);
+      socket().receive({ type: "joined", mode: "multiuser" });
+      const doc = spies.onDoc.mock.calls.at(-1)![0] as Y.Doc;
+      act(() => doc.getText("t").insert(0, "stuck"));
+      expect(lastRecovery()).toBe("1 edit is waiting to be stored.");
+
+      // First drop: reconnects after 200ms (attempt 0 -> 1).
+      act(() => socket().close());
+      await vi.advanceTimersByTimeAsync(199);
+      expect(FakeSocket.instances).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(FakeSocket.instances).toHaveLength(2);
+      socket().receive({ type: "joined", mode: "multiuser" });
+
+      // Second drop without an ack: attempt was NOT reset, so backoff is 400ms.
+      act(() => socket().close());
+      await vi.advanceTimersByTimeAsync(399);
+      expect(FakeSocket.instances).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(FakeSocket.instances).toHaveLength(3);
+      socket().receive({ type: "joined", mode: "multiuser" });
+
+      // Once an ack arrives, attempt resets so a later drop uses 200ms again.
+      const sent = socket().sent.find((m) => m.type === "update")!;
+      socket().receive({ type: "ack", id: sent.id as string });
+      expect(lastRecovery()).toBeNull();
+      act(() => socket().close());
+      await vi.advanceTimersByTimeAsync(200);
+      expect(FakeSocket.instances).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("live sheet and slide edits", () => {

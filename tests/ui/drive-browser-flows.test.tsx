@@ -206,7 +206,7 @@ describe("NameDialog", () => {
 });
 
 describe("DriveBrowser", () => {
-  it.each([false, true])("shows opening progress until the request settles (failure: %s)", async (fails) => {
+  it.each([false, true])("shows opening progress in a modal popover until the request settles (failure: %s)", async (fails) => {
     let finish!: () => void;
     const onOpen = vi.fn(() => new Promise<void>((resolve, reject) => {
       finish = () => {
@@ -216,15 +216,60 @@ describe("DriveBrowser", () => {
     }));
     render(<DriveBrowser mode="open" inline onOpen={onOpen} />);
     const file = await screen.findByRole("button", { name: "Plan.sldoc" });
+    expect(screen.queryByRole("dialog", { name: "Opening Plan.sldoc" })).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
     fireEvent.click(file);
-    const progress = screen.getByRole("progressbar", { name: "Opening Plan.sldoc…" });
+    const dialog = screen.getByRole("dialog", { name: "Opening Plan.sldoc" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    const progress = within(dialog).getByRole("progressbar", { name: "Opening Plan.sldoc…" });
     expect(progress.hasAttribute("value")).toBe(false);
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeTruthy();
     expect((file as HTMLButtonElement).disabled).toBe(true);
     await act(async () => finish());
+    expect(screen.queryByRole("dialog", { name: "Opening Plan.sldoc" })).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect((file as HTMLButtonElement).disabled).toBe(false);
     if (fails) expect(screen.getByRole("alert").textContent).toBe("Download failed");
+  });
+
+  it("cancels an in-flight file open when the user clicks Cancel or presses Escape", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    let finish!: () => void;
+    const navigated = vi.fn();
+    const onOpen = vi.fn((_item: DriveItem, signal?: AbortSignal) => {
+      capturedSignal = signal;
+      return new Promise<void>((resolve) => {
+        finish = () => {
+          if (!signal?.aborted) navigated();
+          resolve();
+        };
+      });
+    });
+    render(<DriveBrowser mode="open" inline onOpen={onOpen} />);
+    const file = await screen.findByRole("button", { name: "Plan.sldoc" });
+    fireEvent.click(file);
+    const dialog = screen.getByRole("dialog", { name: "Opening Plan.sldoc" });
+    expect(capturedSignal?.aborted).toBe(false);
+
+    // Click Cancel before the download completes
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(screen.queryByRole("dialog", { name: "Opening Plan.sldoc" })).toBeNull();
+    expect((file as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    // Settling the aborted promise later does not navigate or show an error
+    await act(async () => finish());
+    expect(navigated).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(rows()).toContain("Plan.sldoc");
+
+    // Pressing Escape also cancels
+    fireEvent.click(file);
+    const dialog2 = screen.getByRole("dialog", { name: "Opening Plan.sldoc" });
+    fireEvent.keyDown(dialog2, { key: "Escape" });
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(screen.queryByRole("dialog", { name: "Opening Plan.sldoc" })).toBeNull();
   });
 
   it("opens SuiteLeaf files, walks folders, and closes", async () => {
@@ -232,13 +277,13 @@ describe("DriveBrowser", () => {
     const onClose = vi.fn();
     render(<DriveBrowser mode="open" onOpen={onOpen} onClose={onClose} />);
     expect(screen.getByRole("dialog", { name: "Open from SuiteDrive" })).toBeTruthy();
-    await waitFor(() => expect(rows()).toEqual(["Beds", "Plan.sldoc", "Budget.slsheet", "Pitch.slslides"]));
+    await waitFor(() => expect(rows()).toEqual(["Beds", "Budget.slsheet", "Pitch.slslides", "Plan.sldoc"]));
     expect(screen.getByText("Copying…")).toBeTruthy();
     expect(document.querySelector(".file-icon.sheet")).toBeTruthy();
     expect(document.querySelector(".file-icon.slide")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Move Pitch.slslides" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Plan.sldoc" }));
-    await waitFor(() => expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "doc" })));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "doc" }), expect.any(AbortSignal)));
     fireEvent.click(screen.getByRole("button", { name: "Beds" }));
     await waitFor(() => expect(rows()).toEqual(["Rows.sldoc"]));
     fireEvent.click(within(screen.getByRole("navigation", { name: "Folder path" })).getByRole("button", { name: "My Drive" }));
@@ -275,11 +320,11 @@ describe("DriveBrowser", () => {
     state.items.push(item("shared", "Ideas.sldoc", "elsewhere", { role: "commenter", ownerName: "Sam" }));
     render(<DriveBrowser mode="open" inline onOpen={vi.fn()} />);
     fireEvent.click(await screen.findByRole("tab", { name: "Shared with me" }));
-    await waitFor(() => expect(rows()).toEqual(["Budget.slsheet", "Pitch.slslides", "Ideas.sldoc"]));
+    await waitFor(() => expect(rows()).toEqual(["Budget.slsheet", "Ideas.sldoc", "Pitch.slslides"]));
     expect(screen.queryByRole("button", { name: "New folder" })).toBeNull();
     expect(screen.getByRole("button", { name: "Ideas.sldoc" }).textContent).toContain("Sam · Can comment");
     expect(screen.getByRole("button", { name: "Pitch.slslides" }).textContent).toContain("Someone · Can view");
-    fireEvent.click(screen.getAllByRole("button", { name: "Keep a copy" })[2]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Keep a copy" })[1]!);
     expect(await screen.findByText("Kept a copy of Ideas.sldoc in My Drive. This copy is yours.")).toBeTruthy();
     expect(drive.keepCopy).toHaveBeenCalledWith("shared");
     state.items = state.items.filter((i) => i.role === "owner");
@@ -307,7 +352,7 @@ describe("DriveBrowser", () => {
     state.items.find((i) => i.id === "doc")!.parentName = "Beds";
     fireEvent.click(screen.getByRole("button", { name: "Trash" }));
     expect(await screen.findByRole("heading", { name: "Trash" })).toBeTruthy();
-    await waitFor(() => expect(rows()).toEqual(["Plan.sldoc", "Budget.slsheet"]));
+    await waitFor(() => expect(rows()).toEqual(["Budget.slsheet", "Plan.sldoc"]));
     expect(screen.getByRole("button", { name: "Plan.sldoc" }).textContent).toContain("Beds");
     expect(screen.getByRole("button", { name: "Budget.slsheet" }).textContent).toContain("My Drive");
     fireEvent.click(screen.getByRole("button", { name: "Restore Budget.slsheet" }));
@@ -426,7 +471,7 @@ describe("DriveBrowser", () => {
     expect(hit.textContent).toContain("tomato rows");
     expect(drive.search).toHaveBeenCalledWith("tomato");
     fireEvent.click(hit);
-    await waitFor(() => expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "inner" })));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "inner" }), expect.any(AbortSignal)));
     drive.search.mockResolvedValueOnce([]);
     fireEvent.change(screen.getByLabelText("Search SuiteDrive"), { target: { value: "zzz" } });
     expect(await screen.findByText("No files match.")).toBeTruthy();
@@ -570,7 +615,7 @@ describe("DriveBrowser", () => {
 
       // Normal click opens in same tab
       fireEvent.click(docBtn);
-      expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "doc", name: "Plan.sldoc" }));
+      expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "doc", name: "Plan.sldoc" }), expect.any(AbortSignal));
       expect(openSpy).not.toHaveBeenCalled();
     } finally {
       openSpy.mockRestore();
@@ -665,7 +710,7 @@ describe("DriveBrowser", () => {
     await act(async () => {
       fireEvent.click(within(menu).getByRole("button", { name: "Open Plan.sldoc" }));
     });
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "doc" }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "doc" }), expect.any(AbortSignal));
     expect(screen.queryByRole("menu", { name: "Actions for Plan.sldoc" })).toBeNull();
 
     await act(async () => {
@@ -719,5 +764,55 @@ describe("DriveBrowser", () => {
       delete window.suiteleaf;
       openSpy.mockRestore();
     }
+  });
+
+  it("sorts the file list by name, date, and file size ascending and descending", async () => {
+    state.items = [
+      item("f-z", "Zeta", null, { kind: "folder", updatedAt: "2026-10-01T10:00:00.000Z" }),
+      item("f-a", "Alpha", null, { kind: "folder", updatedAt: "2026-10-05T10:00:00.000Z" }),
+      item("doc-c", "Charlies.sldoc", null, { size: 500, updatedAt: "2026-10-02T10:00:00.000Z" }),
+      item("doc-a", "Aardvark.sldoc", null, { size: 2048, updatedAt: "2026-10-04T10:00:00.000Z" }),
+      item("doc-b", "Bananas.sldoc", null, { size: 120, updatedAt: "2026-10-03T10:00:00.000Z" }),
+    ];
+    render(<DriveBrowser mode="open" inline onOpen={vi.fn()} />);
+    await waitFor(() =>
+      expect(rows()).toEqual(["Alpha", "Zeta", "Aardvark.sldoc", "Bananas.sldoc", "Charlies.sldoc"]),
+    );
+
+    const sortBtn = screen.getByRole("button", { name: "Sort" });
+    const list = screen.getByRole("list");
+    expect(sortBtn.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // Name descending
+    fireEvent.click(sortBtn);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Descending" }));
+    expect(rows()).toEqual(["Zeta", "Alpha", "Charlies.sldoc", "Bananas.sldoc", "Aardvark.sldoc"]);
+
+    // Date (defaults to descending / newest first)
+    fireEvent.click(sortBtn);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Date" }));
+    expect(rows()).toEqual(["Alpha", "Zeta", "Aardvark.sldoc", "Bananas.sldoc", "Charlies.sldoc"]);
+
+    // Date ascending (oldest first)
+    fireEvent.click(sortBtn);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Ascending" }));
+    expect(rows()).toEqual(["Zeta", "Alpha", "Charlies.sldoc", "Bananas.sldoc", "Aardvark.sldoc"]);
+
+    // File size (defaults to descending / largest first)
+    fireEvent.click(sortBtn);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "File size" }));
+    expect(rows()).toEqual(["Alpha", "Zeta", "Aardvark.sldoc", "Charlies.sldoc", "Bananas.sldoc"]);
+    expect(screen.getByText("2.0 KB")).toBeTruthy();
+
+    // File size ascending (smallest first)
+    fireEvent.click(sortBtn);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Ascending" }));
+    expect(rows()).toEqual(["Alpha", "Zeta", "Bananas.sldoc", "Charlies.sldoc", "Aardvark.sldoc"]);
+
+    // Escape closes the sort menu
+    fireEvent.click(sortBtn);
+    expect(screen.getByRole("menu", { name: "Sort files" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Sort files" })).toBeNull();
   });
 });

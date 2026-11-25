@@ -2,6 +2,7 @@ import { Library } from "./browser-library";
 export { Library } from "./browser-library";
 import {
   serializeFile,
+  serializeFileBytes,
   nativeFilename,
   mimeFor,
   type StorageAdapter,
@@ -35,6 +36,21 @@ const browserStorage: StorageAdapter = {
     return null;
   },
   async saveAs(record) {
+    if (
+      record.file.kind === "slide" ||
+      record.file.kind === "sheet" ||
+      record.file.kind === "doc"
+    ) {
+      const bytes = await serializeFileBytes(record.file);
+      const zipMime =
+        record.file.kind === "slide"
+          ? "application/vnd.suiteleaf.slides+zip"
+          : record.file.kind === "sheet"
+            ? "application/vnd.suiteleaf.sheet+zip"
+            : "application/vnd.suiteleaf.doc+zip";
+      await exportBinary(nativeFilename(record.file), bytes, zipMime);
+      return record;
+    }
     download(
       nativeFilename(record.file),
       serializeFile(record.file),

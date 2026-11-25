@@ -140,6 +140,17 @@ pub(super) async fn read_content(
         move |d| d.note_open(&actor, &item_id, &name)
     })
     .await;
+    // If the head version is a v2 sectioned `.slslides` manifest, assemble a
+    // portable ZIP archive on the fly so downloads and legacy clients work seamlessly.
+    let bytes = if let Some(manifest) = suitedrive::SlideSectionManifest::try_parse(&bytes) {
+        let raw_manifest = bytes;
+        blocking(&s.drive, move |d| {
+            d.assemble_sectioned_zip(&manifest, &raw_manifest)
+        })
+        .await?
+    } else {
+        bytes
+    };
     Ok(content_response(
         &item,
         q.version.is_none(),

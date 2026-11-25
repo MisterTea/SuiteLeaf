@@ -57,7 +57,7 @@ vi.mock("../../apps/web/src/drive/DriveBrowser", () => ({
 vi.mock("../../apps/web/src/home/ImportButton", () => ({
   ImportButton: (props: ImportProps) => {
     hoisted.importer = props;
-    return null;
+    return <button type="button">Import</button>;
   },
 }));
 vi.mock("../../apps/web/src/drive/SignIn", () => ({ useNodeSession: () => hoisted.session }));
@@ -85,7 +85,12 @@ vi.mock("../../apps/web/src/ai/tools/cluster", () => ({
     return [];
   },
 }));
-vi.mock("../../apps/web/src/ai/AgentSidebar", () => ({ AiButton: () => null }));
+vi.mock("../../apps/web/src/ai/AgentSidebar", () => ({
+  AiButton: () => <button type="button">AI</button>,
+}));
+vi.mock("../../apps/web/src/feedback/FeedbackButton", () => ({
+  FeedbackButton: () => <button type="button" aria-label="Report a bug">Bug</button>,
+}));
 vi.mock("../../apps/web/src/document-settings", () => ({ SettingsButton: () => null }));
 vi.mock("../../apps/web/src/drive/drive-files", () => ({
   createInDrive: hoisted.createInDrive,
@@ -135,18 +140,36 @@ afterEach(() => {
 });
 
 describe("ClusterHome", () => {
-  it("shows an icon-only sign-out control and signs out after the cache is cleared", async () => {
+  it("puts navigation in a top menubar, removes the workspace heading, and puts AI and bug buttons right of Import", async () => {
     renderHome();
-    expect(screen.getByText("Files are saved to SuiteDrive on drive.example.", { exact: false })).toBeTruthy();
-    expect(screen.getByText(/kept for when you disconnect/)).toBeTruthy();
-    expect(screen.getByText("Admin for admin")).toBeTruthy();
+    expect(document.querySelector(".sidebar")).toBeNull();
+    expect(document.querySelector(".cluster-note")).toBeNull();
+    expect(screen.queryByText(/Your organization's workspace/)).toBeNull();
+    expect(screen.queryByText(/Files are saved to SuiteDrive/)).toBeNull();
+
+    const menubar = document.querySelector("header.cluster-menubar")!;
+    expect(menubar).toBeTruthy();
+    expect(menubar.querySelector(".logo")).toBeTruthy();
     const mailButton = screen.getByRole("button", { name: "Mail" });
-    expect(mailButton).toBeTruthy();
+    expect(menubar.contains(mailButton)).toBe(true);
     expect(mailButton.getAttribute("title")).toBe("Mail");
-    expect(document.querySelector(".account-avatar")?.textContent).toBe("A");
-    const chip = document.querySelector(".account-chip");
+    expect(menubar.textContent).toContain("Admin for admin");
+    expect(menubar.querySelector(".account-avatar")?.textContent).toBe("A");
+    const chip = menubar.querySelector(".account-chip");
     expect(chip?.textContent).not.toContain("Ada Lovelace");
     expect(chip?.textContent).not.toContain("drive.example");
+
+    const main = document.querySelector("main.home-main")!;
+    expect(main.firstElementChild?.classList.contains("home-new")).toBe(true);
+
+    const fileHeader = document.querySelector(".file-section > header")!;
+    const headerButtons = [...fileHeader.querySelectorAll("button")].map(
+      (btn) => btn.getAttribute("aria-label") || btn.textContent,
+    );
+    expect(headerButtons.indexOf("Import")).toBeGreaterThanOrEqual(0);
+    expect(headerButtons.indexOf("AI")).toBeGreaterThan(headerButtons.indexOf("Import"));
+    expect(headerButtons.indexOf("Report a bug")).toBeGreaterThan(headerButtons.indexOf("AI"));
+
     const signOut = screen.getByRole("button", { name: "Sign out" });
     expect(signOut.textContent).toBe("");
     expect(signOut.querySelector("svg")).toBeTruthy();
@@ -166,26 +189,24 @@ describe("ClusterHome", () => {
     hoisted.forgetDriveFiles.mockRejectedValueOnce(new Error("Uploads are still running."));
     renderHome();
     expect(screen.queryByRole("button", { name: "Disconnect from server" })).toBeNull();
-    expect(screen.queryByText(/kept for when you disconnect/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Uploads are still running.");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("hides the account without a session and shows the sync icon", () => {
+  it("hides the account without a session and forwards sync updates to DriveBrowser", () => {
     hoisted.session = { user: { id: "x" } };
     hoisted.sync = { peers: 2, replicating: 1, heads: "h1" };
     renderHome();
     expect(document.querySelector(".account-avatar")?.textContent).toBe("?");
-    expect(screen.getByTitle("Copying 1 file from other servers… · drive.example").dataset.state).toBe("busy");
     expect(screen.getByTestId("browser").textContent).toBe("h1:1:0");
     cleanup();
     hoisted.session = null;
     hoisted.sync = { peers: 1, replicating: 0, heads: "h2" };
     renderHome();
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
-    expect(screen.getByTitle("Connected to 1 other server · drive.example").dataset.state).toBe("connected");
+    expect(screen.getByTestId("browser").textContent).toBe("h2:0:0");
   });
 
   it("creates new files in the open SuiteDrive folder", async () => {

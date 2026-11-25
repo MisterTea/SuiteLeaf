@@ -149,14 +149,15 @@ export function mirrorSlides(doc: Y.Doc, content: unknown, op: unknown) {
       for (const entry of bodies) {
         try {
           const json = JSON.stringify(entry.body);
-          if (json !== undefined) elements.set(elementKey(id, entry.id), json);
+          const key = elementKey(id, entry.id);
+          if (json !== undefined && elements.get(key) !== json) elements.set(key, json);
         } catch {
           continue;
         }
       }
       try {
         const json = JSON.stringify(shellOf(slide, nextIds));
-        if (json !== undefined) slides.set(id, json);
+        if (json !== undefined && slides.get(id) !== json) slides.set(id, json);
       } catch {
         continue;
       }
@@ -196,18 +197,75 @@ export function mirrorSlides(doc: Y.Doc, content: unknown, op: unknown) {
   }, LOCAL);
 }
 
+const SEED_CHUNK_BYTES = 256 * 1024;
+
 /**
  * Copy the open deck into an empty room before anyone edits.
  * An edit recorded against an empty room undoes by deleting the slide.
+ * Large decks are seeded in bounded transactions so no single WebSocket
+ * update stalls or exceeds proxy frame limits.
  */
 export function seedSlideRoom(doc: Y.Doc, content: unknown): void {
   const slides = doc.getMap<string>("slides");
+  const elements = doc.getMap<string>("slideElements");
   const order = doc.getMap<string>("slideOrder");
+  const deckMap = doc.getMap<string>("deck");
   if (slides.size > 0 || order.has("order")) return;
-  const deck = (content ?? {}) as { slides?: Record<string, unknown>; slideOrder?: unknown };
+  const deck = (content ?? {}) as { slides?: Record<string, unknown>; slideOrder?: unknown; master?: unknown };
   const present = orderOf(deck.slideOrder).filter((id) => deck.slides?.[id] != null);
   if (!present.length) return;
-  mirrorSlides(doc, content, { added: present });
+
+  type Write = { map: Y.Map<string>; key: string; value: string };
+  let batch: Write[] = [];
+  let batchBytes = 0;
+  const flush = () => {
+    if (!batch.length) return;
+    const writes = batch;
+    batch = [];
+    batchBytes = 0;
+    doc.transact(() => {
+      for (const write of writes) {
+        if (write.map.get(write.key) !== write.value) write.map.set(write.key, write.value);
+      }
+    }, LOCAL);
+  };
+  const enqueue = (map: Y.Map<string>, key: string, value: string) => {
+    if (batch.length > 0 && batchBytes + value.length > SEED_CHUNK_BYTES) flush();
+    batch.push({ map, key, value });
+    batchBytes += value.length;
+  };
+
+  for (const id of present) {
+    const slide = deck.slides?.[id];
+    if (slide == null) continue;
+    const bodies = elementsIn(slide);
+    const nextIds = bodies.map((entry) => entry.id);
+    for (const entry of bodies) {
+      try {
+        const json = JSON.stringify(entry.body);
+        if (json !== undefined) enqueue(elements, elementKey(id, entry.id), json);
+      } catch {
+        continue;
+      }
+    }
+    try {
+      const json = JSON.stringify(shellOf(slide, nextIds));
+      if (json !== undefined) enqueue(slides, id, json);
+    } catch {
+      continue;
+    }
+  }
+  enqueue(order, "order", JSON.stringify(orderOf(deck.slideOrder)));
+  const master = masterRecord(deck.master);
+  if (master) {
+    try {
+      const json = JSON.stringify(master);
+      if (json !== undefined) enqueue(deckMap, "master", json);
+    } catch {
+      // A master that cannot be stored is left as it was.
+    }
+  }
+  flush();
 }
 
 export type RemoteMaster = {

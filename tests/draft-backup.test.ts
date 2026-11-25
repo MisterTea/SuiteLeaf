@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createFile } from "../packages/core/src";
+import { createFile, parseFileBytes } from "../packages/core/src";
 import { readDraftBackup, writeDraftBackup } from "../apps/desktop/src/draft-backup";
 import { FileStore } from "../apps/desktop/src/store";
 
@@ -77,9 +77,8 @@ it("exports drafts from the library and does not replace a saved file", async ()
   await source.save({ file: fresh, recovery: true });
   await source.exportRecoveryDrafts(folder);
   expect(await other.importRecoveryDrafts(folder)).toBe(1);
-  const keptText = await readFile(kept, "utf8");
-  expect(keptText).toContain("Beds");
-  expect(JSON.parse(keptText).title).toBe("Beds");
+  const keptFile = await parseFileBytes(await readFile(kept));
+  expect(keptFile.title).toBe("Beds");
   const imported = await other.get(fresh.id);
   expect(imported?.recovery).toBe(true);
   expect(imported?.path).toBeUndefined();

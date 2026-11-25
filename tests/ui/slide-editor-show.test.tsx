@@ -118,10 +118,20 @@ describe("the slideshow", () => {
     expect(popup.location.replace).toHaveBeenCalledWith("blob:audience");
     fireEvent.click(control("Audience screen"));
     expect(window.open).toHaveBeenCalledTimes(1);
-    fireEvent.click(control(/Next/));
+    const prevBtn = control("Previous");
+    const nextBtn = control("Next");
+    const counterEl = show().querySelector(".presenter-counter")!;
+    expect(prevBtn.textContent).toBe("");
+    expect(nextBtn.textContent).toBe("");
+    expect(prevBtn.querySelector("svg")).not.toBeNull();
+    expect(nextBtn.querySelector("svg")).not.toBeNull();
+    expect(counterEl.previousElementSibling).toBe(prevBtn);
+    expect(counterEl.nextElementSibling).toBe(nextBtn);
+
+    fireEvent.click(nextBtn);
     expect(counter()).toBe("Slide 2 of 3");
     expect(popup.location.replace.mock.calls.length).toBeGreaterThanOrEqual(3);
-    fireEvent.click(control(/Previous/));
+    fireEvent.click(prevBtn);
     expect(counter()).toBe("Slide 1 of 3");
 
     const controls = show().querySelector(".presenter-controls")!;

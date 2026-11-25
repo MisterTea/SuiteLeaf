@@ -22,6 +22,7 @@ mod forms;
 mod items;
 mod names;
 mod public_sharing;
+mod sections;
 mod sharing;
 mod versions;
 
@@ -156,6 +157,28 @@ pub fn router(state: AppState) -> Router {
             "/api/drive/items/{id}/content",
             get(read_content)
                 .put(write_content)
+                .layer(DefaultBodyLimit::max(MAX_UPLOAD)),
+        )
+        .route(
+            "/api/drive/items/{id}/sections/bootstrap",
+            get(sections::bootstrap),
+        )
+        .route(
+            "/api/drive/items/{id}/sections/stream",
+            get(sections::stream_slides),
+        )
+        .route(
+            "/api/drive/items/{id}/sections/missing",
+            post(sections::missing_blobs),
+        )
+        .route(
+            "/api/drive/items/{id}/sections/commit",
+            post(sections::commit_sections),
+        )
+        .route(
+            "/api/drive/items/{id}/blobs/{hash}",
+            get(sections::read_blob)
+                .put(sections::put_blob)
                 .layer(DefaultBodyLimit::max(MAX_UPLOAD)),
         )
         .route("/api/drive/items/{id}/versions", get(versions))

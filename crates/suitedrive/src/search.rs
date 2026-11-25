@@ -138,6 +138,31 @@ fn collect_sheet(file: &serde_json::Value, words: &mut Words) {
     }
 }
 
+fn collect_slide_object(slide: &serde_json::Value, words: &mut Words) {
+    if let Some(elements) = slide.get("elements").and_then(|value| value.as_array()) {
+        for element in elements {
+            if let Some(content) = element.get("content").and_then(|value| value.as_str()) {
+                words.push(content);
+            }
+            if let Some(rows) = element.get("rows").and_then(|value| value.as_array()) {
+                for row in rows {
+                    let Some(cells) = row.as_array() else {
+                        continue;
+                    };
+                    for cell in cells {
+                        if let Some(text) = cell.as_str() {
+                            words.push(text);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(notes) = slide.get("notes").and_then(|value| value.as_str()) {
+        words.push(notes);
+    }
+}
+
 fn collect_slides(file: &serde_json::Value, words: &mut Words) {
     let Some(slides) = file
         .pointer("/content/slides")
@@ -146,28 +171,7 @@ fn collect_slides(file: &serde_json::Value, words: &mut Words) {
         return;
     };
     for slide in slides.values() {
-        if let Some(elements) = slide.get("elements").and_then(|value| value.as_array()) {
-            for element in elements {
-                if let Some(content) = element.get("content").and_then(|value| value.as_str()) {
-                    words.push(content);
-                }
-                if let Some(rows) = element.get("rows").and_then(|value| value.as_array()) {
-                    for row in rows {
-                        let Some(cells) = row.as_array() else {
-                            continue;
-                        };
-                        for cell in cells {
-                            if let Some(text) = cell.as_str() {
-                                words.push(text);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if let Some(notes) = slide.get("notes").and_then(|value| value.as_str()) {
-            words.push(notes);
-        }
+        collect_slide_object(slide, words);
         if words.full() {
             return;
         }
@@ -400,6 +404,49 @@ fn snippet_around(text: &str, query: &str) -> String {
 }
 
 impl Drive {
+    fn sectioned_slide_words(&self, manifest: &crate::sections::SlideSectionManifest) -> String {
+        let mut words = Words::new();
+        for section_id in manifest.section_order() {
+            if words.full() {
+                break;
+            }
+            let Some(hash_str) = manifest.section_hash(section_id) else {
+                continue;
+            };
+            let Ok(hash) = hash_str.parse::<crate::Hash>() else {
+                continue;
+            };
+            let Ok(Some(bytes)) = self.blobs.get(&hash) else {
+                continue;
+            };
+            let Ok(val) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+                continue;
+            };
+            match manifest.kind.as_str() {
+                "doc" => collect_doc(&val, &mut words, 0),
+                "sheet" => {
+                    if let Some(rows) = val.get("cellData").and_then(|v| v.as_object()) {
+                        for row in rows.values() {
+                            let Some(cells) = row.as_object() else {
+                                continue;
+                            };
+                            for cell in cells.values() {
+                                if let Some(text) = cell_display(cell) {
+                                    words.push(&text);
+                                }
+                                if words.full() {
+                                    return words.text;
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => collect_slide_object(&val, &mut words),
+            }
+        }
+        words.text
+    }
+
     /// Files the caller can read whose name or text contains `query`.
     ///
     /// The match is a case-insensitive substring of the file name or of the
@@ -433,7 +480,13 @@ impl Drive {
             let name = text(&row, "name").unwrap_or_default();
             let bytes = self.head_bytes(&row)?;
             let body = match &bytes {
-                Some(raw) => file_words_for(raw, form_answers),
+                Some(raw) => {
+                    if let Some(manifest) = crate::sections::SlideSectionManifest::try_parse(raw) {
+                        self.sectioned_slide_words(&manifest)
+                    } else {
+                        file_words_for(raw, form_answers)
+                    }
+                }
                 None => String::new(),
             };
             let in_body = find_ci(&body, query).is_some();
@@ -442,7 +495,13 @@ impl Drive {
             }
             let snippet = if in_body {
                 match &bytes {
-                    Some(raw) => snippet_for_file(raw, query, form_answers),
+                    Some(raw) => {
+                        if crate::sections::SlideSectionManifest::try_parse(raw).is_some() {
+                            snippet_around(&body, query)
+                        } else {
+                            snippet_for_file(raw, query, form_answers)
+                        }
+                    }
                     None => String::new(),
                 }
             } else {

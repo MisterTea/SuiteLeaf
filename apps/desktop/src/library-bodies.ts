@@ -6,9 +6,16 @@ export class LibraryBodies {
   constructor(private database: DatabaseSync) {}
 
   init() {
-    this.database.exec(
-      `CREATE TABLE IF NOT EXISTS file_bodies (id TEXT PRIMARY KEY, body TEXT NOT NULL)`,
-    );
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS file_bodies (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS file_sections (
+        file_id TEXT NOT NULL,
+        section_key TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        data BLOB NOT NULL,
+        PRIMARY KEY (file_id, section_key)
+      );
+    `);
     if (
       this.database
         .prepare("SELECT value FROM metadata WHERE key = 'separate-bodies'")
@@ -55,9 +62,28 @@ export class LibraryBodies {
     return parseFile(String(row.body));
   }
 
+  putSection(fileId: string, sectionKey: string, hash: string, data: Uint8Array) {
+    this.database
+      .prepare(
+        "INSERT OR REPLACE INTO file_sections (file_id, section_key, hash, data) VALUES (?, ?, ?, ?)",
+      )
+      .run(fileId, sectionKey, hash, data);
+  }
+
+  getSection(fileId: string, sectionKey: string): Uint8Array | null {
+    const row = this.database
+      .prepare(
+        "SELECT data FROM file_sections WHERE file_id = ? AND section_key = ?",
+      )
+      .get(fileId, sectionKey) as { data?: Uint8Array } | undefined;
+    return row?.data ? new Uint8Array(row.data) : null;
+  }
+
   prune() {
     this.database.exec(`DELETE FROM file_bodies WHERE id NOT IN
       (SELECT id FROM records WHERE COALESCE(json_extract(record, '$.recovery'), 0) = 1
         OR json_extract(record, '$.path') IS NULL)`);
+    this.database.exec(`DELETE FROM file_sections WHERE file_id NOT IN
+      (SELECT id FROM records)`);
   }
 }

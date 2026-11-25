@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { open, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { Transform, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -7,7 +7,10 @@ import { parser } from "stream-json";
 import { filter } from "stream-json/filters/filter.js";
 import {
   NATIVE_FILE_LIMIT,
+  isSuitePackageBytes,
   kindFromName,
+  readZipCentralDirectory,
+  readZipEntry,
   type SuiteFile,
 } from "@suiteleaf/core";
 
@@ -38,6 +41,76 @@ export async function fileSignature(path: string) {
 
 /** Hash the bytes once and assemble only the small fields used by the library. */
 export async function readCatalogFile(path: string) {
+  // Fast check for v2 ZIP packages (.slslides, .slsheet, .sldoc)
+  const info = await stat(path);
+  if (info.size > NATIVE_FILE_LIMIT) {
+    throw new Error("Native file is too large.");
+  }
+  if (info.size >= 4) {
+    const handle = await open(path, "r");
+    try {
+      const magic = Buffer.allocUnsafe(4);
+      await handle.read(magic, 0, 4, 0);
+      if (isSuitePackageBytes(magic)) {
+        const readRange = async (offset: number, length: number) => {
+          const buf = Buffer.allocUnsafe(length);
+          const { bytesRead } = await handle.read(buf, 0, length, offset);
+          return new Uint8Array(buf.buffer, buf.byteOffset, bytesRead);
+        };
+        const cd = await readZipCentralDirectory(info.size, readRange);
+        const manifestEntry = cd.get("manifest.json");
+        if (!manifestEntry) {
+          throw new Error("SuiteLeaf package is missing manifest.json.");
+        }
+        const manifestBytes = await readZipEntry(manifestEntry, readRange);
+        const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as Record<
+          string,
+          unknown
+        >;
+        const expected = kindFromName(path);
+        if (
+          manifest.format !== "suiteleaf" ||
+          manifest.version !== 2 ||
+          typeof manifest.id !== "string" ||
+          !manifest.id ||
+          typeof manifest.title !== "string" ||
+          !manifest.title ||
+          manifest.title.length > 200 ||
+          !["doc", "sheet", "slide"].includes(String(manifest.kind)) ||
+          (expected && manifest.kind !== expected) ||
+          typeof manifest.createdAt !== "string" ||
+          typeof manifest.updatedAt !== "string"
+        ) {
+          throw new Error("Invalid native package manifest.");
+        }
+        const hash = createHash("sha256");
+        await pipeline(
+          createReadStream(path),
+          new Writable({
+            write(chunk: Buffer, _enc, done) {
+              hash.update(chunk);
+              done();
+            },
+          }),
+        );
+        return {
+          file: {
+            format: "suiteleaf",
+            version: 1,
+            id: manifest.id,
+            title: manifest.title,
+            kind: manifest.kind,
+            createdAt: manifest.createdAt,
+            updatedAt: manifest.updatedAt,
+          } as unknown as SuiteFile,
+          hash: hash.digest("hex"),
+        };
+      }
+    } finally {
+      await handle.close();
+    }
+  }
+
   const hash = createHash("sha256");
   const metadata: Record<string, unknown> = {};
   let bytes = 0;

@@ -28,10 +28,10 @@ mod standing;
 mod tests;
 
 use body::{body_changed, paragraph_texts};
-use compact::compact_bytes;
+use compact::compact_bytes_with_drive;
 use presence::{as_int, iso_from_ms, may_apply, presence_id, role_name, shown_name, text_col};
-use sheet_room::{apply_sheet_room, sheet_room};
-use slide_room::{apply_slide_room, slide_room};
+use sheet_room::{apply_sheet_room_with_drive, sheet_room};
+use slide_room::{apply_slide_room_with_drive, slide_room};
 pub use socket::session;
 
 pub const IDLE_MS: i64 = 15 * 60 * 1000;
@@ -555,17 +555,20 @@ impl Rooms {
         let generation = room.generation;
         drop(live);
         // From here `generation` is the room's, which the edit matched or did not name.
-        let stored = STANDARD.encode(update.bytes);
+        // Suffix the time-ordered UUIDv7 row id with the BLAKE3 hash of the raw update
+        // bytes so retries deduplicate without sending multi-MB blobs in SQL WHERE clauses.
+        let hash = blake3::hash(update.bytes).to_hex();
         let existing = self.db.query(
-            "SELECT id FROM drive_room_update WHERE itemId = ?1 AND generation = ?2 AND bytes = ?3 LIMIT 1",
+            "SELECT id FROM drive_room_update WHERE itemId = ?1 AND generation = ?2 AND id LIKE ?3 LIMIT 1",
             &[
                 DbValue::Text(update.item.into()),
                 DbValue::Integer(generation),
-                DbValue::Text(stored.clone()),
+                DbValue::Text(format!("%:{hash}")),
             ],
         )?;
         if existing.is_empty() {
-            let id = uuid::Uuid::now_v7().to_string();
+            let stored = STANDARD.encode(update.bytes);
+            let id = format!("{}:{hash}", uuid::Uuid::now_v7());
             self.db.transact(|tx| {
                 tx.upsert(
                     "drive_room_update",
@@ -747,14 +750,25 @@ impl Rooms {
             return Ok(());
         };
         let at = iso_from_ms(now);
-        let next = if let Some(sheet_bytes) = apply_sheet_room(&bytes, &sheet)? {
+        let next = if let Some(sheet_bytes) =
+            apply_sheet_room_with_drive(&self.drive, &bytes, &sheet, &at)?
+        {
             sheet_bytes
-        } else if let Some(slide_bytes) = apply_slide_room(&bytes, &slide)? {
+        } else if let Some(slide_bytes) =
+            apply_slide_room_with_drive(&self.drive, &bytes, &slide, &at)?
+        {
             slide_bytes
         } else if paragraphs.is_empty() && rich.is_none() {
             return Ok(());
         } else {
-            compact_bytes(&bytes, &paragraphs, rich.as_ref(), &touches, &at)?
+            compact_bytes_with_drive(
+                &self.drive,
+                &bytes,
+                &paragraphs,
+                rich.as_ref(),
+                &touches,
+                &at,
+            )?
         };
         if !self.writers(item)?.is_empty() {
             return Ok(());

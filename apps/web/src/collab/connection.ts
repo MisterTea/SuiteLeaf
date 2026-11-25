@@ -149,7 +149,11 @@ function storedUpdate(value: unknown): CollabUpdate | null {
 
 /** Write the waiting updates. A later page load can send them again. */
 export function saveQueue(storage: Storage, itemId: string, queue: OutboundQueue) {
-  storage.setItem(queueKey(itemId), JSON.stringify(queue.pending()));
+  try {
+    storage.setItem(queueKey(itemId), JSON.stringify(queue.pending()));
+  } catch {
+    // Session storage quota exceeded on a large update; keep it in memory.
+  }
 }
 
 /**

@@ -6,8 +6,9 @@ import {
   usernameClient,
 } from "better-auth/client/plugins";
 import {
+  kindFromName,
   mimeFor,
-  parseNamedFile,
+  parseFileBytes,
   type DriveLink,
   type FileRecord,
   type SuiteFile,
@@ -283,7 +284,8 @@ export async function api(
   let response: Response;
   try {
     response = await fetch(`${current.url}${path}`, { ...init, headers });
-  } catch {
+  } catch (error) {
+    if (init.signal?.aborted) throw error;
     throw new Error(
       "SuiteDrive is unreachable. Your changes stay on this device.",
     );
@@ -338,8 +340,13 @@ export const drive = {
       method: "DELETE",
     });
   },
-  async get(id: string): Promise<DriveItem> {
-    return (await api(`/api/drive/items/${encodeURIComponent(id)}`)).json();
+  async get(id: string, signal?: AbortSignal): Promise<DriveItem> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}`,
+        signal ? { signal } : undefined,
+      )
+    ).json();
   },
   async create(item: {
     name: string;
@@ -362,12 +369,29 @@ export const drive = {
       })
     ).json();
   },
-  async read(id: string): Promise<{ text: string; versionId?: string }> {
+  async read(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<{ text: string; versionId?: string }> {
     const response = await api(
       `/api/drive/items/${encodeURIComponent(id)}/content`,
+      signal ? { signal } : undefined,
     );
     return {
       text: await response.text(),
+      versionId: response.headers.get("etag")?.replace(/"/g, "") || undefined,
+    };
+  },
+  async readBytes(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<{ bytes: Uint8Array; versionId?: string }> {
+    const response = await api(
+      `/api/drive/items/${encodeURIComponent(id)}/content`,
+      signal ? { signal } : undefined,
+    );
+    return {
+      bytes: new Uint8Array(await response.arrayBuffer()),
       versionId: response.headers.get("etag")?.replace(/"/g, "") || undefined,
     };
   },
@@ -556,10 +580,13 @@ export const drive = {
 };
 
 /** Load a SuiteDrive file into an editable record linked back to the drive. */
-export async function openDriveFile(item: DriveItem): Promise<FileRecord> {
+export async function openDriveFile(
+  item: DriveItem,
+  signal?: AbortSignal,
+): Promise<FileRecord> {
   const { url } = requireSession();
-  const { text, versionId } = await drive.read(item.id);
-  const file = parseNamedFile(item.name, text);
+  const { bytes, versionId } = await drive.readBytes(item.id, signal);
+  const file = await parseFileBytes(bytes, kindFromName(item.name));
   return {
     file,
     drive: {

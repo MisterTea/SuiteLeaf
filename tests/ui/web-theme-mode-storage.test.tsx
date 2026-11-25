@@ -367,7 +367,7 @@ describe("browser storage", () => {
     await printDocument("T");
     expect(clicks).toEqual(["Notes.sldoc", "a.txt", "a.bin"]);
     expect(created.map((b) => b.type)).toEqual([
-      "application/vnd.suiteleaf.doc+json",
+      "application/vnd.suiteleaf.doc+zip",
       "text/plain",
       "application/octet-stream",
     ]);
