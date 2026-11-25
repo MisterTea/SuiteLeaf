@@ -34,11 +34,11 @@ describe("published app updates", () => {
     expect(source).toContain("pathname.endsWith('.woff2'))void cache.put(event.request,fresh.clone())");
   });
 
-  it("replaces a cached copy and reloads tabs that still have it open", () => {
+  it("replaces stale caches on activation without force-reloading open tabs", () => {
     const source = serviceWorkerSource("abc123", ["./"]);
     expect(source).toContain("CACHE=PREFIX+'-abc123'");
-    expect(source).toContain("self.skipWaiting()");
-    expect(source).toContain("client.navigate(client.url)");
-    expect(source).toContain("if(!stale.length)return");
+    expect(source).toContain("caches.delete(k)");
+    expect(source).not.toContain("self.skipWaiting()");
+    expect(source).not.toContain("client.navigate");
   });
 });
