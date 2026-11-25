@@ -378,6 +378,28 @@ test("Docs defaults follow dark theme while explicit colors and print stay intac
   await expect(normal).toHaveCSS("color", "rgb(0, 0, 0)");
 });
 
+test("Error banner respects dark theme and light theme", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("suiteleaf_theme_mode", "dark"));
+  await page.goto("/");
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+    name: "broken.suiteleaf",
+    mimeType: "application/json",
+    buffer: Buffer.from("not valid json"),
+  });
+  const banner = page.locator('.error[role="alert"]');
+  await expect(banner).toBeVisible();
+  await expect(banner).toHaveCSS("background-color", "rgb(53, 29, 26)");
+  await expect(banner).toHaveCSS("color", "rgb(246, 174, 167)");
+  await expect(banner).toHaveCSS("border-top-color", "rgb(110, 52, 45)");
+  await expect(banner.locator("button")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "light";
+    document.documentElement.classList.remove("dark-theme");
+  });
+  await expect(banner).toHaveCSS("background-color", "rgb(255, 241, 233)");
+  await expect(banner).toHaveCSS("color", "rgb(150, 59, 33)");
+});
+
 async function touchGesture(page: Page, start: { x: number; y: number }, end = start, hold = 0, pressed?: () => Promise<void>) {
   const session = await page.context().newCDPSession(page);
   await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });

@@ -199,9 +199,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  background: #fff1e9;
-  color: #963b21;
-  border: 1px solid #f0c9b7;
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 1px solid var(--error-border);
   padding: 12px 20px;
   font-size: 12px;
   flex-shrink: 0;
@@ -209,6 +209,12 @@
 .error button {
   font-size: 11px;
   padding: 5px 8px;
+  border-color: var(--error-border);
+  background: transparent;
+  color: inherit;
+}
+.error button:hover {
+  background: var(--toolbar-tool-hover);
 }
 .error button:last-child {
   margin-left: auto;
