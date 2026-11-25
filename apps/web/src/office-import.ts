@@ -1,4 +1,6 @@
-import type { SuiteFile } from "@suiteleaf/core";
+import type { ExternalMediaBlobs, SuiteFile } from "@suiteleaf/core";
+import { mediaBlobStore } from "./media-blob-store";
+import { getSession } from "./node-client";
 import { requestOfficePassword } from "./office-password";
 
 export const IMPORT_CANCELLED = "Import cancelled. The original file is unchanged.";
@@ -115,8 +117,12 @@ async function convert(
         }
         return;
       }
-      if (event.data.ok) settle(event.data.file);
-      else if (finish()) {
+      if (event.data.ok) {
+        if (event.data.mediaBlobs instanceof Map && event.data.mediaBlobs.size > 0) {
+          void mediaBlobStore.putMany(event.data.mediaBlobs as ExternalMediaBlobs);
+        }
+        settle(event.data.file);
+      } else if (finish()) {
         reject(
           new ConverterError(
             event.data.code ?? "conversion-failed",
@@ -133,12 +139,15 @@ async function convert(
         ),
       );
     };
+    const externalizeMedia =
+      typeof window === "undefined" || !window.suiteleaf || !!getSession();
     worker.postMessage(
       {
         bytes,
         format: file.name.split(".").pop()!.toLowerCase(),
         name: file.name,
         password,
+        externalizeMedia,
       },
       [bytes],
     );

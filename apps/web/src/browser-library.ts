@@ -225,6 +225,10 @@ export class Library extends Dexie {
     const row = await this.mediaBlobs.get(hash);
     return row?.data ?? null;
   }
+  async getMediaBlobRecord(hash: string): Promise<{ mime: string; data: Uint8Array } | null> {
+    const row = await this.mediaBlobs.get(hash);
+    return row ? { mime: row.mime, data: row.data } : null;
+  }
   async putMediaBlob(hash: string, mime: string, data: Uint8Array): Promise<void> {
     await this.mediaBlobs.put({ hash, mime, data });
   }

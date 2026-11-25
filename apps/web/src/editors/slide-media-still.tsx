@@ -2,6 +2,7 @@ import type { CSSProperties, HTMLAttributes } from "react";
 import type { SlideElement } from "@suiteleaf/core";
 import { croppedPictureStyle, pictureCropBox } from "./slide-picture-crop";
 import { rotatedPictureFrame, turnedPictureTransform } from "./slide-picture-frame";
+import { usePlayableUrl } from "./slide-media";
 
 /**
  * Print still of a clip. A rotated poster uses the same SVG frame as a
@@ -23,6 +24,8 @@ export function SlideMediaStill({
   boxProps?: HTMLAttributes<HTMLDivElement>;
 }) {
   const crop = croppedPictureStyle(el);
+  const resolvedSrc = usePlayableUrl(el.src);
+  const resolvedPoster = usePlayableUrl(el.poster);
   const turnedFrame = el.rotation ? rotatedPictureFrame(el) : undefined;
   const bare: CSSProperties = {
     background: "transparent",
@@ -46,7 +49,7 @@ export function SlideMediaStill({
   const cropBox = pictureCropBox(el);
   const alt = el.alt || (el.type === "audio" ? "Audio" : "Video");
   const svgTurned =
-    turnedFrame && el.poster ? (
+    turnedFrame && resolvedPoster ? (
       <svg
         viewBox={`0 0 ${turnedFrame.width} ${turnedFrame.height}`}
         preserveAspectRatio="none"
@@ -61,7 +64,7 @@ export function SlideMediaStill({
             overflow="hidden"
           >
             <image
-              href={el.poster}
+              href={resolvedPoster}
               x={cropBox.x}
               y={cropBox.y}
               width={cropBox.width}
@@ -82,15 +85,15 @@ export function SlideMediaStill({
       style={frameStyle}
     >
       {svgTurned ??
-        (el.poster ? (
+        (resolvedPoster ? (
           <img
-            src={el.poster}
+            src={resolvedPoster}
             alt={alt}
             draggable={false}
             style={{ objectFit: "fill", ...crop }}
           />
         ) : (
-          <video src={el.src} preload="auto" playsInline style={{ objectFit: "fill", ...crop }} />
+          <video src={resolvedSrc} preload="auto" playsInline style={{ objectFit: "fill", ...crop }} />
         ))}
     </div>
   );

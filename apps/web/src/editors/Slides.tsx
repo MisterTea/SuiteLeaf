@@ -41,6 +41,7 @@ import { SlidesToolbar } from "./slide-editor-toolbar";
 import { SlideFormatTools, SlideTextToolbar } from "./slide-editor-format-tools";
 import { SlideEditorPanels } from "./slide-editor-panels";
 import { SlideShowOverlay } from "./slide-editor-presenter";
+import { SlideDriveItemContext } from "./slide-media";
 
 export default function Slides({
   file,
@@ -49,6 +50,7 @@ export default function Slides({
   onError,
   readOnly = false,
   fileId,
+  driveItemId,
   slideId,
   onSlideUrl,
   collabDoc = null,
@@ -64,6 +66,8 @@ export default function Slides({
   readOnly?: boolean;
   /** The open file, so each slide can be a link. */
   fileId?: string;
+  /** SuiteDrive item ID, so `slmedia://` blobs can be fetched and cached locally. */
+  driveItemId?: string;
   /** The slide named in the address. A reload opens this slide. */
   slideId?: string;
   /** Keep the address on the slide that is showing. */
@@ -267,7 +271,7 @@ export default function Slides({
     onError,
   });
   useSlideEditorKeys(state, { api, beginShow, holdPaste });
-  const playback = useShowPlayback(state, { ...showControls, activeSlide, marpPages });
+  const playback = useShowPlayback(state, { ...showControls, activeSlide, marpPages, driveItemId });
 
   const equationElement = activeSlide?.elements.find((element) => element.id === equationTarget);
   const equationChoices = equationElement ? slideEquations(equationElement) : [];
@@ -295,6 +299,7 @@ export default function Slides({
   });
 
   return (
+    <SlideDriveItemContext.Provider value={driveItemId}>
     <div
       ref={animationRoot}
       className="slides-editor"
@@ -561,5 +566,6 @@ export default function Slides({
         </Suspense>
       ) : null}
     </div>
+    </SlideDriveItemContext.Provider>
   );
 }

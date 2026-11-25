@@ -279,6 +279,7 @@ export {
 export {
   DEFAULT_MEDIA_THRESHOLD_BYTES,
   assemblePresentation,
+  collectSlmediaHashes,
   diffSlidePackage,
   hydrateMediaRefs,
   isSlidePackageBytes,
@@ -293,6 +294,7 @@ export {
   type ZipCentralEntry,
   type ZipRangeReader,
 } from "./slide-package";
+export type { ExternalMediaBlob, ExternalMediaBlobs } from "./pptx-media";
 export { parsePowerPoint } from "./pptx";
 export { lineFrame, slidePointScale } from "./pptx-geometry";
 export { paragraphTabStops, tabAdvance, type TabStop } from "./pptx-tab-stops";

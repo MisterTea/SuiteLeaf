@@ -2,6 +2,16 @@
 // Lecture clips run past 50 MB. A poster with no bytes leaves Play video with nothing to start.
 export const INLINE_MEDIA_LIMIT = 64 * 1024 * 1024;
 
+/** Maximum size for binary media externalized as `slmedia://` blobs during import. */
+export const EXTERNAL_MEDIA_LIMIT = 512 * 1024 * 1024;
+
+export interface ExternalMediaBlob {
+  mime: string;
+  bytes: Uint8Array;
+}
+
+export type ExternalMediaBlobs = Map<string, ExternalMediaBlob>;
+
 /** MPEG program streams do not play in the slide viewer. Keep an MP4 when ffmpeg can make one. */
 export async function playableClip(
   bytes: Uint8Array,
@@ -132,12 +142,12 @@ export function detectImageMime(buf: Uint8Array): string | null {
 
 export function uint8ToBase64(u8: Uint8Array): string {
   if (typeof Buffer !== "undefined") {
-    return Buffer.from(u8).toString("base64");
+    return Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString("base64");
   }
   let binary = "";
-  const len = u8.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(u8[i]);
+  const chunk = 0x8000;
+  for (let i = 0; i < u8.byteLength; i += chunk) {
+    binary += String.fromCharCode(...u8.subarray(i, i + chunk));
   }
   return btoa(binary);
 }

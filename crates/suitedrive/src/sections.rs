@@ -320,7 +320,7 @@ impl Drive {
         if !matches!(self.role(who, id)?, Some(role) if role >= Role::Editor) {
             return Err(DriveError::Forbidden);
         }
-        if bytes.len() > 256 * 1024 * 1024 {
+        if bytes.len() > 512 * 1024 * 1024 {
             return Err(DriveError::BadRequest("Blob exceeds maximum size.".into()));
         }
         let row = self.item_row(id)?;
@@ -338,6 +338,55 @@ impl Drive {
             .put_verified(&hash, bytes)
             .map_err(|_| DriveError::BadRequest("Blob hash mismatch.".into()))?;
         Ok(())
+    }
+
+    /// Upload one contiguous slice of a large content-addressed blob.
+    /// Returns `Ok(None)` while more bytes remain, or `Ok(Some(()))` once the full blob
+    /// has been verified against `hash` and stored.
+    pub fn put_item_blob_span(
+        &self,
+        who: &Principal,
+        id: &str,
+        hash: Hash,
+        start: usize,
+        total: usize,
+        chunk: &[u8],
+    ) -> DriveResult<Option<()>> {
+        let partial_key = format!("blob-{hash}");
+        let _lock = self.db.exclusive(&partial_key)?;
+        if !matches!(self.role(who, id)?, Some(role) if role >= Role::Editor) {
+            return Err(DriveError::Forbidden);
+        }
+        let row = self.item_row(id)?;
+        if text(&row, "kind").as_deref() != Some("file") {
+            return Err(DriveError::BadRequest("Folders have no content.".into()));
+        }
+        if total > 512 * 1024 * 1024 || start > total || chunk.len() > total - start {
+            return Err(DriveError::BadRequest(
+                "That upload does not continue the saved part.".into(),
+            ));
+        }
+        // Short-circuit if this content-addressed blob is already stored.
+        if self.blobs.has(&hash) {
+            return Ok(Some(()));
+        }
+        if total == 0 {
+            self.blobs
+                .put_verified(&hash, &[])
+                .map_err(|_| DriveError::BadRequest("Blob hash mismatch.".into()))?;
+            return Ok(Some(()));
+        }
+        self.ensure_room_bytes(total as u64)?;
+        if self.db.is_postgres() {
+            return self.put_cloud_blob_span(who, &partial_key, hash, start, total, chunk);
+        }
+        let Some(finished) = self.append_partial_upload(&partial_key, start, total, chunk)? else {
+            return Ok(None);
+        };
+        self.blobs
+            .put_verified(&hash, &finished)
+            .map_err(|_| DriveError::BadRequest("Blob hash mismatch.".into()))?;
+        Ok(Some(()))
     }
 
     /// Commit a new v2 sectioned `.slslides` version from its `manifest.json`.
@@ -862,5 +911,67 @@ mod tests {
             .unwrap();
         let sheet_zip = drive.assemble_sectioned_zip(&sm, &smr).unwrap();
         assert!(sheet_zip.windows(15).any(|w| w == b"sheets/ws1.json"));
+    }
+
+    #[test]
+    fn put_item_blob_span_appends_verifies_and_deduplicates() {
+        let (_dir, drive, alice) = test_drive();
+        let item = drive
+            .create(&alice, None, "Lecture.slslides", "file", None)
+            .unwrap();
+
+        let payload: Vec<u8> = (0..10_000).map(|i| (i % 251) as u8).collect();
+        let hash = Hash::of(&payload);
+
+        // Upload in 3 chunks
+        assert!(
+            drive
+                .put_item_blob_span(&alice, &item.id, hash, 0, payload.len(), &payload[..4000])
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            drive
+                .put_item_blob_span(
+                    &alice,
+                    &item.id,
+                    hash,
+                    4000,
+                    payload.len(),
+                    &payload[4000..8000]
+                )
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            drive
+                .put_item_blob_span(
+                    &alice,
+                    &item.id,
+                    hash,
+                    8000,
+                    payload.len(),
+                    &payload[8000..]
+                )
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(drive.blobs().get(&hash).unwrap().unwrap(), payload);
+
+        // Dedup short-circuit when blob already exists
+        assert!(
+            drive
+                .put_item_blob_span(&alice, &item.id, hash, 0, payload.len(), &payload[..10])
+                .unwrap()
+                .is_some()
+        );
+
+        // Hash mismatch fails
+        let bad_hash = Hash::of(b"something else");
+        assert!(
+            drive
+                .put_item_blob_span(&alice, &item.id, bad_hash, 0, 4, b"nope")
+                .is_err()
+        );
     }
 }

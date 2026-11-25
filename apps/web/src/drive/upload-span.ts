@@ -7,6 +7,7 @@ import {
 } from "@suiteleaf/core";
 import { contentRangeHeader, sendUploadSpans } from "../upload-queue";
 import { DriveConflict, api, drive, type DriveItem } from "../node-client";
+import { SectionedUnsupportedError, syncSectionedDelta } from "../workspace/slide-delta-sync";
 
 /** Send one slice. A finished file is renamed like a full upload. An unfinished slice is not a version. */
 export async function uploadDriveSpan(
@@ -57,6 +58,23 @@ export async function uploadDriveSpan(
 
 /** Upload a new file in bounded requests, including imports on hosted servers. */
 export async function uploadDriveChunks(file: SuiteFile, link: DriveLink, onProgress?: (accepted: number, total: number) => void): Promise<DriveLink> {
+  if (file.kind === "slide") {
+    try {
+      const synced = await syncSectionedDelta(file, link, {
+        onProgress,
+        requireSectionedSupport: true,
+      });
+      return synced.link;
+    } catch (err) {
+      const status =
+        typeof err === "object" && err && "status" in err && typeof err.status === "number"
+          ? err.status
+          : undefined;
+      if (!(err instanceof SectionedUnsupportedError) && status !== 404 && status !== 405) {
+        throw err;
+      }
+    }
+  }
   const body = new TextEncoder().encode(serializeFile(file));
   onProgress?.(0, body.length);
   let saved: DriveLink | undefined;

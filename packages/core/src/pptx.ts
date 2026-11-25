@@ -13,6 +13,7 @@ import { embeddedWindowsLineGrids, readEmbeddedFonts } from "./pptx-fonts";
 import { parseRels, parseXmlAttrs, resolveZipPath } from "./pptx-package";
 import { extractRawStrings, parseBinaryPpt } from "./pptx-binary";
 import { openSlide, type PptxDeck } from "./pptx-slide-context";
+import type { ExternalMediaBlobs } from "./pptx-media";
 import {
   paintGroupPictures,
   paintSlideBackdrop,
@@ -26,6 +27,7 @@ async function parseZipPptx(
   zip: JSZip,
   defaultTitle: string,
   onProgress?: (completed: number, total: number) => void,
+  mediaBlobs?: ExternalMediaBlobs,
 ): Promise<SlideFile> {
   const presFile = zip.file("ppt/presentation.xml");
   const presXml = presFile ? await presFile.async("string") : "";
@@ -127,6 +129,7 @@ async function parseZipPptx(
     defTabPoints,
     embeddedLineGrids,
     tableStylesXml,
+    mediaBlobs,
   };
 
   onProgress?.(0, slidePaths.length);
@@ -277,6 +280,7 @@ export async function parsePowerPoint(
   input: ArrayBuffer | Uint8Array,
   title?: string,
   onProgress?: (completed: number, total: number) => void,
+  mediaBlobs?: ExternalMediaBlobs,
 ): Promise<SlideFile> {
   const u8 = input instanceof Uint8Array ? input : new Uint8Array(input);
   const defaultTitle = title?.trim() || "Imported presentation";
@@ -291,14 +295,14 @@ export async function parsePowerPoint(
   if (isZip) {
     try {
       const zip = await JSZip.loadAsync(u8);
-      return await parseZipPptx(zip, defaultTitle, onProgress);
+      return await parseZipPptx(zip, defaultTitle, onProgress, mediaBlobs);
     } catch {
       // A missing end-of-central-directory record still leaves local headers.
       const repaired = zipFromLocalHeaders(u8);
       if (repaired) {
         try {
           const zip = await JSZip.loadAsync(repaired);
-          return await parseZipPptx(zip, defaultTitle, onProgress);
+          return await parseZipPptx(zip, defaultTitle, onProgress, mediaBlobs);
         } catch {
           // The local members were not a readable package.
         }

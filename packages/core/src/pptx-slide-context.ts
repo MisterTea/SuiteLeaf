@@ -11,6 +11,7 @@ import {
 } from "./pptx-theme";
 import { parseRels, parseXmlAttrs, readRelatedPart } from "./pptx-package";
 import { textBodyParser } from "./pptx-text-body";
+import type { ExternalMediaBlobs } from "./pptx-media";
 
 /** Presentation-wide values every slide reads. */
 export type PptxDeck = {
@@ -26,6 +27,8 @@ export type PptxDeck = {
   defTabPoints: number;
   embeddedLineGrids: Map<string, number>;
   tableStylesXml: string;
+  /** Optional sidecar map for binary media blobs so large videos stay out of JS base64 strings. */
+  mediaBlobs?: ExternalMediaBlobs;
 };
 
 export type SlideContext = NonNullable<Awaited<ReturnType<typeof openSlide>>>;

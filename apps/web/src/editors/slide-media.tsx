@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Pause, Play, Volume2, VolumeX } from "lucide-react";
-import type { SlideElement } from "@suiteleaf/core";
+import { isSlmediaUri, type SlideElement } from "@suiteleaf/core";
+import { mediaBlobStore } from "../media-blob-store";
 
 const CONTROLS_AUTO_HIDE_MS = 3000;
 
+/** SuiteDrive item ID for the currently open presentation, so `slmedia://` refs can fetch missing blobs. */
+export const SlideDriveItemContext = createContext<string | undefined>(undefined);
+
 /** A clip stored in the file. A blob address plays where a long data address does not. */
-function playableUrl(src: string | undefined): string | undefined {
+function playableDataUrl(src: string | undefined): string | undefined {
   if (!src?.startsWith("data:")) return src;
   const comma = src.indexOf(",");
   if (comma < 0) return src;
@@ -22,15 +26,44 @@ function playableUrl(src: string | undefined): string | undefined {
   }
 }
 
-function usePlayableUrl(src: string | undefined) {
-  const url = useMemo(() => playableUrl(src), [src]);
+export function usePlayableUrl(src: string | undefined) {
+  const driveItemId = useContext(SlideDriveItemContext);
+  const isSlmedia = Boolean(src && isSlmediaUri(src));
+  const dataUrl = useMemo(() => (isSlmedia ? undefined : playableDataUrl(src)), [src, isSlmedia]);
+  const [slmediaUrl, setSlmediaUrl] = useState<string | undefined>(() =>
+    isSlmedia && src ? (mediaBlobStore.peekObjectUrl(src) ?? undefined) : undefined,
+  );
+
+  useEffect(() => {
+    if (!isSlmedia || !src) {
+      setSlmediaUrl(undefined);
+      return;
+    }
+    const immediate = mediaBlobStore.peekObjectUrl(src);
+    if (immediate) {
+      setSlmediaUrl(immediate);
+      return;
+    }
+    let cancelled = false;
+    void mediaBlobStore
+      .resolveObjectUrl(src, {
+        remote: driveItemId ? { itemId: driveItemId } : undefined,
+      })
+      .then((resolved) => {
+        if (!cancelled && resolved) setSlmediaUrl(resolved);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [src, isSlmedia, driveItemId]);
+
   useEffect(
     () => () => {
-      if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+      if (dataUrl?.startsWith("blob:")) URL.revokeObjectURL(dataUrl);
     },
-    [url],
+    [dataUrl],
   );
-  return url;
+  return isSlmedia ? slmediaUrl : dataUrl;
 }
 
 function formatTime(seconds: number): string {
@@ -68,6 +101,7 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
   const [muted, setMuted] = useState(false);
 
   const src = usePlayableUrl(element.src);
+  const poster = usePlayableUrl(element.poster);
   const name = element.alt?.trim() || (video ? "Video" : "Audio");
   const caption = element.caption?.trim() ?? "";
   const track = caption ? (
@@ -159,7 +193,7 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
       <video
         ref={videoRef}
         src={src}
-        poster={element.poster}
+        poster={poster}
         aria-label={name}
         preload="auto"
         playsInline

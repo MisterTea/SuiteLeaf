@@ -1,6 +1,8 @@
-import { useCallback, useRef, type RefObject } from "react";
-import { filename, serializeFile, type SlideFile } from "@suiteleaf/core";
+import { useCallback, useContext, useRef, type RefObject } from "react";
+import { collectSlmediaHashes, filename, hydrateMediaRefs, serializeFile, type SlideFile, type SlideMediaEntry } from "@suiteleaf/core";
 import { exportBinary, exportText, printDocument } from "../storage";
+import { mediaBlobStore } from "../media-blob-store";
+import { SlideDriveItemContext } from "./slide-media";
 import { useSlidePrint } from "./slide-print";
 import { slidePlainText } from "./slide-plain-text";
 import { deckToHtml } from "./slide-html";
@@ -14,6 +16,7 @@ export function useSlideExports(
   { file, marpDraft }: { file: SlideFile; marpDraft: RefObject<MarpDraft | null> },
 ) {
   const { deckRef } = state;
+  const driveItemId = useContext(SlideDriveItemContext);
 
   // Export handlers
   const { printing, print: printDeck } = useSlidePrint(file.title, printDocument);
@@ -42,9 +45,25 @@ export function useSlideExports(
 
   const exportPptx = async () => {
     const { exportPptx: writePptx } = await import("@suiteleaf/core/pptx-export");
+    let content = deckRef.current;
+    if (collectSlmediaHashes(content).length > 0) {
+      const externalBlobs = await mediaBlobStore.collectFor(
+        content,
+        driveItemId ? { itemId: driveItemId } : undefined,
+      );
+      if (externalBlobs.size > 0) {
+        const media: Record<string, SlideMediaEntry> = {};
+        const blobs = new Map<string, Uint8Array>();
+        for (const [hash, blob] of externalBlobs) {
+          blobs.set(hash, blob.bytes);
+          media[hash] = { mime: blob.mime, size: blob.bytes.byteLength };
+        }
+        content = hydrateMediaRefs(content, media, blobs);
+      }
+    }
     await exportBinary(
       filename(file.title, "pptx"),
-      await writePptx({ ...file, title: file.title, content: deckRef.current }),
+      await writePptx({ ...file, title: file.title, content }),
       "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     );
   };

@@ -126,9 +126,25 @@ function externalizeMedia<T>(
   threshold: number,
   media: Record<string, SlideMediaEntry>,
   blobs: Map<string, Uint8Array>,
+  externalBlobs?: ReadonlyMap<string, { mime: string; bytes: Uint8Array }>,
 ): T {
   const visit = (item: unknown): unknown => {
     if (typeof item === "string") {
+      if (item.startsWith(SLMEDIA_PREFIX) && isSlmediaUri(item)) {
+        const hash = slmediaHashFromUri(item);
+        const ext = hash ? externalBlobs?.get(hash) : undefined;
+        if (hash && ext) {
+          if (!blobs.has(hash)) blobs.set(hash, ext.bytes);
+          if (!media[hash]) {
+            media[hash] = {
+              mime: ext.mime,
+              size: ext.bytes.byteLength,
+              ext: extForMime(ext.mime),
+            };
+          }
+        }
+        return item;
+      }
       if (item.length < threshold || !item.startsWith("data:")) return item;
       const decoded = decodeDataUri(item);
       if (!decoded) return item;
@@ -157,6 +173,31 @@ function externalizeMedia<T>(
     return item;
   };
   return visit(value) as T;
+}
+
+/** Collect every unique BLAKE3 hash referenced via `slmedia://<hash>` inside `value`. */
+export function collectSlmediaHashes(value: unknown): string[] {
+  const hashes = new Set<string>();
+  const visit = (item: unknown) => {
+    if (typeof item === "string") {
+      if (item.startsWith(SLMEDIA_PREFIX)) {
+        const hash = slmediaHashFromUri(item);
+        if (hash) hashes.add(hash);
+      }
+      return;
+    }
+    if (Array.isArray(item)) {
+      for (const child of item) visit(child);
+      return;
+    }
+    if (item && typeof item === "object") {
+      for (const child of Object.values(item as Record<string, unknown>)) {
+        visit(child);
+      }
+    }
+  };
+  visit(value);
+  return [...hashes];
 }
 
 /** Walk an object graph and replace slmedia://<hash> with data:<mime>;base64,... */
@@ -211,6 +252,8 @@ export interface SlidePackageParts {
 export interface SplitPresentationOptions {
   mediaThresholdBytes?: number;
   generateThumbnails?: boolean;
+  /** Binary media blobs already externalized as `slmedia://<hash>` in the in-memory SlideFile. */
+  externalBlobs?: ReadonlyMap<string, { mime: string; bytes: Uint8Array }>;
 }
 
 /**
@@ -223,6 +266,7 @@ export function splitPresentation(
 ): SlidePackageParts {
   const threshold = options.mediaThresholdBytes ?? DEFAULT_MEDIA_THRESHOLD_BYTES;
   const generateThumbnails = options.generateThumbnails ?? true;
+  const externalBlobs = options.externalBlobs;
   const blobs = new Map<string, Uint8Array>();
   const media: Record<string, SlideMediaEntry> = {};
   const fonts: Record<string, SlideFontEntry> = {};
@@ -245,7 +289,7 @@ export function splitPresentation(
 
   // 2. Build global section (everything except slides, slideOrder, fonts)
   const { slides: rawSlides, slideOrder, fonts: _fonts, ...rawGlobal } = file.content;
-  const global = externalizeMedia(rawGlobal, threshold, media, blobs) as SlideGlobal;
+  const global = externalizeMedia(rawGlobal, threshold, media, blobs, externalBlobs) as SlideGlobal;
   const globalBytes = textEncoder.encode(JSON.stringify(global));
   const globalHash = blake3Hex(globalBytes);
   blobs.set(globalHash, globalBytes);
@@ -258,7 +302,7 @@ export function splitPresentation(
   for (const slideId of slideOrder) {
     const rawSlide = rawSlides[slideId];
     if (!rawSlide) continue;
-    const extSlide = externalizeMedia(rawSlide, threshold, media, blobs) as Slide;
+    const extSlide = externalizeMedia(rawSlide, threshold, media, blobs, externalBlobs) as Slide;
     const bytes = textEncoder.encode(JSON.stringify(extSlide));
     const hash = blake3Hex(bytes);
     slides[slideId] = extSlide;

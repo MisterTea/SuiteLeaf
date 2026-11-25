@@ -126,4 +126,105 @@ impl Drive {
         })?;
         Ok(Some(self.get(who, id)?))
     }
+
+    pub(crate) fn put_cloud_blob_span(
+        &self,
+        who: &Principal,
+        partial_key: &str,
+        hash: Hash,
+        start: usize,
+        total: usize,
+        chunk: &[u8],
+    ) -> DriveResult<Option<()>> {
+        let upload = self.db.get("drive_upload", partial_key)?;
+        let offset = upload
+            .as_ref()
+            .and_then(|r| r.get("offset"))
+            .and_then(|v| {
+                if let Value::Integer(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        if let Some(upload) = &upload
+            && (text(upload, "ownerId").as_deref() != Some(&who.id)
+                || upload.get("total") != Some(&Value::Integer(total as i64)))
+        {
+            return Err(DriveError::BadRequest(
+                "That upload does not continue the saved part.".into(),
+            ));
+        }
+        let chunk_id = format!("{partial_key}:{start}");
+        let accepted = if start < offset {
+            let stored = self.db.get("drive_upload_chunk", &chunk_id)?;
+            if stored.as_ref().and_then(|r| r.get("bytes")) != Some(&Value::Blob(chunk.to_vec())) {
+                return Err(DriveError::BadRequest(
+                    "That upload does not continue the saved part.".into(),
+                ));
+            }
+            offset
+        } else {
+            if start != offset || chunk.is_empty() {
+                return Err(DriveError::BadRequest(
+                    "That upload does not continue the saved part.".into(),
+                ));
+            }
+            let accepted = start + chunk.len();
+            self.db.transact(|tx| {
+                tx.upsert(
+                    "drive_upload_chunk",
+                    &chunk_id,
+                    [
+                        ("itemId", partial_key.into()),
+                        ("offset", Value::Integer(start as i64)),
+                        ("bytes", Value::Blob(chunk.to_vec())),
+                    ],
+                )?;
+                tx.upsert(
+                    "drive_upload",
+                    partial_key,
+                    [
+                        ("ownerId", who.id.clone().into()),
+                        ("total", Value::Integer(total as i64)),
+                        ("offset", Value::Integer(accepted as i64)),
+                        ("baseVersion", Value::Null),
+                        ("mime", "application/octet-stream".into()),
+                    ],
+                )
+            })?;
+            accepted
+        };
+        if accepted < total {
+            return Ok(None);
+        }
+        let parts = self.db.query(
+            "SELECT id, bytes FROM drive_upload_chunk WHERE itemId=?1 ORDER BY offset",
+            &[partial_key.into()],
+        )?;
+        let mut bytes = Vec::with_capacity(total);
+        for part in &parts {
+            if let Some(Value::Blob(body)) = part.get("bytes") {
+                bytes.extend_from_slice(body);
+            }
+        }
+        let result = if bytes.len() != total {
+            Err(DriveError::Unavailable)
+        } else {
+            self.blobs
+                .put_verified(&hash, &bytes)
+                .map_err(|_| DriveError::BadRequest("Blob hash mismatch.".into()))
+        };
+        let _ = self.db.transact(|tx| {
+            for part in parts {
+                if let Some(cid) = text(&part, "id") {
+                    tx.delete("drive_upload_chunk", &cid)?;
+                }
+            }
+            tx.delete("drive_upload", partial_key)
+        });
+        result?;
+        Ok(Some(()))
+    }
 }

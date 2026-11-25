@@ -1,6 +1,7 @@
 import { Library } from "./browser-library";
 export { Library } from "./browser-library";
 import {
+  packSlidePackageZip,
   serializeFile,
   serializeFileBytes,
   nativeFilename,
@@ -41,7 +42,17 @@ const browserStorage: StorageAdapter = {
       record.file.kind === "sheet" ||
       record.file.kind === "doc"
     ) {
-      const bytes = await serializeFileBytes(record.file);
+      let bytes: Uint8Array;
+      if (record.file.kind === "slide") {
+        const { mediaBlobStore } = await import("./media-blob-store");
+        const externalBlobs = await mediaBlobStore.collectFor(
+          record.file.content,
+          record.drive ? { itemId: record.drive.itemId } : undefined,
+        );
+        bytes = await packSlidePackageZip(record.file, { externalBlobs });
+      } else {
+        bytes = await serializeFileBytes(record.file);
+      }
       const zipMime =
         record.file.kind === "slide"
           ? "application/vnd.suiteleaf.slides+zip"

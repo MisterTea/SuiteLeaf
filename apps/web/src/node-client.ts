@@ -6,10 +6,14 @@ import {
   usernameClient,
 } from "better-auth/client/plugins";
 import {
+  assemblePresentation,
+  isSlidePackageBytes,
   kindFromName,
   mimeFor,
   parseFileBytes,
+  unpackSlidePackageZip,
   type DriveLink,
+  type ExternalMediaBlob,
   type FileRecord,
   type SuiteFile,
 } from "@suiteleaf/core";
@@ -586,7 +590,27 @@ export async function openDriveFile(
 ): Promise<FileRecord> {
   const { url } = requireSession();
   const { bytes, versionId } = await drive.readBytes(item.id, signal);
-  const file = await parseFileBytes(bytes, kindFromName(item.name));
+  const expectedKind = kindFromName(item.name);
+  let file: SuiteFile;
+  if (expectedKind === "slide" && isSlidePackageBytes(bytes)) {
+    const parts = await unpackSlidePackageZip(bytes);
+    const externalBlobs = new Map<string, ExternalMediaBlob>();
+    for (const [hash, entry] of Object.entries(parts.manifest.media)) {
+      const blobBytes = parts.blobs.get(hash);
+      if (blobBytes) {
+        externalBlobs.set(hash, { mime: entry.mime, bytes: blobBytes });
+      }
+    }
+    if (externalBlobs.size > 0) {
+      const { mediaBlobStore } = await import("./media-blob-store");
+      await mediaBlobStore.putMany(externalBlobs);
+    }
+    const { rememberSyncedManifest } = await import("./workspace/slide-delta-sync");
+    rememberSyncedManifest(item.id, parts.manifest);
+    file = assemblePresentation(parts, { hydrateMedia: false });
+  } else {
+    file = await parseFileBytes(bytes, expectedKind);
+  }
   return {
     file,
     drive: {

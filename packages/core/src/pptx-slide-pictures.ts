@@ -24,11 +24,13 @@ import {
 } from "./pptx-pictures";
 import { pictureAlt, parseXmlAttrs, resolveZipPath } from "./pptx-package";
 import {
+  EXTERNAL_MEDIA_LIMIT,
   INLINE_MEDIA_LIMIT,
   detectImageMime,
   playableClip,
   uint8ToBase64,
 } from "./pptx-media";
+import { blake3Hex, slmediaUri } from "./slide-package-schema";
 import type { SlideContext } from "./pptx-slide-context";
 
 /** The slide's `p:pic` pictures, clips, and OLE previews. */
@@ -123,10 +125,18 @@ export async function paintSlidePictures(slide: SlideContext) {
         }
         const rawMedia = await media.async("uint8array");
         const playable = await playableClip(rawMedia, mime);
-        const src =
-          playable.bytes.byteLength <= INLINE_MEDIA_LIMIT
-            ? `data:${playable.mime};base64,${uint8ToBase64(playable.bytes)}`
-            : undefined;
+        let src: string | undefined;
+        if (slide.mediaBlobs) {
+          if (playable.bytes.byteLength <= EXTERNAL_MEDIA_LIMIT) {
+            const hash = blake3Hex(playable.bytes);
+            if (!slide.mediaBlobs.has(hash)) {
+              slide.mediaBlobs.set(hash, { mime: playable.mime, bytes: playable.bytes });
+            }
+            src = slmediaUri(hash);
+          }
+        } else if (playable.bytes.byteLength <= INLINE_MEDIA_LIMIT) {
+          src = `data:${playable.mime};base64,${uint8ToBase64(playable.bytes)}`;
+        }
         if (!src && !poster) continue;
         rememberShape(picXml);
         elements.push({

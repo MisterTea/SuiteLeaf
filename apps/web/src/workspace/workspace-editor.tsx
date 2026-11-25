@@ -150,6 +150,7 @@ export function WorkspaceEditor({
             key={`${id}:${editorEpoch}`}
             file={f as SlideFile}
             fileId={id}
+            driveItemId={record.drive?.itemId}
             slideId={slideId}
             onSlideUrl={showSlide}
             readOnly={!canEdit}

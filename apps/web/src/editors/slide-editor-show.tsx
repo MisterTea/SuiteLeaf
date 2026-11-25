@@ -5,6 +5,7 @@ import { showAudienceHooks } from "./slide-show-audience";
 import { useSlideCast } from "./use-slide-cast";
 import type { MarpPages } from "./slide-marp-render";
 import { exportBinary } from "../storage";
+import { mediaBlobStore } from "../media-blob-store";
 import {
   formatElapsed,
   nextSlideTitle,
@@ -148,6 +149,7 @@ export function useShowPlayback(
     showFullscreenRef,
     overlayRef,
     marpPages,
+    driveItemId,
   }: Pick<
     ShowControls,
     | "endShow"
@@ -156,7 +158,7 @@ export function useShowPlayback(
     | "setControlsVisible"
     | "showFullscreenRef"
     | "overlayRef"
-  > & { activeSlide: Slide; marpPages?: MarpPages | null },
+  > & { activeSlide: Slide; marpPages?: MarpPages | null; driveItemId?: string },
 ) {
   const {
     deck, deckRef, presenting, presentSlideIndex, showCursor, blankScreen,
@@ -164,6 +166,21 @@ export function useShowPlayback(
     showStartedAt, frozenElapsedMs, showMotion, setShowMotion, reducedMotion, recording,
     recorderRef, audiencePopup, moveShowRef,
   } = state;
+
+  // Queue all slides' media blobs to download to local storage when entering
+  // presentation mode so videos play reliably even if Wi-Fi drops mid-talk.
+  useEffect(() => {
+    if (!presenting) return;
+    const controller = new AbortController();
+    void mediaBlobStore.prefetchDeck(
+      { content: deckRef.current },
+      { itemId: driveItemId, signal: controller.signal },
+    );
+    return () => {
+      controller.abort();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- deckRef is stable
+  }, [presenting, driveItemId]);
 
   useEffect(() => {
     const slide = deckRef.current.slides[deckRef.current.slideOrder[presentSlideIndex]];

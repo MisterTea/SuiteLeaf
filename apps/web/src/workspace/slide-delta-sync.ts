@@ -15,6 +15,11 @@ import {
   type SlidePackageManifest,
 } from "@suiteleaf/core";
 import { DriveConflict, api, drive, type DriveItem } from "../node-client";
+import { contentRangeHeader } from "../upload-queue";
+import { mediaBlobStore } from "../media-blob-store";
+
+/** Max single-request blob PUT size before switching to `Content-Range` chunks (under hosted proxy limits). */
+export const DEFAULT_BLOB_CHUNK_BYTES = 2 * 1024 * 1024;
 
 export type DeltaApiFetch = (path: string, init?: RequestInit) => Promise<Response>;
 
@@ -51,6 +56,14 @@ export interface SectionDeltaSyncResult<M extends AnySectionManifest = AnySectio
 
 export type SlideDeltaSyncResult = SectionDeltaSyncResult<SlidePackageManifest>;
 
+/** Thrown when the server does not implement v2 sectioned upload endpoints. */
+export class SectionedUnsupportedError extends Error {
+  constructor() {
+    super("Server does not support sectioned uploads.");
+    this.name = "SectionedUnsupportedError";
+  }
+}
+
 /**
  * Syncs a v2 sectioned file (`.slslides`, `.slsheet`, or `.sldoc`) to SuiteDrive
  * incrementally: uploads ONLY changed section/media blobs and commits `manifest.json`.
@@ -62,9 +75,16 @@ export async function syncSectionedDelta(
     previousManifest?: AnySectionManifest | null;
     apiFetch?: DeltaApiFetch;
     rename?: (itemId: string, name: string) => Promise<DriveItem>;
+    onProgress?: (accepted: number, total: number) => void;
+    blobChunkBytes?: number;
+    requireSectionedSupport?: boolean;
   } = {},
 ): Promise<SectionDeltaSyncResult> {
   const apiFetch = options.apiFetch ?? api;
+  const blobChunkBytes =
+    options.blobChunkBytes && options.blobChunkBytes > 0
+      ? options.blobChunkBytes
+      : DEFAULT_BLOB_CHUNK_BYTES;
   const previous =
     options.previousManifest !== undefined
       ? options.previousManifest
@@ -76,7 +96,8 @@ export async function syncSectionedDelta(
   let allBlobs: Map<string, Uint8Array>;
 
   if (file.kind === "slide") {
-    const parts = splitPresentation(file);
+    const externalBlobs = await mediaBlobStore.collectFor(file.content);
+    const parts = splitPresentation(file, { externalBlobs });
     const prev = previous?.kind === "slide" ? previous : null;
     const delta = diffSlidePackage(prev, parts);
     manifest = parts.manifest;
@@ -113,8 +134,39 @@ export async function syncSectionedDelta(
       },
     );
     const body = (await missingRes.json()) as { missing?: string[] };
-    missingHashes = Array.isArray(body.missing) ? body.missing : candidateHashes;
+    if (!Array.isArray(body?.missing)) {
+      if (options.requireSectionedSupport) throw new SectionedUnsupportedError();
+      missingHashes = candidateHashes;
+    } else {
+      missingHashes = body.missing;
+    }
   }
+
+  let totalBytes = manifestBytes.byteLength;
+  for (const hash of missingHashes) {
+    const bytes = changedBlobs.get(hash) ?? allBlobs.get(hash);
+    if (bytes) totalBytes += bytes.byteLength;
+  }
+  options.onProgress?.(0, totalBytes);
+
+  const putWithRetry = async (path: string, headers: Record<string, string>, payload: Uint8Array) => {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await apiFetch(path, {
+          method: "PUT",
+          headers,
+          body: payload as unknown as BodyInit,
+        });
+      } catch (err) {
+        lastErr = err;
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+    }
+    throw lastErr;
+  };
 
   let uploadedBytes = 0;
   const BATCH = 4;
@@ -124,17 +176,49 @@ export async function syncSectionedDelta(
       slice.map(async (hash) => {
         const bytes = changedBlobs.get(hash) ?? allBlobs.get(hash);
         if (!bytes) return;
-        const payload = new Uint8Array(bytes.byteLength);
-        payload.set(bytes);
-        await apiFetch(
-          `/api/drive/items/${encodeURIComponent(link.itemId)}/blobs/${encodeURIComponent(hash)}`,
-          {
-            method: "PUT",
-            headers: { "content-type": "application/octet-stream" },
-            body: payload,
-          },
-        );
-        uploadedBytes += bytes.byteLength;
+        const blobPath = `/api/drive/items/${encodeURIComponent(link.itemId)}/blobs/${encodeURIComponent(hash)}`;
+        if (bytes.byteLength <= blobChunkBytes) {
+          const payload = new Uint8Array(bytes.byteLength);
+          payload.set(bytes);
+          await putWithRetry(
+            blobPath,
+            { "content-type": "application/octet-stream" },
+            payload,
+          );
+          uploadedBytes += bytes.byteLength;
+          options.onProgress?.(uploadedBytes, totalBytes);
+          return;
+        }
+        // Upload large media blobs in bounded Content-Range chunks so they work through
+        // reverse proxies and report smooth progress.
+        let sent = 0;
+        while (sent < bytes.byteLength) {
+          const end = Math.min(bytes.byteLength, sent + blobChunkBytes);
+          const range = contentRangeHeader(sent, end, bytes.byteLength);
+          if (!range) throw new Error("Invalid blob upload range.");
+          const chunk = new Uint8Array(end - sent);
+          chunk.set(bytes.subarray(sent, end));
+          const res = await putWithRetry(
+            blobPath,
+            {
+              "content-type": "application/octet-stream",
+              "content-range": range,
+            },
+            chunk,
+          );
+          const deltaSent = end - sent;
+          sent = end;
+          uploadedBytes += deltaSent;
+          options.onProgress?.(uploadedBytes, totalBytes);
+          // Server short-circuited (204) because blob was already deduplicated.
+          if (res.status === 204) {
+            if (sent < bytes.byteLength) {
+              uploadedBytes += bytes.byteLength - sent;
+              options.onProgress?.(uploadedBytes, totalBytes);
+            }
+            break;
+          }
+        }
       }),
     );
   }
@@ -168,6 +252,7 @@ export async function syncSectionedDelta(
       : await drive.update(link.itemId, { name: expectedName });
   }
 
+  options.onProgress?.(totalBytes, totalBytes);
   rememberSyncedManifest(link.itemId, manifest);
   return {
     link: {

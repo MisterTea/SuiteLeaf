@@ -1,5 +1,6 @@
-import type { CSSProperties, HTMLAttributes, ReactNode, SVGProps, TdHTMLAttributes } from "react";
-import { dashMultipliers, fontKerning, kernFeature, lineFrame, lineMarkerEnds, officeGradient, paintFontFamily, slidePointScale, straightGradientBackground, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
+import { useContext, useEffect, useState, type CSSProperties, type HTMLAttributes, type ReactNode, type SVGProps, type TdHTMLAttributes } from "react";
+import { collectSlmediaHashes, dashMultipliers, fontKerning, isSlmediaUri, kernFeature, lineFrame, lineMarkerEnds, officeGradient, paintFontFamily, slidePointScale, straightGradientBackground, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
+import { mediaBlobStore } from "../media-blob-store";
 import { AutofitBox, autofitSignature } from "./slide-autofit";
 import { marpMediaSrc } from "./slide-marp-import";
 import { drawnTextKind } from "./slide-drawn-text";
@@ -7,7 +8,7 @@ import { MarpCode, MarpMath, MarpRichText } from "./slide-marp-math";
 import { inheritedText, masterForSlide } from "./slide-master";
 import { isMasterPage, MASTER_PAGE_ID } from "./slide-master-view";
 import { SlideMasterLayer } from "./slide-master-ui";
-import { SlideMediaControls } from "./slide-media";
+import { SlideDriveItemContext, SlideMediaControls } from "./slide-media";
 import { ClippedSlidePicture } from "./slide-clipped-picture";
 import { clipPictureToSlide, croppedPictureStyle, pictureCropBox } from "./slide-picture-crop";
 import { clipBoxToSlide, offslideShiftStyle, type SlideClip } from "./slide-print-clip";
@@ -122,6 +123,35 @@ export function SlideFace({
   /** Print, thumbnails, and handouts draw media as a still picture. */
   still?: boolean;
 }) {
+  const driveItemId = useContext(SlideDriveItemContext);
+  const [, setMediaTick] = useState(0);
+  useEffect(() => {
+    if (!slide) return;
+    const hashes = collectSlmediaHashes(slide).filter((h) => !mediaBlobStore.peekObjectUrl(h));
+    if (!hashes.length) return;
+    let cancelled = false;
+    void Promise.all(
+      hashes.map((hash) =>
+        mediaBlobStore.resolveObjectUrl(hash, {
+          remote: driveItemId ? { itemId: driveItemId } : undefined,
+        }),
+      ),
+    ).then((resolved) => {
+      if (!cancelled && resolved.some(Boolean)) setMediaTick((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [slide, driveItemId]);
+
+  const resolveFaceSrc = (raw: string | undefined) => {
+    const mapped = marpMediaSrc(raw, deck.marpAssets);
+    if (mapped && isSlmediaUri(mapped)) {
+      return mediaBlobStore.peekObjectUrl(mapped) ?? mapped;
+    }
+    return mapped;
+  };
+
   const w = deck.width || 960;
   const h = deck.height || 540;
   const fitted = isFittedDeck(deck);
@@ -312,7 +342,7 @@ export function SlideFace({
                   overflow="hidden"
                 >
                   <image
-                    href={marpMediaSrc(el.src, deck.marpAssets)}
+                    href={resolveFaceSrc(el.src)}
                     x={cropBox.x}
                     y={cropBox.y}
                     width={cropBox.width}
@@ -327,7 +357,7 @@ export function SlideFace({
             return (
               <ClippedSlidePicture
                 el={el}
-                media={marpMediaSrc(el.src, deck.marpAssets) ?? el.src}
+                media={resolveFaceSrc(el.src) ?? el.src}
                 turnedFrame={turnedFrame}
                 inFrame={inFrame}
                 view={view}
@@ -348,7 +378,7 @@ export function SlideFace({
               {el.tile && !turnedFrame
                 ? inFrame(
                     <TiledPictureFill
-                      src={marpMediaSrc(el.src, deck.marpAssets) ?? ""}
+                      src={resolveFaceSrc(el.src) ?? ""}
                       tile={el.tile}
                       shape={{ width: el.width, height: el.height }}
                       label={el.alt || "Tiled picture"}
@@ -357,7 +387,7 @@ export function SlideFace({
                 : svgTurned ??
                   inFrame(
                     <img
-                      src={marpMediaSrc(el.src, deck.marpAssets)}
+                      src={resolveFaceSrc(el.src)}
                       alt={el.src.startsWith("data:image/emf") ? "" : el.alt || "Slide asset"}
                       draggable={false}
                       style={{ ...(fitted ? {} : { objectFit: "fill" }), ...crop }}

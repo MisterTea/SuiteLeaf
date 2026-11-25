@@ -2,7 +2,8 @@
 
 use std::{
     collections::BTreeMap,
-    fs,
+    fs::{self, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -197,18 +198,31 @@ impl Drive {
             self.commit_bytes(id, &who.id, mime, &[])?;
             return Ok(Some(self.get(who, id)?));
         }
+        let Some(finished) = self.append_partial_upload(id, start, total, chunk)? else {
+            return Ok(None);
+        };
+        self.commit_bytes(id, &who.id, mime, &finished)?;
+        Ok(Some(self.get(who, id)?))
+    }
+
+    /// Append one contiguous slice to an in-progress local partial upload.
+    /// Returns `Ok(None)` while more bytes remain, or `Ok(Some(all_bytes))` once `total` bytes
+    /// have been received. Writes to disk in O(chunk.len()) by appending instead of rewriting.
+    pub(crate) fn append_partial_upload(
+        &self,
+        key: &str,
+        start: usize,
+        total: usize,
+        chunk: &[u8],
+    ) -> DriveResult<Option<Vec<u8>>> {
         let finished = {
             let mut partials = self.partials.lock().expect("uploads");
             if start == 0 {
-                partials.insert(
-                    id.to_owned(),
-                    OpenUpload {
-                        total,
-                        bytes: chunk.to_vec(),
-                    },
-                );
+                let mut bytes = Vec::with_capacity(total.min(16 * 1024 * 1024));
+                bytes.extend_from_slice(chunk);
+                partials.insert(key.to_owned(), OpenUpload { total, bytes });
             } else {
-                let Some(entry) = partials.get_mut(id) else {
+                let Some(entry) = partials.get_mut(key) else {
                     return Err(DriveError::BadRequest(
                         "That upload does not continue the saved part.".into(),
                     ));
@@ -220,30 +234,44 @@ impl Drive {
                 }
                 entry.bytes.extend_from_slice(chunk);
             }
-            let entry = partials.get(id).expect("upload");
+            let entry = partials.get(key).expect("upload");
             if entry.bytes.len() < entry.total {
-                let copy = OpenUpload {
-                    total: entry.total,
-                    bytes: entry.bytes.clone(),
-                };
                 drop(partials);
-                self.store_partial(id, &copy);
+                if start == 0 {
+                    self.write_partial_start(key, total, chunk);
+                } else {
+                    self.append_partial_chunk(key, chunk);
+                }
                 return Ok(None);
             }
-            partials.remove(id).expect("upload").bytes
+            partials.remove(key).expect("upload").bytes
         };
-        self.clear_partial_file(id);
-        self.commit_bytes(id, &who.id, mime, &finished)?;
-        Ok(Some(self.get(who, id)?))
+        self.clear_partial_file(key);
+        Ok(Some(finished))
     }
 
-    fn store_partial(&self, id: &str, upload: &OpenUpload) {
+    fn write_partial_start(&self, id: &str, total: usize, chunk: &[u8]) {
         let Some(path) = self.partial_path(id) else {
             return;
         };
-        let mut bytes = (upload.total as u64).to_le_bytes().to_vec();
-        bytes.extend_from_slice(&upload.bytes);
-        let _ = fs::write(path, bytes);
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+        {
+            let _ = file.write_all(&(total as u64).to_le_bytes());
+            let _ = file.write_all(chunk);
+        }
+    }
+
+    fn append_partial_chunk(&self, id: &str, chunk: &[u8]) {
+        let Some(path) = self.partial_path(id) else {
+            return;
+        };
+        if let Ok(mut file) = OpenOptions::new().append(true).open(path) {
+            let _ = file.write_all(chunk);
+        }
     }
 
     fn clear_partial_file(&self, id: &str) {

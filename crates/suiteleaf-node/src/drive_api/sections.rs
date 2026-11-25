@@ -254,16 +254,45 @@ pub(super) async fn missing_blobs(
 /// `PUT /api/drive/items/{id}/blobs/{hash}`
 ///
 /// Stores a single verified section/media/font blob before committing a manifest.
+/// Supports `Content-Range: bytes start-end/total` for chunked uploads of large media blobs.
 pub(super) async fn put_blob(
     State(s): State<AppState>,
     RequireUser(user): RequireUser,
     Path((id, hash_str)): Path<(String, String)>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult<Response> {
     let who = principal(&user);
     let hash: Hash = hash_str
         .parse()
         .map_err(|_| DriveError::BadRequest("Invalid blob hash.".into()))?;
+    if let Some(range) = headers.get(header::CONTENT_RANGE) {
+        let header_text = range.to_str().unwrap_or("");
+        let Some((start, end, total)) = suitedrive::Drive::content_range(header_text) else {
+            return Err(DriveError::BadRequest("The upload range cannot be read.".into()).into());
+        };
+        if total == 0 {
+            if start != 0 || end != 0 || !body.is_empty() {
+                return Err(DriveError::BadRequest(
+                    "That upload does not continue the saved part.".into(),
+                )
+                .into());
+            }
+        } else if body.len() != end - start + 1 {
+            return Err(DriveError::BadRequest(
+                "That upload does not continue the saved part.".into(),
+            )
+            .into());
+        }
+        let done = blocking(&s.drive, move |d| {
+            d.put_item_blob_span(&who, &id, hash, start, total, &body)
+        })
+        .await?;
+        if done.is_none() {
+            return Ok((StatusCode::ACCEPTED, Json(json!({ "accepted": end + 1 }))).into_response());
+        }
+        return Ok((StatusCode::NO_CONTENT, ()).into_response());
+    }
     blocking(&s.drive, move |d| d.put_item_blob(&who, &id, hash, &body)).await?;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
