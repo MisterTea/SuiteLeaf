@@ -25,7 +25,7 @@ jobs:
     if: "!contains(github.event.head_commit.message, '[skip demo]') && !contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'live demo update')"
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url || steps.deployment_retry_2.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -68,18 +68,38 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          error_count: 15
         continue-on-error: true
 
-      # GitHub caps each publish at ten minutes. Retry a failed publish once
-      # with the existing artifact instead of rebuilding the application.
+      # GitHub Pages APIs occasionally return transient HTTP 500s. Back off
+      # before retrying with the existing artifact instead of rebuilding.
+      - name: Wait before retrying GitHub Pages deployment
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+
       - name: Retry GitHub Pages deployment
         if: steps.deployment.outcome == 'failure'
         id: deployment_retry
         uses: actions/deploy-pages@v4
+        with:
+          error_count: 15
+        continue-on-error: true
+
+      - name: Wait before final GitHub Pages deployment retry
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry.outcome == 'failure'
+        run: sleep 60
+
+      - name: Final retry of GitHub Pages deployment
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry.outcome == 'failure'
+        id: deployment_retry_2
+        uses: actions/deploy-pages@v4
+        with:
+          error_count: 15
 
       - name: Verify live deployment
         env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url || steps.deployment_retry_2.outputs.page_url }}
         run: |
           for attempt in {1..12}; do
             version=$(curl --fail --silent --show-error --location --connect-timeout 5 --max-time 10 \
