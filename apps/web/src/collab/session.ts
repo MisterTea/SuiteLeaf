@@ -172,13 +172,15 @@ export function useDocumentRoom({
     let roomChannel: ReturnType<typeof openRoomChannel> | undefined;
     const idleInBackground = () => document.visibilityState === "hidden" && queue.length === 0;
     let stop: RoomStop | undefined;
+    let seedingNow = false;
     const report = () => {
       if (link !== "open") {
         roomChannel?.close();
         roomChannel = undefined;
       }
-      noteUnackedEdits(queue.length);
-      onRecoveryRef.current?.(roomRecoveryText(link, queue.length, stop));
+      const waiting = queue.editCount;
+      noteUnackedEdits(waiting);
+      onRecoveryRef.current?.(roomRecoveryText(link, waiting, stop));
     };
     const publishSelection = (anchor: number, head: number) => {
       const message = localSelectionMessage(anchor, head);
@@ -219,22 +221,25 @@ export function useDocumentRoom({
     };
     const onUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin === "remote") return;
+      const isSeed = seedingNow || origin === "seed";
       const point = touch.current;
       const at = new Date().toISOString();
-      log?.current.push({
-        by: editorCollaborator(),
-        at,
-        unit:
-          point.unit === "cell" || point.unit === "slide" || point.unit === "comment"
-            ? point.unit
-            : "paragraph",
-        key: point.key,
-      });
+      if (!isSeed) {
+        log?.current.push({
+          by: editorCollaborator(),
+          at,
+          unit:
+            point.unit === "cell" || point.unit === "slide" || point.unit === "comment"
+              ? point.unit
+              : "paragraph",
+          key: point.key,
+        });
+      }
       const message: CollabUpdate = {
         id: "",
-        type: "update",
+        type: isSeed ? "seed" : "update",
         update: bytesToBase64(update),
-        unit: point.unit,
+        unit: isSeed ? "seed" : point.unit,
         key: point.key,
         at,
       };
@@ -369,11 +374,17 @@ export function useDocumentRoom({
         const multi = message.mode === "multiuser";
         if (wasMulti && !multi) onSoloRef.current();
         wasMulti = multi;
-        if (multi && message.seed && !seededThisSocket) {
+        const seeding = multi && !!message.seed && !seededThisSocket;
+        if (seeding) {
           seededThisSocket = true;
           markSeedDocument(doc);
         }
-        onDocRef.current(multi ? doc : null);
+        seedingNow = seeding;
+        try {
+          onDocRef.current(multi ? doc : null);
+        } finally {
+          seedingNow = false;
+        }
         flush();
         report();
       };

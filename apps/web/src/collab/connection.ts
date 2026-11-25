@@ -56,6 +56,15 @@ export class OutboundQueue {
     return this.items.length;
   }
 
+  /** Count of user edits (excluding initial room-seed chunks) still waiting to be stored. */
+  get editCount(): number {
+    let count = 0;
+    for (const item of this.items) {
+      if (item.message.type === "update") count += 1;
+    }
+    return count;
+  }
+
   /** Sends each update that has not been sent. A false return keeps the rest unsent. */
   drain(send: (message: CollabUpdate) => boolean) {
     let blocked = false;

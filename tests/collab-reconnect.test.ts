@@ -268,4 +268,18 @@ describe("room generations", () => {
     expect(read.pending().map((m) => m.generation)).toEqual([undefined, undefined]);
     expect(JSON.stringify(read.pending())).not.toContain("secret-value");
   });
+
+  it("counts only user edits and excludes initial room-seed chunks from editCount", () => {
+    const queue = new OutboundQueue();
+    queue.push(edit("seed-1", 1, "seed"));
+    queue.push(edit("seed-2", 1, "seed"));
+    expect(queue.length).toBe(2);
+    expect(queue.editCount).toBe(0);
+    queue.push(edit("edit-1", 1, "update"));
+    expect(queue.length).toBe(3);
+    expect(queue.editCount).toBe(1);
+    queue.settle("edit-1");
+    expect(queue.length).toBe(2);
+    expect(queue.editCount).toBe(0);
+  });
 });
