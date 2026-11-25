@@ -218,7 +218,7 @@ impl PostgresStore {
         Ok(Self {
             pool: Self::pool(url, 8)?,
             operation_locks: Self::pool(url, 2)?,
-            item_locks: Self::pool(url, 2)?,
+            item_locks: Self::pool(url, 8)?,
         })
     }
     fn pool(url: &str, size: u32) -> Result<BlockingPool> {

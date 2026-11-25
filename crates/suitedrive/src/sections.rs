@@ -352,8 +352,6 @@ impl Drive {
         total: usize,
         chunk: &[u8],
     ) -> DriveResult<Option<()>> {
-        let partial_key = format!("blob-{hash}");
-        let _lock = self.db.exclusive(&partial_key)?;
         if !matches!(self.role(who, id)?, Some(role) if role >= Role::Editor) {
             return Err(DriveError::Forbidden);
         }
@@ -366,7 +364,7 @@ impl Drive {
                 "That upload does not continue the saved part.".into(),
             ));
         }
-        // Short-circuit if this content-addressed blob is already stored.
+        // Short-circuit before acquiring any DB lock if this content-addressed blob is already stored.
         if self.blobs.has(&hash) {
             return Ok(Some(()));
         }
@@ -376,7 +374,10 @@ impl Drive {
                 .map_err(|_| DriveError::BadRequest("Blob hash mismatch.".into()))?;
             return Ok(Some(()));
         }
-        self.ensure_room_bytes(total as u64)?;
+        if start == 0 {
+            self.ensure_room_bytes(total as u64)?;
+        }
+        let partial_key = format!("blob-{hash}");
         if self.db.is_postgres() {
             return self.put_cloud_blob_span(who, &partial_key, hash, start, total, chunk);
         }

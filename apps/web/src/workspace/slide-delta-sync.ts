@@ -177,58 +177,70 @@ export async function syncSectionedDelta(
   };
 
   let uploadedBytes = 0;
-  const BATCH = 4;
-  for (let i = 0; i < missingHashes.length; i += BATCH) {
-    const slice = missingHashes.slice(i, i + BATCH);
-    await Promise.all(
-      slice.map(async (hash) => {
-        const bytes = changedBlobs.get(hash) ?? allBlobs.get(hash);
-        if (!bytes) return;
-        const blobPath = `/api/drive/items/${encodeURIComponent(link.itemId)}/blobs/${encodeURIComponent(hash)}`;
-        if (bytes.byteLength <= blobChunkBytes) {
-          const payload = new Uint8Array(bytes.byteLength);
-          payload.set(bytes);
-          await putWithRetry(
-            blobPath,
-            { "content-type": "application/octet-stream" },
-            payload,
-          );
-          uploadedBytes += bytes.byteLength;
+  const uploadOneBlob = async (hash: string) => {
+    const bytes = changedBlobs.get(hash) ?? allBlobs.get(hash);
+    if (!bytes) return;
+    const blobPath = `/api/drive/items/${encodeURIComponent(link.itemId)}/blobs/${encodeURIComponent(hash)}`;
+    if (bytes.byteLength <= blobChunkBytes) {
+      const payload = new Uint8Array(bytes.byteLength);
+      payload.set(bytes);
+      await putWithRetry(
+        blobPath,
+        { "content-type": "application/octet-stream" },
+        payload,
+      );
+      uploadedBytes += bytes.byteLength;
+      options.onProgress?.(uploadedBytes, totalBytes);
+      return;
+    }
+    // Upload large media blobs in bounded Content-Range chunks so they work through
+    // reverse proxies and report smooth progress.
+    let sent = 0;
+    while (sent < bytes.byteLength) {
+      const end = Math.min(bytes.byteLength, sent + blobChunkBytes);
+      const range = contentRangeHeader(sent, end, bytes.byteLength);
+      if (!range) throw new Error("Invalid blob upload range.");
+      const chunk = new Uint8Array(end - sent);
+      chunk.set(bytes.subarray(sent, end));
+      const res = await putWithRetry(
+        blobPath,
+        {
+          "content-type": "application/octet-stream",
+          "content-range": range,
+        },
+        chunk,
+      );
+      const deltaSent = end - sent;
+      sent = end;
+      uploadedBytes += deltaSent;
+      options.onProgress?.(uploadedBytes, totalBytes);
+      // Server short-circuited (204) because blob was already deduplicated.
+      if (res.status === 204) {
+        if (sent < bytes.byteLength) {
+          uploadedBytes += bytes.byteLength - sent;
           options.onProgress?.(uploadedBytes, totalBytes);
-          return;
         }
-        // Upload large media blobs in bounded Content-Range chunks so they work through
-        // reverse proxies and report smooth progress.
-        let sent = 0;
-        while (sent < bytes.byteLength) {
-          const end = Math.min(bytes.byteLength, sent + blobChunkBytes);
-          const range = contentRangeHeader(sent, end, bytes.byteLength);
-          if (!range) throw new Error("Invalid blob upload range.");
-          const chunk = new Uint8Array(end - sent);
-          chunk.set(bytes.subarray(sent, end));
-          const res = await putWithRetry(
-            blobPath,
-            {
-              "content-type": "application/octet-stream",
-              "content-range": range,
-            },
-            chunk,
-          );
-          const deltaSent = end - sent;
-          sent = end;
-          uploadedBytes += deltaSent;
-          options.onProgress?.(uploadedBytes, totalBytes);
-          // Server short-circuited (204) because blob was already deduplicated.
-          if (res.status === 204) {
-            if (sent < bytes.byteLength) {
-              uploadedBytes += bytes.byteLength - sent;
-              options.onProgress?.(uploadedBytes, totalBytes);
-            }
-            break;
-          }
-        }
-      }),
-    );
+        break;
+      }
+    }
+  };
+
+  const smallHashes: string[] = [];
+  const largeHashes: string[] = [];
+  for (const hash of missingHashes) {
+    const bytes = changedBlobs.get(hash) ?? allBlobs.get(hash);
+    if (!bytes) continue;
+    if (bytes.byteLength > blobChunkBytes) largeHashes.push(hash);
+    else smallHashes.push(hash);
+  }
+
+  const SMALL_BATCH = 4;
+  for (let i = 0; i < smallHashes.length; i += SMALL_BATCH) {
+    await Promise.all(smallHashes.slice(i, i + SMALL_BATCH).map(uploadOneBlob));
+  }
+  const LARGE_BATCH = 2;
+  for (let i = 0; i < largeHashes.length; i += LARGE_BATCH) {
+    await Promise.all(largeHashes.slice(i, i + LARGE_BATCH).map(uploadOneBlob));
   }
 
   const headers: Record<string, string> = {
