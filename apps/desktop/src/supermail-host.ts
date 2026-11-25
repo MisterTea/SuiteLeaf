@@ -1,11 +1,57 @@
 import { DatabaseSync } from "node:sqlite";
 import { join, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
-import { app, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { mkdir, readFile, writeFile, stat, rm } from "node:fs/promises";
+import { existsSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 
 let currentUserId = "default";
 const userDbs = new Map<string, DatabaseSync>();
+
+interface SupermailCore {
+  invoke: (cmd: string, argsJson: string) => Promise<string>;
+  initDatabase: (dbPath: string) => void;
+  dbSelect: (query: string, paramsJson: string) => string;
+  dbExecute: (query: string, paramsJson: string) => string;
+}
+
+let rustCore: SupermailCore | null = null;
+
+export function loadSupermailCoreAddon(): SupermailCore | null {
+  if (rustCore) return rustCore;
+
+  const searchDirs = [
+    resolve(app.getAppPath(), "packages/supermail/crates/supermail-core"),
+    resolve(__dirname, "../../packages/supermail/crates/supermail-core"),
+    resolve(process.cwd(), "packages/supermail/crates/supermail-core"),
+    resolve(process.resourcesPath, "supermail-core"),
+    resolve(process.resourcesPath, "packages/supermail/crates/supermail-core"),
+  ];
+
+  const req = createRequire(import.meta.url);
+
+  for (const dir of searchDirs) {
+    if (existsSync(dir)) {
+      try {
+        const files = readdirSync(dir);
+        for (const file of files) {
+          if (file.endsWith(".node")) {
+            const fullPath = join(dir, file);
+            rustCore = req(fullPath) as SupermailCore;
+            return rustCore;
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `[SuperMailHost] Failed to inspect or load addon from ${dir}:`,
+          err,
+        );
+      }
+    }
+  }
+  return null;
+}
 
 export function getUserSupermailDir(userId = currentUserId): string {
   const safeId = createHash("sha256")
@@ -59,11 +105,33 @@ export async function initSupermailHost(): Promise<void> {
 
   getDb(currentUserId);
 
+  const core = loadSupermailCoreAddon();
+  if (core) {
+    try {
+      core.initDatabase(join(userDir, "velo.db"));
+    } catch (err) {
+      console.warn(
+        "[SuperMailHost] Failed to initialize database in Rust core:",
+        err,
+      );
+    }
+  }
+
   ipcMain.handle("supermail:setUser", async (_event, userId: string) => {
     currentUserId = userId || "default";
     const dir = getUserSupermailDir(currentUserId);
     await mkdir(dir, { recursive: true });
     getDb(currentUserId);
+    if (rustCore) {
+      try {
+        rustCore.initDatabase(join(dir, "velo.db"));
+      } catch (err) {
+        console.warn(
+          "[SuperMailHost] Failed to switch user DB in Rust core:",
+          err,
+        );
+      }
+    }
     return { ok: true, userDir: dir };
   });
 
@@ -178,6 +246,79 @@ export async function initSupermailHost(): Promise<void> {
         defaultPath: options?.defaultPath,
       });
       return res.canceled ? null : res.filePaths;
+    },
+  );
+
+  ipcMain.handle("supermail:window:minimize", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.minimize();
+  });
+
+  ipcMain.handle("supermail:window:toggleMaximize", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+
+  ipcMain.handle("supermail:window:close", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.close();
+  });
+
+  ipcMain.handle(
+    "supermail:window:openThread",
+    async (_event, threadId: string, accountId: string) => {
+      const win = new BrowserWindow({
+        width: 800,
+        height: 700,
+        webPreferences: {
+          preload: resolve(__dirname, "../preload/index.cjs"),
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      });
+      const query = `?thread=${encodeURIComponent(threadId)}&account=${encodeURIComponent(accountId)}`;
+      const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+      if (isDev && process.env.ELECTRON_RENDERER_URL) {
+        win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/mail${query}`);
+      } else {
+        win.loadFile(resolve(__dirname, "../renderer/index.html"), {
+          hash: `/mail${query}`,
+        });
+      }
+    },
+  );
+
+  const handleInvoke = async (
+    event: Electron.IpcMainInvokeEvent,
+    cmd: string,
+    args: Record<string, unknown> = {},
+  ) => {
+    if (cmd === "close_splashscreen" || cmd === "set_tray_tooltip") {
+      return undefined;
+    }
+    if (cmd === "open_devtools") {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      win?.webContents.openDevTools();
+      return undefined;
+    }
+
+    const core = loadSupermailCoreAddon();
+    if (!core) {
+      throw new Error(
+        `Command "${cmd}" is not supported without native supermail-core addon.`,
+      );
+    }
+
+    const res = await core.invoke(cmd, JSON.stringify(args ?? {}));
+    return JSON.parse(res);
+  };
+
+  ipcMain.handle(
+    "supermail:invoke",
+    async (event, cmd: string, args: Record<string, unknown> = {}) => {
+      return handleInvoke(event, cmd, args);
     },
   );
 }

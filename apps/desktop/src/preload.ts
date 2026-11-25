@@ -167,5 +167,17 @@ contextBridge.exposeInMainWorld("supermail", {
     open: (options?: unknown) => ipcRenderer.invoke("supermail:dialog:open", options),
   },
   invoke: (cmd: string, args: Record<string, unknown> = {}) =>
-    ipcRenderer.invoke(`supermail:invoke:${cmd}`, args),
+    ipcRenderer.invoke("supermail:invoke", cmd, args),
+  window: {
+    minimize: () => ipcRenderer.invoke("supermail:window:minimize"),
+    toggleMaximize: () => ipcRenderer.invoke("supermail:window:toggleMaximize"),
+    close: () => ipcRenderer.invoke("supermail:window:close"),
+    openThreadWindow: (threadId: string, accountId: string) =>
+      ipcRenderer.invoke("supermail:window:openThread", threadId, accountId),
+  },
+  on: (channel: string, callback: (...args: unknown[]) => void) => {
+    const subscription = (_event: unknown, ...args: unknown[]) => callback(...args);
+    ipcRenderer.on(channel, subscription);
+    return () => ipcRenderer.removeListener(channel, subscription);
+  },
 });

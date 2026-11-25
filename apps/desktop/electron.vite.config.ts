@@ -1,44 +1,20 @@
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { conditionalFormatDefaults } from "../web/conditional-format-defaults";
 import { rollupWarnings } from "../web/build-warnings";
 import { dictionaryAlias, officeDeps } from "../web/vite.config";
 import { brandDevApp } from "./src/brand-dev-app";
+import { supermailAliases, supermailPlugins } from "../web/supermail/vite";
 
 brandDevApp();
 
-const supermailAppPath = resolve(import.meta.dirname, "../../packages/supermail/src/App.tsx");
-const supermailDepsExist = existsSync(
-  resolve(import.meta.dirname, "../../packages/supermail/node_modules/@tanstack/react-router"),
+const supermailStub = resolve(
+  import.meta.dirname,
+  "../web/src/mail/SuperMailStub.tsx",
 );
-const hasSupermailSource = existsSync(supermailAppPath) && supermailDepsExist;
 
-const supermailAliases = hasSupermailSource
-  ? [
-      {
-        find: "@supermail",
-        replacement: resolve(import.meta.dirname, "../../packages/supermail/src"),
-      },
-      {
-        find: "@",
-        replacement: resolve(import.meta.dirname, "../../packages/supermail/src"),
-      },
-      {
-        find: "@automerge/automerge",
-        replacement: resolve(
-          import.meta.dirname,
-          "../../packages/supermail/node_modules/@automerge/automerge/dist/mjs/entrypoints/fullfat_base64.js",
-        ),
-      },
-    ]
-  : [
-      {
-        find: "@supermail/App",
-        replacement: resolve(import.meta.dirname, "../web/src/mail/SuperMailStub.tsx"),
-      },
-    ];
+const supermailPluginList = await supermailPlugins();
 
 export default defineConfig({
   main: {
@@ -66,7 +42,11 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(import.meta.dirname, "../web"),
-    plugins: [react(), conditionalFormatDefaults()],
+    plugins: [
+      react(),
+      conditionalFormatDefaults(),
+      ...supermailPluginList,
+    ],
     resolve: {
       alias: [
         {
@@ -81,7 +61,7 @@ export default defineConfig({
           find,
           replacement,
         })),
-        ...supermailAliases,
+        ...supermailAliases(supermailStub),
       ],
     },
     optimizeDeps: {
