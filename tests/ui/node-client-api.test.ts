@@ -438,6 +438,33 @@ describe("drive files", () => {
     });
   });
 
+  it("opens a sectioned v2 slide deck via sections/bootstrap in one round-trip", async () => {
+    const { openDriveFile } = await signedIn();
+    const { splitPresentation } = await import("@suiteleaf/core");
+    const deck = createFile("slide", "Intro");
+    const parts = splitPresentation(deck);
+    route = ({ url }) => {
+      if (url.endsWith("/api/drive/items/s1/sections/bootstrap")) {
+        return Response.json({
+          sectioned: true,
+          versionId: "v9",
+          manifest: parts.manifest,
+          global: parts.global,
+          slides: {},
+        });
+      }
+      return undefined;
+    };
+    const record = await openDriveFile(item({ id: "s1", name: "lec-01-intro.slslides", headVersionId: "v9" }) as never);
+    expect(record.file.kind).toBe("slide");
+    expect(record.file.title).toBe("Intro");
+    if (record.file.kind === "slide") {
+      expect(record.file.content.slides.length).toBe(deck.content.slides.length);
+    }
+    expect(record.drive?.versionId).toBe("v9");
+    expect(calls.some((c) => c.url.endsWith("/api/drive/items/s1/content"))).toBe(false);
+  });
+
   it("uploads a new version, renames to the title, and reports conflicts", async () => {
     const { uploadDriveFile, DriveConflict } = await signedIn();
     const file = createFile("doc", "Report");

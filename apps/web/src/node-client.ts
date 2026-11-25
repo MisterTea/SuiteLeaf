@@ -17,6 +17,7 @@ import {
   type FileRecord,
   type SuiteFile,
 } from "@suiteleaf/core";
+import { openSectionedSlideFile } from "./editors/slide-stream-loader";
 import type { AccessExplanation } from "./drive/access-explanation";
 import {
   decideClientSession,
@@ -589,8 +590,27 @@ export async function openDriveFile(
   signal?: AbortSignal,
 ): Promise<FileRecord> {
   const { url } = requireSession();
-  const { bytes, versionId } = await drive.readBytes(item.id, signal);
   const expectedKind = kindFromName(item.name);
+
+  if (expectedKind === "slide") {
+    const sectioned = await openSectionedSlideFile(item.id, api, signal);
+    if (sectioned) {
+      const { rememberSyncedManifest } = await import("./workspace/slide-delta-sync");
+      rememberSyncedManifest(item.id, sectioned.manifest);
+      return {
+        file: sectioned.file,
+        drive: {
+          nodeUrl: url,
+          itemId: item.id,
+          versionId: sectioned.versionId ?? item.headVersionId ?? undefined,
+          syncedAt: sectioned.file.updatedAt,
+          name: item.name,
+        },
+      };
+    }
+  }
+
+  const { bytes, versionId } = await drive.readBytes(item.id, signal);
   let file: SuiteFile;
   if (expectedKind === "slide" && isSlidePackageBytes(bytes)) {
     const parts = await unpackSlidePackageZip(bytes);

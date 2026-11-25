@@ -1,8 +1,10 @@
 import {
+  assemblePresentation,
   slideGlobalSchema,
   slidePackageManifestSchema,
   slideSchema,
   type Slide,
+  type SlideFile,
   type SlideGlobal,
   type SlidePackageManifest,
 } from "@suiteleaf/core";
@@ -62,6 +64,12 @@ export class SlideStreamLoader {
     for (const [id, raw] of Object.entries(body.slides ?? {})) {
       slides[id] = slideSchema.parse(raw);
       this.loaded.add(id);
+    }
+    if (Object.keys(slides).length === 0 && global.slides) {
+      for (const [id, slide] of Object.entries(global.slides)) {
+        slides[id] = slide;
+        this.loaded.add(id);
+      }
     }
     return {
       sectioned: true,
@@ -206,4 +214,90 @@ export class SlideStreamLoader {
       return null;
     }
   }
+}
+
+export interface OpenedSectionedSlide {
+  file: SlideFile;
+  manifest: SlidePackageManifest;
+  versionId?: string;
+}
+
+/**
+ * Load a sectioned v2 `.slslides` file from SuiteDrive via `/sections/bootstrap`
+ * (and `/sections/stream` if legacy per-slide blobs remain). Returns `null` when
+ * the item is a legacy v1 file or the server does not support sectioned endpoints.
+ */
+export async function openSectionedSlideFile(
+  itemId: string,
+  apiFetch: ApiFetch,
+  signal?: AbortSignal,
+): Promise<OpenedSectionedSlide | null> {
+  let boot: {
+    sectioned?: boolean;
+    versionId?: string | null;
+    manifest?: unknown;
+    global?: unknown;
+    slides?: Record<string, unknown>;
+  };
+  try {
+    const res = await apiFetch(
+      `/api/drive/items/${encodeURIComponent(itemId)}/sections/bootstrap`,
+      signal ? { signal } : {},
+    );
+    boot = (await res.json()) as typeof boot;
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    const status =
+      err && typeof err === "object" && "status" in err && typeof err.status === "number"
+        ? err.status
+        : undefined;
+    if (status === 404 || status === 405) return null;
+    throw err;
+  }
+  if (!boot?.sectioned || !boot.manifest || !boot.global) return null;
+
+  const manifest = slidePackageManifestSchema.parse(boot.manifest);
+  const global = slideGlobalSchema.parse(boot.global);
+  const slides: Record<string, Slide> = {};
+  if (global.slides) {
+    for (const [id, slide] of Object.entries(global.slides)) {
+      slides[id] = slide;
+    }
+  }
+  for (const [id, raw] of Object.entries(boot.slides ?? {})) {
+    slides[id] = slideSchema.parse(raw);
+  }
+
+  // Legacy v2 decks with separate per-slide blobs: stream any slides missing from global/bootstrap.
+  const missing = manifest.slideOrder.filter((id) => !slides[id]);
+  if (missing.length > 0) {
+    const loaded = Object.keys(slides);
+    const params = new URLSearchParams();
+    if (loaded.length > 0) params.set("exclude", loaded.join(","));
+    if (boot.versionId) params.set("version", boot.versionId);
+    const qs = params.toString();
+    const streamRes = await apiFetch(
+      `/api/drive/items/${encodeURIComponent(itemId)}/sections/stream${qs ? `?${qs}` : ""}`,
+      signal ? { signal } : {},
+    );
+    const ndjson = await streamRes.text();
+    for (const line of ndjson.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const parsed = JSON.parse(trimmed) as { id?: string; data?: unknown };
+      if (typeof parsed.id === "string" && parsed.data !== undefined) {
+        slides[parsed.id] = slideSchema.parse(parsed.data);
+      }
+    }
+  }
+
+  const file = assemblePresentation(
+    { manifest, global, slides, blobs: new Map() },
+    { hydrateMedia: false },
+  );
+  return {
+    file,
+    manifest,
+    versionId: boot.versionId ?? undefined,
+  };
 }
