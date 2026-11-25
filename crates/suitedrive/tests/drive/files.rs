@@ -306,14 +306,47 @@ fn delete_forever_removes_a_trashed_file_and_its_bytes() {
         .drive
         .create(&ann, Some(&folder.id), "Still here.sldoc", "file", None)
         .unwrap();
+    let inside_saved = n
+        .drive
+        .write(&ann, &inside.id, None, None, b"folder-child-bytes")
+        .unwrap();
+    let inside_hash: Hash = inside_saved.content_hash.unwrap().parse().unwrap();
+    let sub = n
+        .drive
+        .create(&ann, Some(&folder.id), "Subfolder", "folder", None)
+        .unwrap();
+    let nested = n
+        .drive
+        .create(&ann, Some(&sub.id), "Nested.sldoc", "file", None)
+        .unwrap();
+    let nested_saved = n
+        .drive
+        .write(&ann, &nested.id, None, None, b"nested-child-bytes")
+        .unwrap();
+    let nested_hash: Hash = nested_saved.content_hash.unwrap().parse().unwrap();
+
+    n.drive.delete_forever(&ann, &folder.id).unwrap();
     assert!(matches!(
-        n.drive.delete_forever(&ann, &folder.id),
-        Err(DriveError::BadRequest(_))
+        n.drive.get(&ann, &folder.id),
+        Err(DriveError::NotFound)
     ));
-    assert_eq!(
-        n.drive.get(&ann, &inside.id).unwrap().parent_id.as_deref(),
-        Some(folder.id.as_str())
-    );
+    assert!(matches!(
+        n.drive.get(&ann, &inside.id),
+        Err(DriveError::NotFound)
+    ));
+    assert!(matches!(
+        n.drive.get(&ann, &sub.id),
+        Err(DriveError::NotFound)
+    ));
+    assert!(matches!(
+        n.drive.get(&ann, &nested.id),
+        Err(DriveError::NotFound)
+    ));
+    assert!(!n.drive.blobs().has(&inside_hash));
+    assert!(!n.drive.blobs().has(&nested_hash));
+    // Unrelated copy outside the folder remains intact.
+    let (_, copy_bytes) = n.drive.read(&ann, &copy.id, None).unwrap();
+    assert_eq!(copy_bytes, b"Thursday: Rosa");
 }
 
 #[test]

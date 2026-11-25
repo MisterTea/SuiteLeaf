@@ -1173,8 +1173,9 @@ export function DriveBrowser({
           }}
         >
           <p className="dialog-note">
-            &ldquo;{asking.item.name}&rdquo; will be deleted forever. This
-            cannot be undone.
+            &ldquo;{asking.item.name}&rdquo;
+            {asking.item.kind === "folder" ? " and everything inside it" : ""}{" "}
+            will be deleted forever. This cannot be undone.
           </p>
         </DriveDialog>
       ) : asking?.action === "delete-forever-bulk" ? (
@@ -1190,7 +1191,20 @@ export function DriveBrowser({
                 `Deleting ${targets.length} items forever`,
                 targets,
                 async (target) => {
-                  await drive.deleteForever(target.id);
+                  try {
+                    await drive.deleteForever(target.id);
+                  } catch (err) {
+                    // A child item may already have been recursively deleted with its parent folder.
+                    if (
+                      err &&
+                      typeof err === "object" &&
+                      "status" in err &&
+                      err.status === 404
+                    ) {
+                      return;
+                    }
+                    throw err;
+                  }
                 },
               );
               const deletedIds = new Set(deleted.map((t) => t.id));

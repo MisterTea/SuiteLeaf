@@ -311,8 +311,9 @@ impl Drive {
             .collect())
     }
 
-    /// Remove a trashed item the caller owns, plus its versions, grants, and
-    /// any blobs no other version still uses.
+    /// Remove a trashed item the caller owns — recursively removing any children
+    /// and subfolders if it is a folder — plus all versions, grants, and any blobs
+    /// no other version still uses.
     pub fn delete_forever(&self, who: &Principal, id: &str) -> DriveResult<()> {
         let row = self.item_row(id)?;
         if text(&row, "ownerId").as_deref() != Some(who.id.as_str()) {
@@ -323,57 +324,89 @@ impl Drive {
                 "Move it to Trash before deleting it forever.".into(),
             ));
         }
-        let children = self.db.query(
-            "SELECT id FROM drive_item WHERE parentId = ?1 LIMIT 1",
-            &[Value::Text(id.to_owned())],
-        )?;
-        if !children.is_empty() {
-            return Err(DriveError::BadRequest(
-                "This folder still has something in it. Move those out, or delete them forever, before deleting the folder.".into(),
-            ));
+
+        // Recursively collect the item and all descendants (files and nested subfolders).
+        let mut all_ids = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut queue = std::collections::VecDeque::new();
+        seen.insert(id.to_owned());
+        queue.push_back(id.to_owned());
+        while let Some(current_id) = queue.pop_front() {
+            let children = self.db.query(
+                "SELECT id FROM drive_item WHERE parentId = ?1",
+                &[Value::Text(current_id.clone())],
+            )?;
+            for child in children {
+                if let Some(child_id) = text(&child, "id")
+                    && seen.insert(child_id.clone())
+                {
+                    queue.push_back(child_id);
+                }
+            }
+            all_ids.push(current_id);
         }
-        let versions = self.db.query(
-            "SELECT id, contentHash FROM drive_version WHERE itemId = ?1",
-            &[Value::Text(id.to_owned())],
-        )?;
-        let version_ids: Vec<String> = versions.iter().filter_map(|row| text(row, "id")).collect();
-        let hashes: Vec<String> = versions
-            .iter()
-            .filter_map(|row| text(row, "contentHash"))
-            .collect();
-        let acls = self.column_values("SELECT id FROM drive_acl WHERE itemId = ?1", "id", id)?;
-        let mut transient_rows = Vec::new();
-        for table in [
-            "drive_upload_chunk",
-            "drive_room_update",
-            "drive_signal",
-            "drive_open_presence",
-            "drive_presence",
-        ] {
-            transient_rows.push((
-                table,
-                self.column_values(
+
+        let mut version_ids = Vec::new();
+        let mut hashes = Vec::new();
+        let mut acls = Vec::new();
+        let mut transient_rows: Vec<(&str, Vec<String>)> = Vec::new();
+        let mut comments = Vec::new();
+        let mut notices = Vec::new();
+        let mut links = Vec::new();
+
+        for target_id in &all_ids {
+            let versions = self.db.query(
+                "SELECT id, contentHash FROM drive_version WHERE itemId = ?1",
+                &[Value::Text(target_id.clone())],
+            )?;
+            version_ids.extend(versions.iter().filter_map(|row| text(row, "id")));
+            hashes.extend(versions.iter().filter_map(|row| text(row, "contentHash")));
+            acls.extend(self.column_values(
+                "SELECT id FROM drive_acl WHERE itemId = ?1",
+                "id",
+                target_id,
+            )?);
+            for table in [
+                "drive_upload_chunk",
+                "drive_room_update",
+                "drive_signal",
+                "drive_open_presence",
+                "drive_presence",
+            ] {
+                let ids = self.column_values(
                     &format!("SELECT id FROM {table} WHERE itemId = ?1"),
                     "id",
-                    id,
-                )?,
-            ));
+                    target_id,
+                )?;
+                if !ids.is_empty() {
+                    transient_rows.push((table, ids));
+                }
+            }
+            comments.extend(self.column_values(
+                "SELECT id FROM drive_comment WHERE itemId = ?1",
+                "id",
+                target_id,
+            )?);
+            notices.extend(self.column_values(
+                "SELECT id FROM drive_notice WHERE itemId = ?1",
+                "id",
+                target_id,
+            )?);
+            links.extend(self.column_values(
+                "SELECT token FROM drive_respond_link WHERE itemId = ?1",
+                "token",
+                target_id,
+            )?);
         }
-        let comments =
-            self.column_values("SELECT id FROM drive_comment WHERE itemId = ?1", "id", id)?;
-        let notices =
-            self.column_values("SELECT id FROM drive_notice WHERE itemId = ?1", "id", id)?;
-        let links = self.column_values(
-            "SELECT token FROM drive_respond_link WHERE itemId = ?1",
-            "token",
-            id,
-        )?;
+
         self.db.transact(|tx| {
-            tx.delete("drive_upload", id)?;
-            tx.delete("drive_room", id)?;
+            for target_id in &all_ids {
+                tx.delete("drive_upload", target_id)?;
+                tx.delete("drive_room", target_id)?;
+            }
             for (table, ids) in &transient_rows {
-                for id in ids {
-                    tx.delete(table, id)?;
+                for row_id in ids {
+                    tx.delete(table, row_id)?;
                 }
             }
             for version_id in &version_ids {
@@ -391,8 +424,10 @@ impl Drive {
             for token in &links {
                 tx.delete("drive_respond_link", token)?;
             }
-            tx.delete("drive_public_link", id)?;
-            tx.delete("drive_item", id)?;
+            for target_id in &all_ids {
+                tx.delete("drive_public_link", target_id)?;
+                tx.delete("drive_item", target_id)?;
+            }
             Ok(())
         })?;
         self.release_unreferenced_blobs(&hashes)?;
