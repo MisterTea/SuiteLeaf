@@ -22,6 +22,7 @@ const decoder = new TextDecoder();
 export class DesktopSlidePackageReader {
   private entries: Map<string, ZipCentralEntry> | null = null;
   private manifestCache: SlidePackageManifest | null = null;
+  private globalSlidesCache: Record<string, Slide> | null = null;
 
   constructor(private filePath: string) {}
 
@@ -71,13 +72,18 @@ export class DesktopSlidePackageReader {
         JSON.parse(decoder.decode(globalBytes)),
       );
       this.manifestCache = manifest;
+      this.globalSlidesCache = global.slides ?? null;
 
       const targetId =
         activeSlideId && manifest.slides[activeSlideId]
           ? activeSlideId
           : manifest.slideOrder[0];
       const slides: Record<string, Slide> = {};
-      if (targetId) {
+      if (global.slides) {
+        for (const id of manifest.slideOrder) {
+          if (global.slides[id]) slides[id] = global.slides[id];
+        }
+      } else if (targetId) {
         const slideEntry = this.entries.get(`slides/${targetId}.json`);
         if (slideEntry) {
           const slideBytes = await readZipEntry(slideEntry, readRange);
@@ -92,14 +98,26 @@ export class DesktopSlidePackageReader {
 
   /** Extract a single slide JSON on demand. */
   async readSlide(slideId: string): Promise<Slide | null> {
+    if (this.globalSlidesCache?.[slideId]) {
+      return this.globalSlidesCache[slideId];
+    }
     return this.withRange(async (size, readRange) => {
       if (!this.entries) {
         this.entries = await readZipCentralDirectory(size, readRange);
       }
       const entry = this.entries.get(`slides/${slideId}.json`);
-      if (!entry) return null;
-      const bytes = await readZipEntry(entry, readRange);
-      return slideSchema.parse(JSON.parse(decoder.decode(bytes)));
+      if (entry) {
+        const bytes = await readZipEntry(entry, readRange);
+        return slideSchema.parse(JSON.parse(decoder.decode(bytes)));
+      }
+      const globalEntry = this.entries.get("global.json");
+      if (!globalEntry) return null;
+      const globalBytes = await readZipEntry(globalEntry, readRange);
+      const global = slideGlobalSchema.parse(
+        JSON.parse(decoder.decode(globalBytes)),
+      );
+      this.globalSlidesCache = global.slides ?? null;
+      return global.slides?.[slideId] ?? null;
     });
   }
 

@@ -42,8 +42,8 @@ export const slideSectionRefSchema = z.object({
 export type SlideSectionRef = z.infer<typeof slideSectionRefSchema>;
 
 export const slideSummarySchema = z.object({
-  hash: z.string().regex(BLAKE3_HEX_RE),
-  size: z.number().int().nonnegative(),
+  hash: z.string().regex(BLAKE3_HEX_RE).optional(),
+  size: z.number().int().nonnegative().optional(),
   title: z.string().optional(),
   layout: z
     .enum([
@@ -79,11 +79,15 @@ export const slideFontEntrySchema = z.object({
 });
 export type SlideFontEntry = z.infer<typeof slideFontEntrySchema>;
 
-export const slideGlobalSchema = presentationSchema.omit({
-  slides: true,
-  slideOrder: true,
-  fonts: true,
-});
+export const slideGlobalSchema = presentationSchema
+  .omit({
+    slides: true,
+    slideOrder: true,
+    fonts: true,
+  })
+  .extend({
+    slides: z.record(z.string(), slideSchema).optional(),
+  });
 export type SlideGlobal = z.infer<typeof slideGlobalSchema>;
 
 export const slideHistorySchema = z.object({

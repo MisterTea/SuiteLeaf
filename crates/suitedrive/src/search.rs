@@ -406,6 +406,27 @@ fn snippet_around(text: &str, query: &str) -> String {
 impl Drive {
     fn sectioned_slide_words(&self, manifest: &crate::sections::SlideSectionManifest) -> String {
         let mut words = Words::new();
+        // When slides are merged into global.json (no per-slide blob hashes), index them from global.json.
+        if manifest.kind == "slide"
+            && manifest
+                .section_order()
+                .iter()
+                .all(|sid| manifest.section_hash(sid).is_none())
+            && let Ok(ghash) = manifest.global.hash.parse::<crate::Hash>()
+            && let Ok(Some(gbytes)) = self.blobs.get(&ghash)
+            && let Ok(gval) = serde_json::from_slice::<serde_json::Value>(&gbytes)
+            && let Some(slides) = gval.get("slides").and_then(|v| v.as_object())
+        {
+            for section_id in manifest.section_order() {
+                if words.full() {
+                    break;
+                }
+                if let Some(slide) = slides.get(section_id) {
+                    collect_slide_object(slide, &mut words);
+                }
+            }
+            return words.text;
+        }
         for section_id in manifest.section_order() {
             if words.full() {
                 break;

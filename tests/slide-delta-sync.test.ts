@@ -100,10 +100,10 @@ describe("web slide delta sync & background streaming", () => {
       name: "Roadmap.slslides",
     };
 
-    // Initial sync uploads global + 4 slides = 5 blobs (thumbnails inline in manifest, 5KB PNG under 4MB threshold)
+    // Initial sync uploads only global.json (with all 4 slides merged inside) = 1 blob!
     const first = await syncSlideDelta(deck, link, { apiFetch: mockApi });
     expect(first.link.versionId).toBe("v2");
-    expect(first.uploadedBlobs).toBe(5);
+    expect(first.uploadedBlobs).toBe(1);
 
     // Edit ONLY slide-3
     uploadedHashes.length = 0;
@@ -113,7 +113,7 @@ describe("web slide delta sync & background streaming", () => {
 
     const second = await syncSlideDelta(edited, first.link, { apiFetch: mockApi });
     expect(second.link.versionId).toBe("v3");
-    // Only slide-3 JSON is uploaded (thumbnail lives in manifest.json!)
+    // Only updated global.json is uploaded (externalized videos/media are untouched)
     expect(second.uploadedBlobs).toBe(1);
     expect(uploadedHashes).toHaveLength(1);
   });
@@ -142,7 +142,7 @@ describe("web slide delta sync & background streaming", () => {
           .map((id) =>
             JSON.stringify({
               id,
-              hash: parts.manifest.slides[id].hash,
+              hash: parts.manifest.slides[id].hash ?? parts.manifest.global.hash,
               data: parts.slides[id],
             }),
           )

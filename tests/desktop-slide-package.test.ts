@@ -65,11 +65,11 @@ describe("desktop FileStore v2 slslides auto-upgrade & random-access reader", ()
         (reloaded?.file as SlideFile).content.slides["s2"].elements[0].content,
       ).toBe("Updated on desktop");
 
-      // Random-access reader bootstraps only s1 and fetches s2 on demand
+      // Random-access reader loads manifest + global.json (with merged slides) without reading media blobs
       const reader = new DesktopSlidePackageReader(diskPath);
       const boot = await reader.bootstrap(s1);
       expect(boot.manifest.version).toBe(2);
-      expect(Object.keys(boot.slides)).toEqual([s1]);
+      expect(Object.keys(boot.slides)).toEqual([s1, "s2"]);
       expect(boot.manifest.slides["s2"].thumbSvg).toContain("<svg");
 
       const s2 = await reader.readSlide("s2");

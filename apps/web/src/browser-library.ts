@@ -184,7 +184,7 @@ export class Library extends Dexie {
         for (const slideId of delta.changedSlideIds) {
           const bytes = parts.slideBytes[slideId];
           const summary = parts.manifest.slides[slideId];
-          if (bytes && summary) {
+          if (bytes && summary?.hash) {
             await this.slideSections.put({
               key: `${fileId}:slide:${slideId}`,
               id: fileId,

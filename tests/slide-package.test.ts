@@ -137,7 +137,7 @@ describe("slslides v2 sectioned package", () => {
     expect(parsedV1.content.slideOrder).toEqual(deck.content.slideOrder);
   });
 
-  it("supports O(1) random-access ZIP reading of manifest, global, and a single slide without reading the whole file", async () => {
+  it("supports O(1) random-access ZIP reading of manifest and global (with merged slides) without reading media blobs", async () => {
     const deck = makeDeckWithMedia();
     const zipBytes = await packSlidePackageZip(deck);
 
@@ -150,37 +150,36 @@ describe("slslides v2 sectioned package", () => {
     const dir = await readZipCentralDirectory(zipBytes.byteLength, readRange);
     expect(dir.has("manifest.json")).toBe(true);
     expect(dir.has("global.json")).toBe(true);
-    expect(dir.has("slides/slide-2.json")).toBe(true);
+    expect(dir.has("slides/slide-2.json")).toBe(false);
 
     const manifestRaw = await readZipEntry(dir.get("manifest.json")!, readRange);
     const manifest = JSON.parse(new TextDecoder().decode(manifestRaw));
     expect(manifest.version).toBe(2);
 
-    const slide2Raw = await readZipEntry(dir.get("slides/slide-2.json")!, readRange);
-    const slide2 = JSON.parse(new TextDecoder().decode(slide2Raw));
-    expect(slide2.id).toBe("slide-2");
-    expect(slide2.notes).toBe("Speaker notes for slide 2");
+    const globalRaw = await readZipEntry(dir.get("global.json")!, readRange);
+    const global = JSON.parse(new TextDecoder().decode(globalRaw));
+    expect(global.slides["slide-2"].id).toBe("slide-2");
+    expect(global.slides["slide-2"].notes).toBe("Speaker notes for slide 2");
     expect(totalBytesRead).toBeGreaterThan(0);
   });
 
-  it("computes minimal deltas when only one slide is edited", () => {
+  it("computes minimal deltas when only one slide is edited (re-uploads global.json only, never media)", () => {
     const deck = makeDeckWithMedia();
     const v1Parts = splitPresentation(deck, { mediaThresholdBytes: 4096 });
 
-    // Edit only slide-2's text; slide-1, global, media, and history are untouched
+    // Edit only slide-2's text; externalized media and history are untouched
     const edited = structuredClone(deck);
     edited.content.slides["slide-2"].elements[0].content = "Updated headline";
     const v2Parts = splitPresentation(edited, { mediaThresholdBytes: 4096 });
 
     const delta = diffSlidePackage(v1Parts.manifest, v2Parts);
-    expect(delta.globalChanged).toBe(false);
+    expect(delta.globalChanged).toBe(true);
     expect(delta.historyChanged).toBe(false);
     expect(delta.removedSlideIds).toEqual([]);
-    expect(delta.changedSlideIds).toEqual(["slide-2"]);
 
-    // Only slide-2 JSON should be in changedBlobs (thumbnail lives in manifest.json)!
+    // Only global.json should be in changedBlobs (slides merged into global.json, thumbnail in manifest.json)!
     expect(delta.changedBlobs.size).toBe(1);
-    expect(delta.changedBlobs.has(v2Parts.manifest.slides["slide-2"].hash)).toBe(true);
+    expect(delta.changedBlobs.has(v2Parts.manifest.global.hash)).toBe(true);
     expect(v2Parts.manifest.slides["slide-2"].thumbSvg).toContain("Updated headline");
     // The 4800-byte PNG is NOT re-uploaded
     const pngHash = Object.entries(v1Parts.manifest.media).find(

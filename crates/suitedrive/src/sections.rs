@@ -29,8 +29,10 @@ pub struct SectionRef {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SlideSummary {
-    pub hash: String,
-    pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -167,7 +169,7 @@ impl SlideSectionManifest {
         match self.kind.as_str() {
             "sheet" => self.sheets.get(id).map(|s| s.hash.as_str()),
             "doc" => self.tabs.get(id).map(|t| t.hash.as_str()),
-            _ => self.slides.get(id).map(|s| s.hash.as_str()),
+            _ => self.slides.get(id).and_then(|s| s.hash.as_deref()),
         }
     }
 
@@ -205,7 +207,9 @@ impl SlideSectionManifest {
                             "Manifest missing slide summary for {slide_id}"
                         ))
                     })?;
-                    set.insert(parse(&summary.hash)?);
+                    if let Some(hash) = &summary.hash {
+                        set.insert(parse(hash)?);
+                    }
                     if let Some(thumb) = &summary.thumb_hash {
                         set.insert(parse(thumb)?);
                     }
@@ -241,10 +245,9 @@ impl SlideSectionManifest {
         if self.history.as_ref().is_some_and(|h| h.hash == hex) {
             return true;
         }
-        self.slides
-            .values()
-            .any(|s| s.hash == hex || s.thumb_hash.as_deref() == Some(hex.as_str()))
-            || self.sheets.values().any(|s| s.hash == hex)
+        self.slides.values().any(|s| {
+            s.hash.as_deref() == Some(hex.as_str()) || s.thumb_hash.as_deref() == Some(hex.as_str())
+        }) || self.sheets.values().any(|s| s.hash == hex)
             || self.tabs.values().any(|t| t.hash == hex)
     }
 
@@ -256,8 +259,10 @@ impl SlideSectionManifest {
             total = total.saturating_add(self.global.size);
         }
         for s in self.slides.values() {
-            if seen.insert(s.hash.as_str()) {
-                total = total.saturating_add(s.size);
+            if let Some(hash) = s.hash.as_deref()
+                && seen.insert(hash)
+            {
+                total = total.saturating_add(s.size.unwrap_or(0));
             }
         }
         for s in self.sheets.values() {

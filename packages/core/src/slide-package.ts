@@ -287,14 +287,11 @@ export function splitPresentation(
     }
   }
 
-  // 2. Build global section (everything except slides, slideOrder, fonts)
+  // 2. Externalize media across global deck settings and all slides, then merge
+  //    slides into a single global.json blob (keeping large media/videos separate).
   const { slides: rawSlides, slideOrder, fonts: _fonts, ...rawGlobal } = file.content;
-  const global = externalizeMedia(rawGlobal, threshold, media, blobs, externalBlobs) as SlideGlobal;
-  const globalBytes = textEncoder.encode(JSON.stringify(global));
-  const globalHash = blake3Hex(globalBytes);
-  blobs.set(globalHash, globalBytes);
+  const extGlobal = externalizeMedia(rawGlobal, threshold, media, blobs, externalBlobs) as SlideGlobal;
 
-  // 3. Build per-slide sections + optional SVG thumbnails
   const slides: Record<string, Slide> = {};
   const slideBytes: Record<string, Uint8Array> = {};
   const slideSummaries: Record<string, SlideSummary> = {};
@@ -303,19 +300,13 @@ export function splitPresentation(
     const rawSlide = rawSlides[slideId];
     if (!rawSlide) continue;
     const extSlide = externalizeMedia(rawSlide, threshold, media, blobs, externalBlobs) as Slide;
-    const bytes = textEncoder.encode(JSON.stringify(extSlide));
-    const hash = blake3Hex(bytes);
     slides[slideId] = extSlide;
-    slideBytes[slideId] = bytes;
-    blobs.set(hash, bytes);
 
     const thumbSvg = generateThumbnails
-      ? renderSlideThumbnailSvg(extSlide, global)
+      ? renderSlideThumbnailSvg(extSlide, extGlobal)
       : undefined;
 
     const summary: SlideSummary = {
-      hash,
-      size: bytes.byteLength,
       ...(extSlide.title !== undefined ? { title: extSlide.title } : {}),
       ...(extSlide.layout !== undefined ? { layout: extSlide.layout } : {}),
       ...(extSlide.hidden !== undefined ? { hidden: extSlide.hidden } : {}),
@@ -324,6 +315,11 @@ export function splitPresentation(
     };
     slideSummaries[slideId] = summary;
   }
+
+  const global: SlideGlobal = { ...extGlobal, slides };
+  const globalBytes = textEncoder.encode(JSON.stringify(global));
+  const globalHash = blake3Hex(globalBytes);
+  blobs.set(globalHash, globalBytes);
 
   // 4. Optional history section
   let history: SlideHistory | undefined;
@@ -389,13 +385,14 @@ export function assemblePresentation(
   const hydrate = options.hydrateMedia ?? true;
   const blobs = parts.blobs ?? new Map<string, Uint8Array>();
 
+  const { slides: embeddedSlides, ...rawGlobal } = parts.global;
   const global = hydrate
-    ? hydrateMediaRefs(parts.global, parts.manifest.media, blobs)
-    : parts.global;
+    ? hydrateMediaRefs(rawGlobal, parts.manifest.media, blobs)
+    : rawGlobal;
 
   const slides: Record<string, Slide> = {};
   for (const id of parts.manifest.slideOrder) {
-    const slide = parts.slides[id];
+    const slide = parts.slides[id] ?? embeddedSlides?.[id];
     if (!slide) {
       throw new Error(`Presentation is missing slide "${id}".`);
     }
@@ -523,16 +520,20 @@ export async function unpackSlidePackageZip(
   const slides: Record<string, Slide> = {};
   const slideBytes: Record<string, Uint8Array> = {};
   for (const slideId of manifest.slideOrder) {
+    if (global.slides?.[slideId]) {
+      slides[slideId] = global.slides[slideId];
+      continue;
+    }
     const entry = zip.file(`slides/${slideId}.json`);
     if (!entry) {
-      throw new Error(`Slide package is missing slides/${slideId}.json.`);
+      throw new Error(`Slide package is missing slide "${slideId}".`);
     }
     const raw = await entry.async("uint8array");
     const parsed = slideSchema.parse(JSON.parse(textDecoder.decode(raw)));
     slides[slideId] = parsed;
     slideBytes[slideId] = raw;
     const summary = manifest.slides[slideId];
-    if (summary) blobs.set(summary.hash, raw);
+    if (summary?.hash) blobs.set(summary.hash, raw);
   }
 
   for (const [hash, entry] of Object.entries(manifest.media)) {
@@ -606,7 +607,7 @@ export function diffSlidePackage(
     const nextSummary = next.manifest.slides[slideId];
     const prevSummary = previous?.slides[slideId];
     if (!nextSummary) continue;
-    if (!prevSummary || prevSummary.hash !== nextSummary.hash) {
+    if (nextSummary.hash && (!prevSummary || prevSummary.hash !== nextSummary.hash)) {
       changedSlideIds.push(slideId);
       const bytes = next.slideBytes[slideId];
       if (bytes) changedBlobs.set(nextSummary.hash, bytes);
