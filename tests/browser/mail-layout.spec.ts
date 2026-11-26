@@ -61,6 +61,14 @@ async function openComposer(page: Page) {
   await compose.click();
 }
 
+/** The composer close control is aria-labeled "Close". The SuiteMail title
+ *  bar also has a title-only Close button when the Electron bridge is mocked,
+ *  so this is scoped to the labeled composer control. */
+async function closeComposer(page: Page) {
+  await page.locator('button[aria-label="Close"]').click();
+  await expect(page.getByPlaceholder("Subject", { exact: true })).toBeHidden();
+}
+
 test("embedded Mail composer and settings fit narrow and desktop viewports", async ({
   page,
 }) => {
@@ -83,7 +91,7 @@ test("embedded Mail composer and settings fit narrow and desktop viewports", asy
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
       .toBeLessThanOrEqual(width);
-    await page.getByRole("button", { name: "×", exact: true }).click();
+    await closeComposer(page);
     await page
       .getByRole("button", { name: "Settings", exact: true })
       .filter({ visible: true })
