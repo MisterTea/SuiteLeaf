@@ -169,6 +169,8 @@ export function useShowControls(
       });
     };
     void run();
+  // deckRef is stable for the life of the editor.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driveItemId, startShow]);
 
   const casting = useSlideCast(state, marpPages, beginShow);
