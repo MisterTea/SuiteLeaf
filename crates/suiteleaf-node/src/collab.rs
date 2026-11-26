@@ -4,7 +4,7 @@
 //! writer is gone.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex},
 };
 
@@ -15,7 +15,7 @@ use suitedrive::{Drive, Principal, Role};
 use tokio::sync::broadcast;
 use yrs::{Doc, ReadTxn, Transact, Update, updates::decoder::Decode};
 
-use crate::auth::AuthUser;
+use crate::{auth::AuthUser, cloud::item_locks};
 
 mod body;
 mod compact;
@@ -25,7 +25,7 @@ mod slide_room;
 mod socket;
 mod standing;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use body::{body_changed, paragraph_texts};
 use compact::compact_bytes_with_drive;
@@ -103,7 +103,7 @@ impl Rooms {
         now: i64,
         connection: &str,
     ) -> anyhow::Result<Join> {
-        let _lock = self.db.exclusive("cloud-mutations")?;
+        let _lock = self.db.lock_all(&item_locks(item))?;
         if self.db.is_postgres() {
             self.catch_up_unlocked(item)?;
         }
@@ -357,7 +357,7 @@ impl Rooms {
         now: i64,
         connection: &str,
     ) -> anyhow::Result<()> {
-        let _lock = self.db.exclusive("cloud-mutations")?;
+        let _lock = self.db.lock_all(&item_locks(item))?;
         if self.db.is_postgres() {
             self.catch_up_unlocked(item)?;
         }
@@ -374,7 +374,7 @@ impl Rooms {
     /// Yjs ignores an update this room already has. A newer generation replaces
     /// the in-memory document with that generation's log.
     pub fn catch_up(&self, item: &str) -> anyhow::Result<bool> {
-        let _lock = self.db.exclusive("cloud-mutations")?;
+        let _lock = self.db.lock_all(&item_locks(item))?;
         self.catch_up_unlocked(item)
     }
 
@@ -515,7 +515,7 @@ impl Rooms {
         update: LiveUpdate<'_>,
         generation: Option<i64>,
     ) -> anyhow::Result<Outcome> {
-        let _lock = self.db.exclusive("cloud-mutations")?;
+        let _lock = self.db.lock_all(&item_locks(update.item))?;
         if self.db.is_postgres() {
             self.catch_up_unlocked(update.item)?;
         }
@@ -637,61 +637,66 @@ impl Rooms {
 
     /// Drop idle presence. Compacts only when a multiuser room is left empty.
     ///
-    /// Maintenance never queues on the global `cloud-mutations` lock and never
-    /// holds it for a whole sweep: each step takes it with a non-blocking try
-    /// and covers only one short unit of work (expiring rows, one room's
-    /// restore, one room's compaction). When a user request holds the lock the
-    /// step is skipped and retried on the next sweep, so background work can
-    /// never stall sign-in or edits behind slow blob reads and compaction.
+    /// Maintenance never queues behind user requests and never holds a lock
+    /// for a whole sweep: each step try-locks only the one room it touches
+    /// (shared drive + `item:{id}`), covering one short unit of work (one idle
+    /// presence row, one room's compaction, one room's restore). A busy room
+    /// is skipped and retried on the next sweep; other rooms are unaffected.
     pub fn kick(&self, now: i64, pause: i64) -> anyhow::Result<Vec<String>> {
         let mut kicked = Vec::new();
         let mut emptied = Vec::new();
-        {
-            let Some(_lock) = self.db.try_exclusive("cloud-mutations")? else {
-                return Ok(kicked);
-            };
-            if self.db.is_postgres() {
-                let expired = self.db.query(
-                    "SELECT id FROM drive_signal WHERE expiresAt<?1",
-                    &[suitedb::hlc::iso_now().into()],
-                )?;
-                if !expired.is_empty() {
-                    self.db.transact(|tx| {
-                        for row in expired {
-                            if let Some(id) = text_col(&row, "id") {
-                                tx.delete("drive_signal", &id)?;
-                            }
+        if self.db.is_postgres() {
+            // Signals have unique ids and are never rewritten, so deleting
+            // the expired ones needs no lock.
+            let expired = self.db.query(
+                "SELECT id FROM drive_signal WHERE expiresAt<?1",
+                &[suitedb::hlc::iso_now().into()],
+            )?;
+            if !expired.is_empty() {
+                self.db.transact(|tx| {
+                    for row in expired {
+                        if let Some(id) = text_col(&row, "id") {
+                            tx.delete("drive_signal", &id)?;
                         }
-                        Ok(())
-                    })?;
-                }
-            }
-            let rows = self.db.query("SELECT * FROM drive_presence", &[])?;
-            for row in rows {
-                let Some(last) = row
-                    .get("lastActiveMs")
-                    .and_then(as_int)
-                    .filter(|ms| *ms > 0)
-                else {
-                    continue;
-                };
-                if now.saturating_sub(last) < pause {
-                    continue;
-                }
-                let Some(id) = text_col(&row, "id") else {
-                    continue;
-                };
-                let item = text_col(&row, "itemId").unwrap_or_default();
-                let user = text_col(&row, "userId").unwrap_or_default();
-                self.db.transact(|tx| tx.delete("drive_presence", &id))?;
-                kicked.push(user.clone());
-                emptied.push((item, user));
+                    }
+                    Ok(())
+                })?;
             }
         }
+        let idle = |row: &BTreeMap<String, DbValue>| {
+            row.get("lastActiveMs")
+                .and_then(as_int)
+                .filter(|ms| *ms > 0)
+                .is_some_and(|last| now.saturating_sub(last) >= pause)
+        };
+        let rows = self.db.query("SELECT * FROM drive_presence", &[])?;
+        for row in rows {
+            if !idle(&row) {
+                continue;
+            }
+            let Some(id) = text_col(&row, "id") else {
+                continue;
+            };
+            let item = text_col(&row, "itemId").unwrap_or_default();
+            let Some(_lock) = self.db.try_lock_all(&item_locks(&item))? else {
+                continue;
+            };
+            // Re-read under the room lock: a join may have refreshed it.
+            let Some(current) = self.db.get("drive_presence", &id)? else {
+                continue;
+            };
+            if !idle(&current) {
+                continue;
+            }
+            let user = text_col(&current, "userId").unwrap_or_default();
+            self.db.transact(|tx| tx.delete("drive_presence", &id))?;
+            kicked.push(user.clone());
+            emptied.push((item, user));
+        }
         // `maybe_compact` re-checks writers and the room generation under the
-        // lock, so compacting after the presence delete is as safe as before.
+        // room lock, so compacting after the presence delete is safe.
         for (item, user) in emptied {
-            let Some(_lock) = self.db.try_exclusive("cloud-mutations")? else {
+            let Some(_lock) = self.db.try_lock_all(&item_locks(&item))? else {
                 continue;
             };
             self.maybe_compact(&item, &user, now)?;
@@ -709,7 +714,7 @@ impl Rooms {
                 if self.live.lock().expect("rooms").contains_key(&item) {
                     continue;
                 }
-                let Some(_lock) = self.db.try_exclusive("cloud-mutations")? else {
+                let Some(_lock) = self.db.try_lock_all(&item_locks(&item))? else {
                     continue;
                 };
                 // Restore outside the in-memory map lock; replay reads the
@@ -745,7 +750,7 @@ impl Rooms {
                 .collect()
         };
         for (item, author) in pending {
-            let Some(_lock) = self.db.try_exclusive("cloud-mutations")? else {
+            let Some(_lock) = self.db.try_lock_all(&item_locks(&item))? else {
                 continue;
             };
             if self.writers(&item)?.is_empty() {

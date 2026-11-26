@@ -197,3 +197,73 @@ fn lock_waits_are_bounded_and_try_lock_never_waits() {
     assert!(other.exclusive(&scope).unwrap().is_some());
     assert!(other.try_exclusive(&scope).unwrap().is_some());
 }
+
+#[test]
+#[ignore = "requires an isolated Postgres database"]
+fn lock_sets_share_readers_exclude_writers_and_never_deadlock() {
+    use suitedb::LockScope;
+    Db::migrate_postgres(&url(), &schema()).unwrap();
+    let tag = uuid::Uuid::new_v4();
+    let tree = format!("drive-{tag}");
+    let item = |n: u32| format!("item-{tag}-{n}");
+    let (one, two) = (open(), open());
+
+    // Two item-level holders on different items run together.
+    let a = one
+        .lock_all(&[LockScope::shared(&tree), LockScope::exclusive(item(1))])
+        .unwrap();
+    let started = std::time::Instant::now();
+    let b = two
+        .lock_all(&[LockScope::shared(&tree), LockScope::exclusive(item(2))])
+        .unwrap();
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    // The same item, or the tree exclusively, is busy.
+    assert!(
+        two.try_lock_all(&[LockScope::shared(&tree), LockScope::exclusive(item(1))])
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        two.try_lock_all(&[LockScope::exclusive(&tree)])
+            .unwrap()
+            .is_none()
+    );
+    drop((a, b));
+    assert!(
+        two.try_lock_all(&[LockScope::exclusive(&tree)])
+            .unwrap()
+            .is_some()
+    );
+
+    // Overlapping sets named in opposite orders from many threads finish
+    // (the plan orders every set the same way) and stay serialized.
+    let id = format!("counter-{tag}");
+    open()
+        .transact(|tx| tx.upsert("records", &id, [("amount", Value::Integer(0))]))
+        .unwrap();
+    std::thread::scope(|s| {
+        for t in 0..4 {
+            let (id, item) = (&id, &item);
+            s.spawn(move || {
+                let db = open();
+                let mut set = vec![LockScope::exclusive(item(1)), LockScope::exclusive(item(2))];
+                if t % 2 == 1 {
+                    set.reverse();
+                }
+                for _ in 0..5 {
+                    let _lock = db.lock_all(&set).unwrap();
+                    let row = db.get("records", id).unwrap().unwrap();
+                    let Value::Integer(n) = row["amount"] else {
+                        panic!()
+                    };
+                    db.transact(|tx| tx.upsert("records", id, [("amount", Value::Integer(n + 1))]))
+                        .unwrap();
+                }
+            });
+        }
+    });
+    assert_eq!(
+        open().get("records", &id).unwrap().unwrap()["amount"],
+        Value::Integer(20)
+    );
+}

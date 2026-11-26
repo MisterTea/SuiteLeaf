@@ -299,6 +299,6 @@ pub fn router(state: AppState) -> Router {
     api.layer(cors(&config))
         .layer(axum::middleware::from_fn_with_state(
             cloud_db,
-            crate::cloud::serialize_mutation,
+            crate::cloud::lock_mutation,
         ))
 }

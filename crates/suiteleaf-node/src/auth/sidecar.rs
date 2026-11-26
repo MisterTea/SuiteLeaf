@@ -113,15 +113,17 @@ pub async fn proxy(
         Err(_) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
     };
     let registration = if auth.db.is_postgres() && path.starts_with("/api/auth/sign-up/") {
-        match crate::cloud::registration(&auth.db, &headers, &body) {
-            Ok(Some(digest)) => {
+        match crate::cloud::claim_registration(&auth.db, &headers, &body) {
+            Ok(Some(claim)) => {
                 let Some(key) = auth.registration_key.read().unwrap().clone() else {
                     return StatusCode::SERVICE_UNAVAILABLE.into_response();
                 };
                 headers.insert(crate::cloud::REGISTRATION_HEADER, key.parse().unwrap());
-                Some(digest)
+                Some(claim)
             }
-            _ => {
+            // A database or lock-wait failure is retryable, not a refusal.
+            Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            Ok(None) => {
                 return (
                     StatusCode::FORBIDDEN,
                     "An invitation is required to create an account.",
@@ -152,10 +154,10 @@ pub async fn proxy(
     };
     let mut response = Response::builder().status(upstream.status().as_u16());
     if upstream.status().is_success()
-        && let Some(digest) = registration
+        && let Some(claim) = &registration
         && auth
             .db
-            .transact(|tx| tx.delete("cloud_invite", &digest))
+            .transact(|tx| tx.delete("cloud_invite", &claim.digest))
             .is_err()
     {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();

@@ -125,8 +125,11 @@ impl Db {
         self.postgres.is_some()
     }
 
-    /// Serializes a compound operation across instances, including reads before writes.
-    /// This uses a transaction-level lock and works with Neon's transaction pooler.
+    /// Serializes a compound operation on one resource across instances,
+    /// including reads before writes. This uses a transaction-level lock and
+    /// works with Neon's transaction pooler. Used for short inner sections
+    /// (`file:{id}`, upload parts); request- and room-level work uses
+    /// [`Db::lock_all`].
     ///
     /// A wait is bounded by [`LOCK_WAIT_TIMEOUT`]: a holder that is stuck (for
     /// example on a frozen instance) makes callers fail with a retryable error
@@ -135,50 +138,82 @@ impl Db {
         if self.postgres.is_none() {
             return Ok(None);
         }
-        match self.acquire(scope, true)? {
-            Some(lock) => Ok(Some(lock)),
-            None => Err(error("advisory lock wait returned without the lock")),
-        }
+        self.acquire(&[LockScope::exclusive(scope)], true, false)?
+            .map(Some)
+            .ok_or_else(|| error("advisory lock wait returned without the lock"))
     }
 
     /// Like [`Db::exclusive`], but never waits: returns `Ok(None)` when another
-    /// holder has the lock. Background work uses this to skip a cycle rather
-    /// than queue behind (and in front of) user requests. Without Postgres
-    /// there is nothing to serialize, so this always succeeds.
+    /// holder has the lock. Without Postgres there is nothing to serialize, so
+    /// this always succeeds.
     pub fn try_exclusive(&self, scope: &str) -> Result<Option<CloudLock>> {
         if self.postgres.is_none() {
             return Ok(Some(CloudLock { connection: None }));
         }
-        self.acquire(scope, false)
+        self.acquire(&[LockScope::exclusive(scope)], false, false)
     }
 
-    fn acquire(&self, scope: &str, wait: bool) -> Result<Option<CloudLock>> {
+    /// Takes every lock in `scopes` in one transaction, in a fixed global
+    /// order (by advisory key), so two callers naming overlapping sets can
+    /// never deadlock. A scope named twice is taken once, in the strongest
+    /// mode asked for. Each wait is bounded by [`LOCK_WAIT_TIMEOUT`]; on
+    /// timeout nothing stays held and the caller gets a retryable error.
+    /// Without Postgres this is a no-op and returns `Ok(None)`.
+    pub fn lock_all(&self, scopes: &[LockScope]) -> Result<Option<CloudLock>> {
+        if self.postgres.is_none() || scopes.is_empty() {
+            return Ok(None);
+        }
+        self.acquire(scopes, true, true)?
+            .map(Some)
+            .ok_or_else(|| error("advisory lock wait returned without the lock"))
+    }
+
+    /// Like [`Db::lock_all`], but never waits: `Ok(None)` when any scope is
+    /// busy (and then none are held). Background work uses this to skip a
+    /// cycle rather than queue in front of user requests. Without Postgres it
+    /// always succeeds.
+    pub fn try_lock_all(&self, scopes: &[LockScope]) -> Result<Option<CloudLock>> {
+        if self.postgres.is_none() || scopes.is_empty() {
+            return Ok(Some(CloudLock { connection: None }));
+        }
+        self.acquire(scopes, false, true)
+    }
+
+    fn acquire(&self, scopes: &[LockScope], wait: bool, outer: bool) -> Result<Option<CloudLock>> {
         let Some(store) = &self.postgres else {
             return Ok(Some(CloudLock { connection: None }));
         };
+        let plan = lock_plan(scopes);
         blocking(|| {
             // Lock waiters must never exhaust the pool used by the lock
-            // holder's queries. Compound operations can also acquire item locks.
-            let pool = if scope == "cloud-mutations" {
+            // holder's queries. Request/room locks (outer) and the short
+            // per-file locks taken inside them use separate pools, so an outer
+            // holder can always get its inner lock connection.
+            let pool = if outer {
                 &store.operation_locks
             } else {
                 &store.item_locks
             };
             let mut connection = pool.get().map_err(error)?;
-            let key = advisory_key(scope);
             let acquired = (|| -> std::result::Result<bool, postgres::Error> {
                 connection.batch_execute(&format!(
                     "BEGIN; SET LOCAL lock_timeout = '{}ms'",
                     LOCK_WAIT_TIMEOUT.as_millis()
                 ))?;
-                if wait {
-                    connection.execute("SELECT pg_advisory_xact_lock($1)", &[&key])?;
-                    Ok(true)
-                } else {
-                    Ok(connection
-                        .query_one("SELECT pg_try_advisory_xact_lock($1)", &[&key])?
-                        .get::<_, bool>(0))
+                for (key, mode) in &plan {
+                    let sql = match (wait, mode) {
+                        (true, LockMode::Exclusive) => "SELECT pg_advisory_xact_lock($1)",
+                        (true, LockMode::Shared) => "SELECT pg_advisory_xact_lock_shared($1)",
+                        (false, LockMode::Exclusive) => "SELECT pg_try_advisory_xact_lock($1)",
+                        (false, LockMode::Shared) => "SELECT pg_try_advisory_xact_lock_shared($1)",
+                    };
+                    if wait {
+                        connection.execute(sql, &[key])?;
+                    } else if !connection.query_one(sql, &[key])?.get::<_, bool>(0) {
+                        return Ok(false);
+                    }
                 }
+                Ok(true)
             })();
             match acquired {
                 Ok(true) => Ok(Some(CloudLock {
@@ -197,6 +232,46 @@ impl Db {
             }
         })
     }
+}
+
+/// How a [`LockScope`] is held. Shared holders run together; an exclusive
+/// holder excludes every other holder of the same scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LockMode {
+    Shared,
+    Exclusive,
+}
+
+/// One named cross-instance advisory lock.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LockScope {
+    pub scope: String,
+    pub mode: LockMode,
+}
+impl LockScope {
+    pub fn shared(scope: impl Into<String>) -> Self {
+        Self {
+            scope: scope.into(),
+            mode: LockMode::Shared,
+        }
+    }
+    pub fn exclusive(scope: impl Into<String>) -> Self {
+        Self {
+            scope: scope.into(),
+            mode: LockMode::Exclusive,
+        }
+    }
+}
+
+/// Dedupe by scope (strongest mode wins) and order by advisory key, the one
+/// global acquisition order every caller shares.
+fn lock_plan(scopes: &[LockScope]) -> Vec<(i64, LockMode)> {
+    let mut plan: BTreeMap<i64, LockMode> = BTreeMap::new();
+    for scope in scopes {
+        let mode = plan.entry(advisory_key(&scope.scope)).or_insert(scope.mode);
+        *mode = (*mode).max(scope.mode);
+    }
+    plan.into_iter().collect()
 }
 
 /// Longest time a request waits for a cross-instance advisory lock.
@@ -271,7 +346,9 @@ impl PostgresStore {
     fn connect(url: &str) -> Result<Self> {
         Ok(Self {
             pool: Self::pool(url, 8)?,
-            operation_locks: Self::pool(url, 8)?,
+            // One connection per in-flight mutating request or room step:
+            // with per-resource locks these now run concurrently.
+            operation_locks: Self::pool(url, 16)?,
             item_locks: Self::pool(url, 8)?,
         })
     }
@@ -642,6 +719,33 @@ fn translate(schema: &Schema, sql: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lock_plan_dedupes_to_the_strongest_mode_in_one_global_order() {
+        let a = vec![
+            LockScope::shared("drive"),
+            LockScope::exclusive("item:b"),
+            LockScope::exclusive("drive"),
+            LockScope::exclusive("item:a"),
+            LockScope::shared("item:a"),
+        ];
+        let mut b = a.clone();
+        b.reverse();
+        let plan = lock_plan(&a);
+        assert_eq!(plan, lock_plan(&b), "order must not depend on the caller");
+        assert_eq!(plan.len(), 3);
+        assert!(plan.windows(2).all(|w| w[0].0 < w[1].0));
+        let drive = plan
+            .iter()
+            .find(|(k, _)| *k == advisory_key("drive"))
+            .unwrap();
+        assert_eq!(drive.1, LockMode::Exclusive);
+        let item = plan
+            .iter()
+            .find(|(k, _)| *k == advisory_key("item:a"))
+            .unwrap();
+        assert_eq!(item.1, LockMode::Exclusive);
+    }
     #[test]
     fn query_translation_preserves_literals_and_quoted_identifiers() {
         let schema = Schema {

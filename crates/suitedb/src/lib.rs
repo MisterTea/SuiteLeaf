@@ -38,6 +38,7 @@ use tokio::sync::broadcast;
 
 pub use hlc::{Clock, Hlc};
 pub use op::{Change, ChangeKind, Op, OpBody, OpId, Value, node_tag};
+pub use postgres_store::{CloudLock, LockMode, LockScope};
 pub use schema::{Column, ColumnType, Schema, TableDef, quote};
 
 #[derive(Debug, thiserror::Error)]
