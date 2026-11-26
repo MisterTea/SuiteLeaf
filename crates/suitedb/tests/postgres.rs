@@ -171,3 +171,29 @@ fn compound_operations_are_serialized_across_instances() {
         Value::Integer(20)
     );
 }
+
+#[test]
+#[ignore = "requires an isolated Postgres database"]
+fn lock_waits_are_bounded_and_try_lock_never_waits() {
+    Db::migrate_postgres(&url(), &schema()).unwrap();
+    let scope = format!("test-lock-{}", uuid::Uuid::new_v4());
+    let holder = open();
+    let other = open();
+    let held = holder.exclusive(&scope).unwrap();
+    assert!(held.is_some());
+
+    // A busy lock is reported immediately rather than waited on.
+    let started = std::time::Instant::now();
+    assert!(other.try_exclusive(&scope).unwrap().is_none());
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+
+    // A blocking wait gives up with an error instead of hanging forever.
+    let started = std::time::Instant::now();
+    assert!(other.exclusive(&scope).is_err());
+    assert!(started.elapsed() < std::time::Duration::from_secs(30));
+
+    // A failed wait must not poison its pooled connection.
+    drop(held);
+    assert!(other.exclusive(&scope).unwrap().is_some());
+    assert!(other.try_exclusive(&scope).unwrap().is_some());
+}

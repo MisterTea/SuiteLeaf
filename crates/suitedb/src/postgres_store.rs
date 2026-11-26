@@ -127,9 +127,34 @@ impl Db {
 
     /// Serializes a compound operation across instances, including reads before writes.
     /// This uses a transaction-level lock and works with Neon's transaction pooler.
+    ///
+    /// A wait is bounded by [`LOCK_WAIT_TIMEOUT`]: a holder that is stuck (for
+    /// example on a frozen instance) makes callers fail with a retryable error
+    /// instead of hanging every request behind it.
     pub fn exclusive(&self, scope: &str) -> Result<Option<CloudLock>> {
-        let Some(store) = &self.postgres else {
+        if self.postgres.is_none() {
             return Ok(None);
+        }
+        match self.acquire(scope, true)? {
+            Some(lock) => Ok(Some(lock)),
+            None => Err(error("advisory lock wait returned without the lock")),
+        }
+    }
+
+    /// Like [`Db::exclusive`], but never waits: returns `Ok(None)` when another
+    /// holder has the lock. Background work uses this to skip a cycle rather
+    /// than queue behind (and in front of) user requests. Without Postgres
+    /// there is nothing to serialize, so this always succeeds.
+    pub fn try_exclusive(&self, scope: &str) -> Result<Option<CloudLock>> {
+        if self.postgres.is_none() {
+            return Ok(Some(CloudLock { connection: None }));
+        }
+        self.acquire(scope, false)
+    }
+
+    fn acquire(&self, scope: &str, wait: bool) -> Result<Option<CloudLock>> {
+        let Some(store) = &self.postgres else {
+            return Ok(Some(CloudLock { connection: None }));
         };
         blocking(|| {
             // Lock waiters must never exhaust the pool used by the lock
@@ -140,17 +165,46 @@ impl Db {
                 &store.item_locks
             };
             let mut connection = pool.get().map_err(error)?;
-            connection.batch_execute("BEGIN").map_err(error)?;
-            let bytes = blake3::hash(scope.as_bytes());
-            let key = i64::from_le_bytes(bytes.as_bytes()[..8].try_into().unwrap());
-            connection
-                .execute("SELECT pg_advisory_xact_lock($1)", &[&key])
-                .map_err(error)?;
-            Ok(Some(CloudLock {
-                connection: Some(connection),
-            }))
+            let key = advisory_key(scope);
+            let acquired = (|| -> std::result::Result<bool, postgres::Error> {
+                connection.batch_execute(&format!(
+                    "BEGIN; SET LOCAL lock_timeout = '{}ms'",
+                    LOCK_WAIT_TIMEOUT.as_millis()
+                ))?;
+                if wait {
+                    connection.execute("SELECT pg_advisory_xact_lock($1)", &[&key])?;
+                    Ok(true)
+                } else {
+                    Ok(connection
+                        .query_one("SELECT pg_try_advisory_xact_lock($1)", &[&key])?
+                        .get::<_, bool>(0))
+                }
+            })();
+            match acquired {
+                Ok(true) => Ok(Some(CloudLock {
+                    connection: Some(connection),
+                })),
+                Ok(false) => {
+                    let _ = connection.batch_execute("ROLLBACK");
+                    Ok(None)
+                }
+                Err(err) => {
+                    // Never return a connection to the pool inside an aborted
+                    // transaction; the next borrower would fail every query.
+                    let _ = connection.batch_execute("ROLLBACK");
+                    Err(error(err))
+                }
+            }
         })
     }
+}
+
+/// Longest time a request waits for a cross-instance advisory lock.
+const LOCK_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+fn advisory_key(scope: &str) -> i64 {
+    let bytes = blake3::hash(scope.as_bytes());
+    i64::from_le_bytes(bytes.as_bytes()[..8].try_into().unwrap())
 }
 
 pub struct CloudLock {

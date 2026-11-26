@@ -48,6 +48,14 @@ fn bypasses_mutation_lock(method: &Method, path: &str) -> bool {
     if path.starts_with("/api/ai/") {
         return true;
     }
+    // Better Auth writes its own rows through the sidecar's internal DB route,
+    // which never takes this lock, so sign-in, sign-out, session refresh and
+    // token minting must not queue behind drive/collab mutations. Invite-gated
+    // sign-up stays serialized so a single-use invitation (and the bootstrap
+    // first-user check) cannot be consumed twice by concurrent requests.
+    if path.starts_with("/api/auth/") && !path.starts_with("/api/auth/sign-up/") {
+        return true;
+    }
     // Immutable content-addressed blob uploads (idempotent; chunked uploads take
     // their own per-blob item lock only around fast DB chunk writes, never across
     // remote blob storage HTTP I/O) and read-only missing-blob probes must not
@@ -144,8 +152,28 @@ mod tests {
             "/api/drive/items/abc/sections/missing"
         ));
         assert!(bypasses_mutation_lock(&Method::POST, "/api/ai/chat"));
+    }
 
-        // Stateful mutations remain serialized.
+    #[test]
+    fn auth_requests_bypass_global_mutation_lock_except_sign_up() {
+        for path in [
+            "/api/auth/sign-in/email",
+            "/api/auth/sign-out",
+            "/api/auth/token",
+            "/api/auth/get-session",
+            "/api/auth/suiteleaf/mail",
+        ] {
+            assert!(bypasses_mutation_lock(&Method::POST, path), "{path}");
+        }
+        assert!(!bypasses_mutation_lock(
+            &Method::POST,
+            "/api/auth/sign-up/email"
+        ));
+        assert!(!bypasses_mutation_lock(&Method::POST, "/api/authx"));
+    }
+
+    #[test]
+    fn stateful_mutations_remain_serialized() {
         assert!(!bypasses_mutation_lock(
             &Method::POST,
             "/api/drive/items/abc/sections/commit"

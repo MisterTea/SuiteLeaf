@@ -327,3 +327,10 @@ fn shuffle<T>(items: &mut [T], seed: u64) {
         items.swap(i, (seed % (i as u64 + 1)) as usize);
     }
 }
+
+#[test]
+fn local_databases_need_no_cross_instance_lock() {
+    let db = replica();
+    assert!(db.exclusive("cloud-mutations").unwrap().is_none());
+    assert!(db.try_exclusive("cloud-mutations").unwrap().is_some());
+}

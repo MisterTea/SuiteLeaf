@@ -636,44 +636,64 @@ impl Rooms {
     }
 
     /// Drop idle presence. Compacts only when a multiuser room is left empty.
+    ///
+    /// Maintenance never queues on the global `cloud-mutations` lock and never
+    /// holds it for a whole sweep: each step takes it with a non-blocking try
+    /// and covers only one short unit of work (expiring rows, one room's
+    /// restore, one room's compaction). When a user request holds the lock the
+    /// step is skipped and retried on the next sweep, so background work can
+    /// never stall sign-in or edits behind slow blob reads and compaction.
     pub fn kick(&self, now: i64, pause: i64) -> anyhow::Result<Vec<String>> {
-        let _lock = self.db.exclusive("cloud-mutations")?;
-        if self.db.is_postgres() {
-            let expired = self.db.query(
-                "SELECT id FROM drive_signal WHERE expiresAt<?1",
-                &[suitedb::hlc::iso_now().into()],
-            )?;
-            if !expired.is_empty() {
-                self.db.transact(|tx| {
-                    for row in expired {
-                        if let Some(id) = text_col(&row, "id") {
-                            tx.delete("drive_signal", &id)?;
+        let mut kicked = Vec::new();
+        let mut emptied = Vec::new();
+        {
+            let Some(_lock) = self.db.try_exclusive("cloud-mutations")? else {
+                return Ok(kicked);
+            };
+            if self.db.is_postgres() {
+                let expired = self.db.query(
+                    "SELECT id FROM drive_signal WHERE expiresAt<?1",
+                    &[suitedb::hlc::iso_now().into()],
+                )?;
+                if !expired.is_empty() {
+                    self.db.transact(|tx| {
+                        for row in expired {
+                            if let Some(id) = text_col(&row, "id") {
+                                tx.delete("drive_signal", &id)?;
+                            }
                         }
-                    }
-                    Ok(())
-                })?;
+                        Ok(())
+                    })?;
+                }
+            }
+            let rows = self.db.query("SELECT * FROM drive_presence", &[])?;
+            for row in rows {
+                let Some(last) = row
+                    .get("lastActiveMs")
+                    .and_then(as_int)
+                    .filter(|ms| *ms > 0)
+                else {
+                    continue;
+                };
+                if now.saturating_sub(last) < pause {
+                    continue;
+                }
+                let Some(id) = text_col(&row, "id") else {
+                    continue;
+                };
+                let item = text_col(&row, "itemId").unwrap_or_default();
+                let user = text_col(&row, "userId").unwrap_or_default();
+                self.db.transact(|tx| tx.delete("drive_presence", &id))?;
+                kicked.push(user.clone());
+                emptied.push((item, user));
             }
         }
-        let rows = self.db.query("SELECT * FROM drive_presence", &[])?;
-        let mut kicked = Vec::new();
-        for row in rows {
-            let Some(last) = row
-                .get("lastActiveMs")
-                .and_then(as_int)
-                .filter(|ms| *ms > 0)
-            else {
+        // `maybe_compact` re-checks writers and the room generation under the
+        // lock, so compacting after the presence delete is as safe as before.
+        for (item, user) in emptied {
+            let Some(_lock) = self.db.try_exclusive("cloud-mutations")? else {
                 continue;
             };
-            if now.saturating_sub(last) < pause {
-                continue;
-            }
-            let Some(id) = text_col(&row, "id") else {
-                continue;
-            };
-            let item = text_col(&row, "itemId").unwrap_or_default();
-            let user = text_col(&row, "userId").unwrap_or_default();
-            self.db.transact(|tx| tx.delete("drive_presence", &id))?;
-            kicked.push(user.clone());
             self.maybe_compact(&item, &user, now)?;
         }
         if self.db.is_postgres() {
@@ -683,12 +703,23 @@ impl Rooms {
                 "SELECT id FROM drive_room WHERE mode='multiuser' AND id NOT IN (SELECT itemId FROM drive_presence WHERE itemId IS NOT NULL)", &[],
             )?;
             for row in rows {
-                if let Some(item) = text_col(&row, "id") {
-                    let mut live = self.live.lock().expect("rooms");
-                    if !live.contains_key(&item) {
-                        live.insert(item.clone(), self.restore_live(&item)?);
-                    }
+                let Some(item) = text_col(&row, "id") else {
+                    continue;
+                };
+                if self.live.lock().expect("rooms").contains_key(&item) {
+                    continue;
                 }
+                let Some(_lock) = self.db.try_exclusive("cloud-mutations")? else {
+                    continue;
+                };
+                // Restore outside the in-memory map lock; replay reads the
+                // stored updates and the baseline blob.
+                let restored = self.restore_live(&item)?;
+                self.live
+                    .lock()
+                    .expect("rooms")
+                    .entry(item)
+                    .or_insert(restored);
             }
         }
         // Presence is replicated. Another node can delete the idle rows
@@ -697,6 +728,7 @@ impl Rooms {
         Ok(kicked)
     }
 
+    /// Compacts each idle multiuser room under its own short lock hold.
     fn compact_abandoned(&self, now: i64) -> anyhow::Result<()> {
         let pending: Vec<(String, String)> = {
             let live = self.live.lock().expect("rooms");
@@ -713,6 +745,9 @@ impl Rooms {
                 .collect()
         };
         for (item, author) in pending {
+            let Some(_lock) = self.db.try_exclusive("cloud-mutations")? else {
+                continue;
+            };
             if self.writers(&item)?.is_empty() {
                 self.maybe_compact(&item, &author, now)?;
             }
