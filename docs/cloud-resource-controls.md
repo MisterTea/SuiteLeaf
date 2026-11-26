@@ -17,7 +17,7 @@ An idle connected cloud file now schedules approximately 240 HTTP polls per hour
 - Cloud mode uses an offline peer handle instead of initializing libp2p.
 - A new instance captures the change-feed tip before opening its listener. Each socket join still recovers authoritative room state. Later events are replayed from that cursor, avoiding old historical replay on every cold start.
 - Cloud polling backs off from 250 ms to two seconds when quiet (up to 87.5% fewer quiet queries) and resumes 250 ms polling after relevant activity. Errors back off to 30 seconds. The single change-feed SELECT avoids the generic query API's extra transaction round trips.
-- Maintenance uses an atomic Postgres-clock lease, limiting sweeps to once per configured interval across the fleet. A crashed holder's lease expires. Sweeps restore only abandoned multiuser rooms and retain the existing mutation lock and compaction checks. Production maintenance remains every 30 seconds; credential/access rechecks remain every five seconds.
+- Maintenance uses an atomic Postgres-clock lease, limiting sweeps to once per configured interval across the fleet. A crashed holder's lease expires. Sweeps restore only abandoned multiuser rooms; each step try-locks only the room it touches (see `cloud-concurrency.md`) and keeps the compaction checks. Production maintenance remains every 30 seconds; credential/access rechecks remain every five seconds.
 
 The lease table is additive and compatible with older application versions. Before deploying this release, run:
 
