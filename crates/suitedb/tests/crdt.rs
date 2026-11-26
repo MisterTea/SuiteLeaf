@@ -331,6 +331,12 @@ fn shuffle<T>(items: &mut [T], seed: u64) {
 #[test]
 fn local_databases_need_no_cross_instance_lock() {
     let db = replica();
-    assert!(db.exclusive("cloud-mutations").unwrap().is_none());
-    assert!(db.try_exclusive("cloud-mutations").unwrap().is_some());
+    assert!(db.exclusive("file:x").unwrap().is_none());
+    assert!(db.try_exclusive("file:x").unwrap().is_some());
+    let scopes = [
+        suitedb::LockScope::shared("drive"),
+        suitedb::LockScope::exclusive("item:x"),
+    ];
+    assert!(db.lock_all(&scopes).unwrap().is_none());
+    assert!(db.try_lock_all(&scopes).unwrap().is_some());
 }
