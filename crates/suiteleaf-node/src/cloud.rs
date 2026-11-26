@@ -53,7 +53,10 @@ pub fn claim_registration_with(
     // Checked only after the lock, so the answer stays true until the
     // claimant finishes (and the next claimant sees its effects).
     let lock = db.lock_all(&[LockScope::exclusive(ACCOUNTS_LOCK)])?;
-    let claim = |digest: String| Registration { digest, _lock: lock };
+    let claim = |digest: String| Registration {
+        digest,
+        _lock: lock,
+    };
     let users = db.query("SELECT id FROM user LIMIT 1", &[])?;
     if users.is_empty() && bootstrap_hash == Some(digest.as_str()) {
         return Ok(Some(claim(digest)));
@@ -92,7 +95,10 @@ pub fn item_lock(id: &str) -> String {
 
 /// Locks for room work and other item-level mutations of `id`.
 pub fn item_locks(id: &str) -> Vec<LockScope> {
-    vec![LockScope::shared(DRIVE_LOCK), LockScope::exclusive(item_lock(id))]
+    vec![
+        LockScope::shared(DRIVE_LOCK),
+        LockScope::exclusive(item_lock(id)),
+    ]
 }
 
 /// The advisory locks a request holds for its whole handler. Empty means the
@@ -121,7 +127,13 @@ pub(crate) fn mutation_locks(method: &Method, path: &str) -> Vec<LockScope> {
         // Tree and access changes: rename/move/trash, delete forever (which
         // also garbage-collects blobs), ACL, expiry, guests, owner, copies.
         ["api", "drive", "items", _]
-        | ["api", "drive", "items", _, "acl" | "expiry" | "guest" | "owner" | "copy"]
+        | [
+            "api",
+            "drive",
+            "items",
+            _,
+            "acl" | "expiry" | "guest" | "owner" | "copy",
+        ]
         | ["api", "drive", "items", _, "versions", _, "copy"] => {
             vec![LockScope::exclusive(DRIVE_LOCK)]
         }
@@ -274,7 +286,11 @@ mod tests {
             (Method::POST, "/api/drive/items/abc/versions/v1/copy"),
             (Method::PUT, "/api/admin/public-sharing"),
         ] {
-            assert_eq!(modes(method, path), vec![("drive".into(), Exclusive)], "{path}");
+            assert_eq!(
+                modes(method, path),
+                vec![("drive".into(), Exclusive)],
+                "{path}"
+            );
         }
     }
 
@@ -288,12 +304,99 @@ mod tests {
             modes(Method::DELETE, "/api/node/sessions/s1"),
             vec![("accounts".into(), Exclusive)]
         );
-        for path in ["/api/admin/users/u1/role", "/api/admin/groups/g1/members", "/api/somewhere-new"] {
+        for path in [
+            "/api/admin/users/u1/role",
+            "/api/admin/groups/g1/members",
+            "/api/somewhere-new",
+        ] {
             assert_eq!(
                 modes(Method::POST, path),
                 vec![("accounts".into(), Exclusive), ("drive".into(), Exclusive)],
                 "{path}"
             );
         }
+    }
+
+    /// Two sign-ups racing on one claim: each waits on the barrier, claims,
+    /// and on success creates the account and consumes the invitation the
+    /// way the auth proxy does. Returns how many succeeded.
+    fn race(token: &str, email: &str, bootstrap: Option<&str>) -> usize {
+        let barrier = std::sync::Barrier::new(2);
+        let wins = std::sync::atomic::AtomicUsize::new(0);
+        std::thread::scope(|s| {
+            for n in 0..2 {
+                let (barrier, wins) = (&barrier, &wins);
+                s.spawn(move || {
+                    let db = crate::collab::tests::postgres::pg_db();
+                    let mut headers = HeaderMap::new();
+                    headers.insert("x-suiteleaf-invite", token.parse().unwrap());
+                    let body = serde_json::json!({ "email": email }).to_string();
+                    barrier.wait();
+                    let claim =
+                        claim_registration_with(&db, &headers, body.as_bytes(), bootstrap).unwrap();
+                    if let Some(claim) = claim {
+                        // Better Auth creating the account takes a moment.
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        let id = format!("{email}-{n}-{}", uuid::Uuid::now_v7());
+                        db.transact(|tx| {
+                            tx.upsert("user", &id, [("email", Value::from(email))])?;
+                            tx.delete("cloud_invite", &claim.digest)
+                        })
+                        .unwrap();
+                        wins.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    }
+                });
+            }
+        });
+        wins.into_inner()
+    }
+
+    #[test]
+    #[ignore = "requires an isolated Postgres database"]
+    fn postgres_concurrent_first_admin_and_invite_sign_ups_cannot_both_succeed() {
+        let db = crate::collab::tests::postgres::pg_db();
+        // Start from an empty instance (throwaway database only).
+        let users = db.query("SELECT id FROM user", &[]).unwrap();
+        db.transact(|tx| {
+            for row in &users {
+                if let Some(Value::Text(id)) = row.get("id") {
+                    tx.delete("user", id)?;
+                }
+            }
+            Ok(())
+        })
+        .unwrap();
+
+        let bootstrap = "b".repeat(40);
+        let wins = race(
+            &bootstrap,
+            "founder@example.com",
+            Some(&token_hash(&bootstrap)),
+        );
+        assert_eq!(
+            wins, 1,
+            "only one bootstrap sign-up becomes the first admin"
+        );
+
+        let invite = "i".repeat(48);
+        let expiry = suitedb::hlc::iso_from_ms(suitedb::hlc::now_ms() + 60_000);
+        db.transact(|tx| {
+            tx.upsert(
+                "cloud_invite",
+                &token_hash(&invite),
+                [
+                    ("email", Value::from("guest@example.com")),
+                    ("expiresAt", Value::Text(expiry)),
+                ],
+            )
+        })
+        .unwrap();
+        let wins = race(&invite, "guest@example.com", None);
+        assert_eq!(wins, 1, "a single-use invitation is redeemed once");
+        assert!(
+            db.get("cloud_invite", &token_hash(&invite))
+                .unwrap()
+                .is_none()
+        );
     }
 }

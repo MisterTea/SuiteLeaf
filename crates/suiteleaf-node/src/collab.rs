@@ -25,7 +25,7 @@ mod slide_room;
 mod socket;
 mod standing;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use body::{body_changed, paragraph_texts};
 use compact::compact_bytes_with_drive;

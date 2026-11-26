@@ -205,9 +205,7 @@ impl Db {
                         (true, LockMode::Exclusive) => "SELECT pg_advisory_xact_lock($1)",
                         (true, LockMode::Shared) => "SELECT pg_advisory_xact_lock_shared($1)",
                         (false, LockMode::Exclusive) => "SELECT pg_try_advisory_xact_lock($1)",
-                        (false, LockMode::Shared) => {
-                            "SELECT pg_try_advisory_xact_lock_shared($1)"
-                        }
+                        (false, LockMode::Shared) => "SELECT pg_try_advisory_xact_lock_shared($1)",
                     };
                     if wait {
                         connection.execute(sql, &[key])?;
@@ -737,9 +735,15 @@ mod tests {
         assert_eq!(plan, lock_plan(&b), "order must not depend on the caller");
         assert_eq!(plan.len(), 3);
         assert!(plan.windows(2).all(|w| w[0].0 < w[1].0));
-        let drive = plan.iter().find(|(k, _)| *k == advisory_key("drive")).unwrap();
+        let drive = plan
+            .iter()
+            .find(|(k, _)| *k == advisory_key("drive"))
+            .unwrap();
         assert_eq!(drive.1, LockMode::Exclusive);
-        let item = plan.iter().find(|(k, _)| *k == advisory_key("item:a")).unwrap();
+        let item = plan
+            .iter()
+            .find(|(k, _)| *k == advisory_key("item:a"))
+            .unwrap();
         assert_eq!(item.1, LockMode::Exclusive);
     }
     #[test]
