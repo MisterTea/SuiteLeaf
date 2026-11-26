@@ -79,6 +79,15 @@ export const fake = {
     driveApi.listFolders.mockResolvedValue([]);
     driveApi.presence.mockResolvedValue([]);
     driveApi.reportPresence.mockResolvedValue(undefined);
+    // Product code reads native files as bytes (v2 ZIP or legacy JSON).
+    // Keep the existing `read` mocks working by wrapping their `text`.
+    driveApi.readBytes.mockImplementation(async (id: string, signal?: AbortSignal) => {
+      const result = await driveApi.read(id, signal);
+      return {
+        bytes: new TextEncoder().encode(result?.text ?? ""),
+        versionId: result?.versionId,
+      };
+    });
     storageExtras.exportText.mockResolvedValue(undefined);
     editorExtras.noteLocalSnapshot.mockResolvedValue(undefined);
     editorExtras.frogSummary.mockImplementation(async () => fake.summary);
@@ -144,6 +153,7 @@ class DriveConflict extends Error {
 export const driveApi = {
   get: vi.fn(),
   read: vi.fn(),
+  readBytes: vi.fn(),
   versions: vi.fn(),
   readVersion: vi.fn(),
   restoreVersion: vi.fn(),
