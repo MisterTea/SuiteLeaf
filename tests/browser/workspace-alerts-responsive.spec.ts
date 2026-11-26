@@ -41,15 +41,19 @@ for (const viewport of [
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
       const method = route.request().method();
-      if (path.endsWith("/content")) {
-        if (method === "PUT") {
+      // Docs/sheets/slides now commit through /sections/commit; the older
+      // full-file PUT /content path is still used as a fallback.
+      if (path.endsWith("/content") || path.endsWith("/sections/commit")) {
+        if (method === "PUT" || method === "POST") {
           conflict = true;
           return route.fulfill({ status: 409, json: { item: item() } });
         }
-        return route.fulfill({
-          body: serializeFile(file),
-          headers: { etag: '"v1"' },
-        });
+        if (path.endsWith("/content")) {
+          return route.fulfill({
+            body: serializeFile(file),
+            headers: { etag: '"v1"' },
+          });
+        }
       }
       if (path === "/api/drive/items" && method === "POST") {
         return route.fulfill({

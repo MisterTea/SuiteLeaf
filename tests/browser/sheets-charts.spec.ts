@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 
 async function openBudget(page: Page) {
   await page.goto("/");
@@ -114,9 +114,7 @@ test("double-clicking a chart opens its editor, where the range can be changed",
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(
-    await readFile((await (await download).path())!, "utf8"),
-  );
+  const saved = await readNativeFile((await (await download).path())!);
   expect(saved.content.charts).toHaveLength(1);
   expect(saved.content.charts[0].source).toMatchObject({
     startRow: 0,

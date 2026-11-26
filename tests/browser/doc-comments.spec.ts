@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -110,7 +110,7 @@ test("document comments post from the keyboard and stay linked to the text", asy
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const saved = await readNativeFile((await (await download).path())!);
   expect(saved.content.attrs.commentThreads[0].messages[0].authorName).toBe("Jordan");
   expect(saved.content.attrs.commentThreads[0].orphaned).toBe(true);
   expect(saved.content.attrs.commentThreads[0].quote).toBe("grew 12%");

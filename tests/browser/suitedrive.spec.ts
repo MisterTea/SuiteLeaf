@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { createFile, serializeFile } from "../../packages/core/src";
+import { createFile, parseFileBytes, serializeFile, serializeFileBytes } from "../../packages/core/src";
 
 const root = resolve(import.meta.dirname, "../..");
 const binary = join(root, "target/debug/suiteleaf-node");
@@ -206,27 +206,58 @@ test.describe("SuiteDrive across two nodes", () => {
       }[];
     });
 
-  /** Save a new version of `name` as another client would, replacing `from` with `to`. */
-  const saveElsewhere = (page: Page, name: string, from: string, to: string) =>
-    page.evaluate(
-      async ([name, from, to]) => {
-        const s = JSON.parse(localStorage.getItem("suiteleaf:node-session")!);
-        const headers = { authorization: `Bearer ${s.token}` };
-        const { items } = await (
-          await fetch(`${s.url}/api/drive/items`, { headers })
-        ).json();
-        const id = items.find((i: { name: string }) => i.name === name).id;
-        const url = `${s.url}/api/drive/items/${id}/content`;
-        const text = await (await fetch(url, { headers })).text();
-        const r = await fetch(url, {
-          method: "PUT",
-          headers: { ...headers, "content-type": "application/json" },
-          body: text.replaceAll(from, to),
-        });
-        if (!r.ok) throw new Error(`upload failed: ${r.status}`);
-      },
-      [name, from, to],
+  /** Session + auth header for the page's connected node. */
+  const nodeSession = (page: Page) =>
+    page.evaluate(() =>
+      JSON.parse(localStorage.getItem("suiteleaf:node-session")!),
+    ) as Promise<{ url: string; token: string }>;
+
+  /** Whether this request creates a new SuiteDrive version. */
+  const isDriveVersionWrite = (request: { url(): string; method(): string }) => {
+    const path = new URL(request.url()).pathname;
+    if (/\/api\/drive\/items\/[^/]+\/content$/.test(path))
+      return request.method() === "PUT";
+    if (/\/api\/drive\/items\/[^/]+\/sections\/commit$/.test(path))
+      return request.method() === "POST";
+    return false;
+  };
+
+  const driveWriteRoute = "**/api/drive/items/**";
+
+  /** True when the stored package or JSON for `name` includes `text`. */
+  const driveFileContains = async (page: Page, name: string, text: string) => {
+    const s = await nodeSession(page);
+    const headers = { authorization: `Bearer ${s.token}` };
+    const { items } = await (await fetch(`${s.url}/api/drive/items`, { headers })).json();
+    const id = items.find((i: { name: string }) => i.name === name)?.id;
+    if (!id) return false;
+    const bytes = new Uint8Array(
+      await (await fetch(`${s.url}/api/drive/items/${id}/content`, { headers })).arrayBuffer(),
     );
+    return JSON.stringify(await parseFileBytes(bytes)).includes(text);
+  };
+
+  /** Save a new version of `name` as another client would, replacing `from` with `to`. */
+  const saveElsewhere = async (page: Page, name: string, from: string, to: string) => {
+    const s = await nodeSession(page);
+    const headers: Record<string, string> = { authorization: `Bearer ${s.token}` };
+    const { items } = await (await fetch(`${s.url}/api/drive/items`, { headers })).json();
+    const id = items.find((i: { name: string }) => i.name === name).id;
+    const url = `${s.url}/api/drive/items/${id}/content`;
+    const bytes = new Uint8Array(await (await fetch(url, { headers })).arrayBuffer());
+    const file = await parseFileBytes(bytes);
+    const json = JSON.stringify(file);
+    if (!json.includes(from)) {
+      throw new Error(`saveElsewhere: ${JSON.stringify(from)} not found in ${name}`);
+    }
+    const body = await serializeFileBytes(JSON.parse(json.replaceAll(from, to)));
+    const r = await fetch(url, {
+      method: "PUT",
+      headers: { ...headers, "content-type": "application/octet-stream" },
+      body: body as unknown as BodyInit,
+    });
+    if (!r.ok) throw new Error(`upload failed: ${r.status}`);
+  };
 
   test("save on one node, open on another, and detect a conflicting edit", async ({
     browser,
@@ -438,8 +469,8 @@ test.describe("SuiteDrive across two nodes", () => {
     let uploaded: string | undefined;
     let releaseUpload!: () => void;
     const uploading = new Promise<void>((started) => {
-      void page.route("**/api/drive/items/*/content", async (route) => {
-        if (route.request().method() !== "PUT") return route.continue();
+      void page.route(driveWriteRoute, async (route) => {
+        if (!isDriveVersionWrite(route.request())) return route.continue();
         ifMatch.push(route.request().headers()["if-match"]);
         if (ifMatch.length > 1) return route.continue();
         await new Promise<void>((release) => {
@@ -494,8 +525,8 @@ test.describe("SuiteDrive across two nodes", () => {
     const responses: number[] = [];
     let uploaded: string | undefined;
     let holding = true;
-    await page.route("**/api/drive/items/*/content", async (route) => {
-      if (route.request().method() !== "PUT") return route.continue();
+    await page.route(driveWriteRoute, async (route) => {
+      if (!isDriveVersionWrite(route.request())) return route.continue();
       const ifMatch = route.request().headers()["if-match"];
       if (holding)
         await new Promise<void>((release) =>
@@ -546,8 +577,8 @@ test.describe("SuiteDrive across two nodes", () => {
       status: number;
       version?: string;
     }[] = [];
-    await page.route("**/api/drive/items/*/content", async (route) => {
-      if (route.request().method() !== "PUT") return route.continue();
+    await page.route(driveWriteRoute, async (route) => {
+      if (!isDriveVersionWrite(route.request())) return route.continue();
       const response = await route.fetch();
       uploads.push({
         ifMatch: route.request().headers()["if-match"],
@@ -603,7 +634,7 @@ test.describe("SuiteDrive across two nodes", () => {
       await editor.press("End");
       await page.keyboard.type(" after reopening");
       await expect
-        .poll(() => uploads.some((u) => u.body.includes("after reopening")), {
+        .poll(() => driveFileContains(page, `${name}.sldoc`, "after reopening"), {
           timeout: 20000,
         })
         .toBe(true);
@@ -721,8 +752,8 @@ test.describe("SuiteDrive across two nodes", () => {
     });
     const signOut = page.getByRole("button", { name: "Sign out" });
 
-    await page.route("**/api/drive/items/*/content", (route) =>
-      route.request().method() === "PUT"
+    await page.route(driveWriteRoute, (route) =>
+      isDriveVersionWrite(route.request())
         ? route.fulfill({ status: 503, json: { error: "Unavailable" } })
         : route.continue(),
     );
@@ -742,19 +773,31 @@ test.describe("SuiteDrive across two nodes", () => {
     ]);
 
     // Reopening uploads the edits; signing out waits for that upload.
-    await page.unroute("**/api/drive/items/*/content");
+    await page.unroute(driveWriteRoute);
     const bodies: string[] = [];
     let release!: () => void;
     const uploading = new Promise<void>((started) => {
-      void page.route("**/api/drive/items/*/content", async (route) => {
-        if (route.request().method() !== "PUT") return route.continue();
-        bodies.push(route.request().postData() ?? "");
-        if (bodies.length === 1)
+      void page.route(driveWriteRoute, async (route) => {
+        if (!isDriveVersionWrite(route.request())) return route.continue();
+        if (bodies.length === 0)
           await new Promise<void>((resume) => {
             release = resume;
             started();
           });
-        await route.continue();
+        const response = await route.fetch();
+        // Sectioned commits send a manifest, not the document text. Read the
+        // stored package after the new version is accepted.
+        const auth = route.request().headers()["authorization"];
+        const contentUrl = route
+          .request()
+          .url()
+          .replace(/\/sections\/commit$/, "/content")
+          .replace(/\?.*$/, "");
+        const stored = new Uint8Array(
+          await (await fetch(contentUrl, { headers: { authorization: auth } })).arrayBuffer(),
+        );
+        bodies.push(JSON.stringify(await parseFileBytes(stored)));
+        await route.fulfill({ response });
       });
     });
     await page

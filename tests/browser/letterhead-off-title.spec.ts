@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { createFile, serializeFile, type DocFile } from "../../packages/core/src";
 
 const inch = (n: number) => n * 96;
@@ -178,7 +178,7 @@ test("a one-line letterhead at the margin sits off the title", async ({ page }) 
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const saved = await readNativeFile((await (await download).path())!);
   expect(saved.content.attrs.pageSettings).toMatchObject({
     marginTop: inch(1),
     marginBottom: inch(1),

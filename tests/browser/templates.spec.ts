@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { expect, test, type Page } from "@playwright/test";
 
 const builtins = [
@@ -98,7 +98,7 @@ test("an invoice copy keeps live formulas", async ({ page }) => {
   }
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const file = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const file = await readNativeFile((await (await download).path())!);
   const sheet = file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
   expect(sheet.cellData[8][3]).toMatchObject({ f: "=SUM(D6:D8)", v: 240 });
   expect(sheet.cellData[5][3].f).toContain("B6*C6");

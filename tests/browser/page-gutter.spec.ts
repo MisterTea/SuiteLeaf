@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { createFile, serializeFile } from "../../packages/core/src";
 
 const filler =
@@ -126,9 +126,7 @@ test("binding gutter swaps sides and survives reopen", async ({ page }) => {
   await expect(page.locator(".save-status")).toContainText("Saved");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(
-    await readFile((await (await download).path())!, "utf8"),
-  );
+  const saved = await readNativeFile((await (await download).path())!);
   expect(saved.content.attrs.pageSettings.gutter).toBe(48);
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Minutes", exact: true }).click();

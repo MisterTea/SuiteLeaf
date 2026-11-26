@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { readNativeFile } from "../read-native-file";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { letterDocx, letterGreeting, letterLogo } from "../letter-picture";
@@ -146,7 +147,7 @@ test("wrap text puts a picture beside the paragraph and keeps corner resize", as
   const file = await download;
   const savedPath = join(mkdtempSync(join(tmpdir(), "wrap-")), file.suggestedFilename());
   await file.saveAs(savedPath);
-  const saved = JSON.parse(readFileSync(savedPath, "utf8"));
+  const saved = await readNativeFile(savedPath);
   expect(JSON.stringify(saved.content)).toContain('"wrap":"left"');
 
   await page.getByRole("button", { name: "Back to files" }).click();

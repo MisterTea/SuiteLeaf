@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { expect, test, type Page } from "@playwright/test";
 import JSZip from "jszip";
 import { createFile, serializeFile } from "../../packages/core/src";
@@ -67,7 +68,7 @@ test("dropdown lists are prefilled, reject bad values, and survive the file", as
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const saved = await readNativeFile((await (await download).path())!);
   const rule = JSON.parse(
     saved.content.workbook.resources.find(
       (resource: { name: string }) => resource.name === "SHEET_DATA_VALIDATION_PLUGIN",

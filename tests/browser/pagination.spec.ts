@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { createFile, serializeFile } from "../../packages/core/src";
 test("long paragraphs and tables paginate without changing document content", async ({
   page,
@@ -46,9 +46,7 @@ test("long paragraphs and tables paginate without changing document content", as
   expect(await page.locator(".page-furniture-page").count()).toBeGreaterThan(2);
   const waiting = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(
-    await readFile((await (await waiting).path())!, "utf8"),
-  );
+  const saved = await readNativeFile((await (await waiting).path())!);
   expect(saved.content.content[0].content[0].text).toBe(text);
   expect(saved.content.content[1].content).toHaveLength(50);
   const editor = page.getByRole("textbox", { name: "Document content" });

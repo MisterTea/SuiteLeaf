@@ -4,7 +4,7 @@ import { fillSource, expectSourceValue } from "./source-editor-helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { createFile, serializeFile } from "../../packages/core/src/native-file";
 import { defaultPageSettings } from "../../packages/core/src/document-layout";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 
 test("Slide save failure toasts stay above the carousel through rotation", async ({ page, isMobile }) => {
   await page.goto("/");
@@ -267,7 +267,7 @@ test("Mobile sheet selected rows and columns have large resize handles and retai
     const button = page.getByRole("button", { name: "Download", exact: true });
     await button.scrollIntoViewIfNeeded();
     await button.click();
-    const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+    const saved = await readNativeFile((await (await download).path())!);
     return saved.content.workbook.sheets[saved.content.workbook.sheetOrder[0]];
   };
   const taller = await snapshot();

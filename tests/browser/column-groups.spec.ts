@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { test, expect, type Page } from "@playwright/test";
 import { createFile, serializeFile } from "../../packages/core/src";
 
@@ -59,7 +59,7 @@ async function open(
 async function native(page: Page) {
   const waiting = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  return JSON.parse(await readFile((await (await waiting).path())!, "utf8"));
+  return await readNativeFile((await (await waiting).path())!);
 }
 
 function sheetOf(file: any) {

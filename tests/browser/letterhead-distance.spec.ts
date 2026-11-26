@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { expect, test, type Page } from "@playwright/test";
 import JSZip from "jszip";
 import {
@@ -101,7 +102,7 @@ test("a Word letterhead keeps its distance from the edge", async ({ page }) => {
 
   const nativeEvent = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await nativeEvent).path())!, "utf8"));
+  const saved = await readNativeFile((await (await nativeEvent).path())!);
   expect(saved.content.attrs.pageSettings).toMatchObject({
     headerFromEdge: 72,
     footerFromEdge: 48,

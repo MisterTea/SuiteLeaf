@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 
 async function native(page: Page) {
   const promise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  return JSON.parse(await readFile((await (await promise).path())!, "utf8"));
+  return await readNativeFile((await (await promise).path())!);
 }
 
 test("formula suggestions never replace a formula typed past them", async ({ page }) => {

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { expect, test, type Page } from "@playwright/test";
 import { createFile, serializeFile } from "../../packages/core/src";
 import { cellHyperlink } from "../../packages/core/src/sheet-links";
@@ -80,7 +80,7 @@ test("a cell link keeps its label, refuses unsafe addresses, and survives the fi
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const saved = await readNativeFile((await (await download).path())!);
   const cells = saved.content.workbook.sheets[saved.content.workbook.sheetOrder[0]].cellData;
   expect(cells[1][0].v).toBe("Northwind");
   expect(cellHyperlink(cells[1][0])).toBe("https://example.org/northwind/orders");
@@ -92,7 +92,7 @@ test("a cell link keeps its label, refuses unsafe addresses, and survives the fi
 
   const plain = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const removed = JSON.parse(await readFile((await (await plain).path())!, "utf8"));
+  const removed = await readNativeFile((await (await plain).path())!);
   const plainCells = removed.content.workbook.sheets[removed.content.workbook.sheetOrder[0]].cellData;
   expect(plainCells[1][0].v).toBe("Northwind");
   expect(cellHyperlink(plainCells[1][0])).toBeNull();

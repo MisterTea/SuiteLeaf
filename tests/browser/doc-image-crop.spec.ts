@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { crc32, deflateSync } from "node:zlib";
 import JSZip from "jszip";
 
@@ -131,7 +132,7 @@ test("crop hides an edge without scaling the photo, and reset and Word keep the 
   await expect(page.locator(".save-status")).toContainText("Saved");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const saved = await readNativeFile((await (await download).path())!);
   const savedImage = JSON.stringify(saved.content);
   expect(savedImage).toContain("cropRight");
   expect(savedImage).toContain(String(src).slice(0, 40));

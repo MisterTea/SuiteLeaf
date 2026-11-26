@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { test, expect, type Page } from "@playwright/test";
 import * as XLSX from "xlsx";
 import { createFile, serializeFile } from "../../packages/core/src";
@@ -47,7 +48,7 @@ async function openNamedRanges(page: Page) {
 async function saved(page: Page) {
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  return JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  return await readNativeFile((await (await download).path())!);
 }
 
 function namesOf(file: { content: { workbook: { resources?: { name: string; data: string }[] } } }) {

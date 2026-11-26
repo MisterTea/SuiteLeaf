@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { createFile, serializeFile } from "../../packages/core/src";
 
 const volunteers: (string | number)[][] = [
@@ -40,9 +40,7 @@ async function open(page: Page) {
 async function rows(page: Page) {
   const waiting = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(
-    await readFile((await (await waiting).path())!, "utf8"),
-  );
+  const saved = await readNativeFile((await (await waiting).path())!);
   const book = saved.content.workbook;
   const cells = book.sheets[book.sheetOrder[0]].cellData;
   return volunteers.map((_, r) => [0, 1, 2].map((c) => cells[r][c].v));

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { readNativeFile } from "../read-native-file";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stallNote, stallSentenceDocx } from "../sentence-picture";
@@ -157,7 +158,7 @@ test("a Word inline picture opens in the sentence and survives save", async ({ p
   const download = await downloading;
   const savedPath = join(mkdtempSync(join(tmpdir(), "inline-save-")), download.suggestedFilename());
   await download.saveAs(savedPath);
-  const saved = JSON.parse(readFileSync(savedPath, "utf8"));
+  const saved = await readNativeFile(savedPath);
   const paragraph = saved.content.content.find((node: { type: string }) =>
     node.type === "paragraph",
   );

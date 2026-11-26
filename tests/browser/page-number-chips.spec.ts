@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { expect, test, type Page } from "@playwright/test";
 import { createFile, serializeFile, type DocFile } from "../../packages/core/src";
 
@@ -80,7 +80,7 @@ async function openSetup(page: Page) {
 async function savedStart(page: Page) {
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const file = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const file = await readNativeFile((await (await download).path())!);
   return file.content.attrs.pageSettings.pageNumberStart ?? 1;
 }
 

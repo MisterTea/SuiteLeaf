@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { createFile, serializeFile, type DocFile } from "../../packages/core/src";
 import { PERSONAL_DICTIONARY_KEY } from "../../apps/web/src/editors/doc-spelling";
@@ -6,7 +6,7 @@ import { PERSONAL_DICTIONARY_KEY } from "../../apps/web/src/editors/doc-spelling
 async function download(page: Page) {
   const waiting = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  return JSON.parse(await readFile((await (await waiting).path())!, "utf8"));
+  return await readNativeFile((await (await waiting).path())!);
 }
 
 function decisionsSheet() {

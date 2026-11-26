@@ -1,5 +1,6 @@
 import { test, expect, _electron as electron } from "@playwright/test";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { wordFixture, excelFixture } from "../office-fixtures";
@@ -48,7 +49,7 @@ for (const kind of ["docx", "xlsx"] as const)
       );
       await page.getByRole("button", { name: "Save As", exact: true }).click();
       await expect(page.locator(".save-status")).toContainText("Saved to file");
-      const native = JSON.parse(await readFile(save, "utf8"));
+      const native = await readNativeFile(save);
       expect(native.kind).toBe(kind === "docx" ? "doc" : "sheet");
       expect(native.importInfo.sourceFormat).toBe(kind);
       expect(await readFile(original)).toEqual(bytes);

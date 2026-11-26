@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { crc32, deflateSync } from "node:zlib";
 import JSZip from "jszip";
 
@@ -136,7 +137,7 @@ test("a new photo starts with an empty description and alt text stays with the i
 
   const native = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await native).path())!, "utf8"));
+  const saved = await readNativeFile((await (await native).path())!);
   expect(JSON.stringify(saved.content)).toContain(sentence);
   expect(JSON.stringify(saved.content)).not.toContain("IMG_2044");
 

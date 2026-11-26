@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import * as XLSX from "xlsx";
 import { createFile, serializeFile } from "../../packages/core/src";
 if (process.env.SUITELEAF_FEATURE_URL)
@@ -7,7 +8,7 @@ if (process.env.SUITELEAF_FEATURE_URL)
 async function native(page: Page) {
   const promise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  return JSON.parse(await readFile((await (await promise).path())!, "utf8"));
+  return await readNativeFile((await (await promise).path())!);
 }
 async function office(page: Page, format: string) {
   await page.getByRole("button", { name: "File", exact: true }).click();

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { createFile, serializeFile, type DocFile } from "../../packages/core/src";
 
 function thesis(): DocFile {
@@ -175,7 +175,7 @@ test("header and footer distances stay separate from the margin", async ({ page 
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const saved = await readNativeFile((await (await download).path())!);
   expect(saved.content.attrs.pageSettings).toMatchObject({
     marginTop: 96,
     marginBottom: 96,

@@ -2,13 +2,14 @@ import { fillSlideText, editSlideText } from "./slide-text-helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { createServer } from "node:http";
 import { resolve, extname, sep } from "node:path";
 async function exported(page: Page) {
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   const d = await download;
-  return JSON.parse(await readFile((await d.path())!, "utf8"));
+  return await readNativeFile((await d.path())!);
 }
 test("document edit → formatting → autosave → reopen → native export", async ({
   page,

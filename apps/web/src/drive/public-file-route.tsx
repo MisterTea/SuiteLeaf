@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { Link, useParams } from "react-router-dom";
-import { parseFile, type SuiteFile } from "@suiteleaf/core";
+import { parseFileBytes, type SuiteFile } from "@suiteleaf/core";
 import { useMode } from "../mode";
 import { message } from "../error-message";
 import { CommandPalette } from "../command-palette";
@@ -39,7 +39,7 @@ export async function loadPublicFile(
         ? "This public link is unavailable. It may have been revoked or public sharing may be turned off."
         : "The shared file could not be loaded. Try again later.",
     );
-  return parseFile(await response.text());
+  return parseFileBytes(new Uint8Array(await response.arrayBuffer()));
 }
 
 class PublicFileBoundary extends Component<

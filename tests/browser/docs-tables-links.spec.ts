@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { crc32, deflateSync } from "node:zlib";
 
 test.use({ viewport: { width: 1280, height: 800 } });
@@ -51,7 +51,7 @@ async function savedContent(page: Page) {
   await expect(page.locator(".save-status")).toContainText("Saved");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const file = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const file = await readNativeFile((await (await download).path())!);
   return JSON.stringify(file.content);
 }
 

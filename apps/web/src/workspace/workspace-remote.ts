@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { hasUnsyncedEdits, parseNamedFile, type FileRecord, type SuiteFile } from "@suiteleaf/core";
+import { hasUnsyncedEdits, kindFromName, parseFileBytes, type FileRecord, type SuiteFile } from "@suiteleaf/core";
 import { driveWatchDecision } from "../drive-watch";
 import { storage } from "../storage";
 import { drive, getSession, type DriveItem } from "../node-client";
@@ -68,7 +68,7 @@ export function useRemoteVersionWatch(ws: WorkspaceState) {
           showConflict(item);
           return;
         }
-        const read = await drive.read(itemId);
+        const read = await drive.readBytes(itemId);
         if (stop || !alive.current || driveConflictRef.current) return;
         const linkedNow = current.current;
         if (!linkedNow?.drive || linkedNow.drive.itemId !== itemId) return;
@@ -103,9 +103,9 @@ export function useRemoteVersionWatch(ws: WorkspaceState) {
             return;
           }
           if (!latest.headVersionId || latest.headVersionId !== head) return;
-          const parsed = parseNamedFile(
-            latest.name || openNow.drive.name,
-            read.text,
+          const parsed = await parseFileBytes(
+            read.bytes,
+            kindFromName(latest.name || openNow.drive.name),
           );
           const file = { ...parsed, id: openNow.file.id } as SuiteFile;
           const next: FileRecord = {

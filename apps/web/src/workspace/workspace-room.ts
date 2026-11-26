@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { blockTexts, compactSession, parseFile, roomAlreadyHasText, syncParagraphTexts } from "@suiteleaf/core";
+import { blockTexts, compactSession, parseFileBytes, roomAlreadyHasText, syncParagraphTexts } from "@suiteleaf/core";
 import { useDocumentRoom, shouldSeedDocument } from "../collab/session";
 import { seedSlideRoom } from "../collab/slide-room";
 import { keptLocalCopy } from "../conflict-merge";
@@ -90,9 +90,9 @@ export function useWorkspaceRoom(ws: WorkspaceState) {
     onSoloAgain: () => {
       const link = current.current?.drive;
       if (!link) return;
-      void drive.read(link.itemId).then(({ text, versionId }) => {
+      void drive.readBytes(link.itemId).then(async ({ bytes, versionId }) => {
         if (!current.current) return;
-        const remote = parseFile(text);
+        const remote = await parseFileBytes(bytes, current.current.file.kind);
         const localVersions = current.current.file.versions?.length ?? 0;
         if ((remote.versions?.length ?? 0) > localVersions) {
           current.current = {

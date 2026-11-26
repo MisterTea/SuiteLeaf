@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { serializeFile } from "../../packages/core/src";
 import { minutesDocument } from "../odd-even-fixture";
 
@@ -87,9 +87,7 @@ test("odd and even pages keep the letterhead, mirror numbers, and survive reopen
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(
-    await readFile((await (await download).path())!, "utf8"),
-  );
+  const saved = await readNativeFile((await (await download).path())!);
   expect(saved.content.attrs.pageSettings).toMatchObject({
     differentFirstPage: true,
     differentOddEven: true,

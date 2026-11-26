@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readNativeFile } from "../read-native-file";
 import { expect, test, type Page } from "@playwright/test";
 
 const meadow = "rgb(13, 40, 24)";
@@ -303,7 +303,7 @@ test("a saved theme applies to another deck as a copy", async ({ page }) => {
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   const download = await downloading;
-  const savedFile = JSON.parse(readFileSync((await download.path())!, "utf8"));
+  const savedFile = await readNativeFile((await download.path())!);
   expect(savedFile.content.theme).toMatchObject({
     name: "Centre green",
     accent: "#66bb6a",

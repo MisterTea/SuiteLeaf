@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import JSZip from "jszip";
 
 test("a page-setup watermark stays behind the text and exports to Word", async ({
@@ -87,7 +88,7 @@ test("a page-setup watermark stays behind the text and exports to Word", async (
 
   const native = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await native).path())!, "utf8"));
+  const saved = await readNativeFile((await (await native).path())!);
   expect(saved.content.attrs.pageSettings.watermark).toBe("DRAFT");
   expect(JSON.stringify(saved.content.content)).not.toContain("DRAFT");
   expect(JSON.stringify(saved.content.content)).toContain("Bring the map.");

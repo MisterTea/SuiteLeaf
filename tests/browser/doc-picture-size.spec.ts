@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readNativeFile } from "../read-native-file";
 import { expect, test, type Page } from "@playwright/test";
 import { logoPage, photoPage, pictureLetterDocx } from "../picture-letter";
 
@@ -84,7 +84,7 @@ test("a Word picture opens at its page size and corner resize does not snap back
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(readFileSync((await (await download).path())!, "utf8"));
+  const saved = await readNativeFile((await (await download).path())!);
   const pictures = JSON.stringify(saved.content);
   expect(pictures).toContain(`"width":${kept}`);
   expect(pictures).not.toContain('"width":1400');

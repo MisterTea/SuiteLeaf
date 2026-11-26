@@ -7,7 +7,8 @@ import {
 import {
   createFile,
   isNativeName,
-  parseNamedFile,
+  kindFromName,
+  parseFileBytes,
   type SuiteFile,
   type SheetFile,
 } from "@suiteleaf/core";
@@ -101,12 +102,19 @@ export async function importFile(
         ? `Choose a native file smaller than ${NATIVE_FILE_LIMIT / (1024 * 1024)} MB.`
         : "Choose a file smaller than 50 MB.",
     );
+  if (native) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (control?.shouldStop?.()) {
+      if (control.saved) return control.saved;
+      throw new Error("Import cancelled. The original file is unchanged.");
+    }
+    return parseFileBytes(bytes, kindFromName(file.name));
+  }
   const text = await file.text();
   if (control?.shouldStop?.()) {
     if (control.saved) return control.saved;
     throw new Error("Import cancelled. The original file is unchanged.");
   }
-  if (native) return parseNamedFile(file.name, text);
   const title =
     file.name.replace(/\.[^.]+$/, "").slice(0, 200) || "Imported file";
   if (ext === "html" || ext === "htm") {

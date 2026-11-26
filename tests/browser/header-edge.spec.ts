@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { createFile, serializeFile } from "../../packages/core/src";
 
 const inch = (n: number) => n * 96;
@@ -152,9 +152,7 @@ test("header and footer distances stay separate from the page margin", async ({
   await expect(page.locator(".save-status")).toContainText("Saved");
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(
-    await readFile((await (await downloading).path())!, "utf8"),
-  );
+  const saved = await readNativeFile((await (await downloading).path())!);
   expect(saved.content.attrs.pageSettings.headerFromEdge).toBe(inch(0.5));
   expect(saved.content.attrs.pageSettings.footerFromEdge).toBe(inch(0.5));
   expect(saved.content.attrs.pageSettings.marginTop).toBe(inch(1));

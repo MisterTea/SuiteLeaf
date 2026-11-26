@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { readNativeFile } from "../read-native-file";
 import { excelFixture, wordFixture } from "../office-fixtures";
 
 // The assistant's tools, run directly against the real editors. These test
@@ -214,7 +215,7 @@ test("note and comment tools say where they went and who signed the comment", as
   );
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const file = JSON.parse(readFileSync((await (await download).path())!, "utf8"));
+  const file = await readNativeFile((await (await download).path())!);
   const data = (name: string) => JSON.parse(file.content.workbook.resources.find((r: { name: string }) => r.name === name).data);
   const sheetId = file.content.workbook.sheetOrder[0];
   expect(data("SHEET_NOTE_PLUGIN")[sheetId][2][2]).not.toHaveProperty("show", true);

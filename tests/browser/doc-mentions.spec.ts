@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile, writeFile, mkdtemp } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
@@ -121,7 +122,7 @@ test("an @mention is stored apart from the sentence and opens on that person", a
 
   const suiteleaf = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await suiteleaf).path())!, "utf8"));
+  const saved = await readNativeFile((await (await suiteleaf).path())!);
   const growth = saved.content.attrs.commentThreads.find(
     (thread: { quote: string }) => thread.quote === "grew 12%",
   );
@@ -230,7 +231,7 @@ test("the first comment name is what @ matches, and a name with no account can b
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const saved = await readNativeFile((await (await download).path())!);
   const mention = saved.content.attrs.commentThreads
     .flatMap((thread: { messages: { mentions?: { name: string; accountId?: string }[] }[] }) =>
       thread.messages.flatMap((message) => message.mentions ?? []),

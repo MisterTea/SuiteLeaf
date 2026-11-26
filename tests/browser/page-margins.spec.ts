@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import JSZip from "jszip";
 import { createFile, serializeFile } from "../../packages/core/src";
 import {
@@ -109,7 +110,7 @@ test("Word's four page margins show, lay out, and round-trip", async ({ page }) 
 
   const nativeDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await nativeDownload).path())!, "utf8"));
+  const saved = await readNativeFile((await (await nativeDownload).path())!);
   expect(saved.content.attrs.pageSettings).toMatchObject({
     marginTop: 144,
     marginBottom: 72,

@@ -4,7 +4,7 @@ import { wordFixture, excelFixture } from "../office-fixtures";
 async function nativeCopy(page: Page) {
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  return JSON.parse(await readFile((await (await downloaded).path())!, "utf8"));
+  return await readNativeFile((await (await downloaded).path())!);
 }
 test("DOCX worker import → editing → native copy → reopen", async ({
   page,
@@ -122,6 +122,7 @@ test("Office failures are visible and leave existing files intact", async ({
 });
 
 import { existsSync } from "node:fs";
+import { readNativeFile } from "../read-native-file";
 const corpusExamples = [
   [
     "Arabic Word",

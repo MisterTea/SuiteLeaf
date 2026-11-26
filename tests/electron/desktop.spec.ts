@@ -1,5 +1,6 @@
 import { test, expect, _electron as electron } from "@playwright/test";
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { createFile, serializeFile } from "../../packages/core/src";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -33,28 +34,24 @@ test("native Save As → autosave → external conflict → recovery → reopeni
       .fill("Desktop draft");
     await page.getByRole("button", { name: "Save As", exact: true }).click();
     await expect(page.locator(".save-status")).toContainText("Saved to file");
-    expect(
-      JSON.parse(await readFile(path, "utf8")).content.content[0].content[0]
-        .text,
-    ).toBe("Desktop draft");
+    const saved = await readNativeFile(path);
+    if (saved.kind !== "doc") throw new Error("expected document");
+    expect(saved.content.content[0].content[0].text).toBe("Desktop draft");
     await page
       .getByRole("textbox", { name: "Document content" })
       .fill("Autosaved edit");
     await expect(page.locator(".save-status")).toContainText("Saved to file");
-    expect(
-      JSON.parse(await readFile(path, "utf8")).content.content[0].content[0]
-        .text,
-    ).toBe("Autosaved edit");
-    const external = JSON.parse(await readFile(path, "utf8"));
+    const autosaved = await readNativeFile(path);
+    if (autosaved.kind !== "doc") throw new Error("expected document");
+    expect(autosaved.content.content[0].content[0].text).toBe("Autosaved edit");
+    const external = await readNativeFile(path);
     external.title = "Outside change";
-    await writeFile(path, JSON.stringify(external));
+    await writeFile(path, serializeFile(external));
     await page
       .getByRole("textbox", { name: "Document content" })
       .fill("Recovery edit");
     await expect(page.getByRole("alert")).toContainText("outside");
-    expect(JSON.parse(await readFile(path, "utf8")).title).toBe(
-      "Outside change",
-    );
+    expect((await readNativeFile(path)).title).toBe("Outside change");
     expect(errors).toEqual([]);
     await app.evaluate(({ BrowserWindow }) => {
       for (const w of BrowserWindow.getAllWindows()) w.destroy();

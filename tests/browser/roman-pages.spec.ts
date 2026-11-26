@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import JSZip from "jszip";
 import { createFile, serializeFile, type DocFile } from "../../packages/core/src";
 
@@ -102,7 +103,7 @@ test("lowercase roman and an arabic restart survive save and Word export", async
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const saved = await readNativeFile((await (await download).path())!);
   expect(saved.content.attrs.pageSettings).toMatchObject({
     pageNumberFormat: "roman",
     pageNumberPosition: "bottom-center",

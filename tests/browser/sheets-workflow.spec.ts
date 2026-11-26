@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readNativeFile } from "../read-native-file";
 import { createFile, serializeFile } from "../../packages/core/src";
 
 if (process.env.SUITELEAF_WORKFLOW_URL)
@@ -8,7 +8,7 @@ if (process.env.SUITELEAF_WORKFLOW_URL)
 async function snapshot(page: Page) {
   const waiting = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  return JSON.parse(await readFile((await (await waiting).path())!, "utf8"));
+  return await readNativeFile((await (await waiting).path())!);
 }
 
 test("currency budget charts retain numeric bars, labels, order, formulas and filters across reopen", async ({
