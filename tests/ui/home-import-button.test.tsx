@@ -175,12 +175,12 @@ describe("ImportButton", () => {
     await choose(picker, []);
     expect(onImport).not.toHaveBeenCalled();
     await choose(picker, [file("Notes.docx")]);
-    expect(onImport).toHaveBeenCalledWith({ file: expect.objectContaining({ title: "Notes" }) }, "Notes.docx", expect.any(Function));
+    expect(onImport).toHaveBeenCalledWith({ file: expect.objectContaining({ title: "Notes" }) }, "Notes.docx", expect.any(Function), expect.any(AbortSignal));
     await choose(picker, [file("A.docx"), file("B.xlsx")]);
     expect(keepImported).toHaveBeenCalledTimes(2);
     expect(onBatchDone).toHaveBeenCalledTimes(1);
     await act(() => importer.current!(file("C.docx")));
-    expect(onImport).toHaveBeenLastCalledWith({ file: expect.objectContaining({ title: "C" }) }, "C.docx", expect.any(Function));
+    expect(onImport).toHaveBeenLastCalledWith({ file: expect.objectContaining({ title: "C" }) }, "C.docx", expect.any(Function), expect.any(AbortSignal));
   });
 
   it("sends a batch to the opener when nothing keeps it here, and reports failures", async () => {
@@ -271,7 +271,7 @@ describe("ImportButton", () => {
       file("talk/pic.png", "png"),
       file("talk/notes.md", "plain notes"),
     ]);
-    expect(onImport).toHaveBeenCalledWith({ file: expect.any(Object) }, "talk.md", expect.any(Function));
+    expect(onImport).toHaveBeenCalledWith({ file: expect.any(Object) }, "talk.md", expect.any(Function), expect.any(AbortSignal));
     expect(Object.keys(hoisted.calls[0]!.assets as object)).toEqual(["pic.png"]);
   });
 
@@ -280,7 +280,7 @@ describe("ImportButton", () => {
     start(folderPicker, [file("talks/one.md", marp()), file("talks/two.md", marp())]);
     const dialog = await screen.findByRole("dialog", { name: "Which presentation?" });
     fireEvent.click(screen.getByRole("button", { name: "two.md" }));
-    await waitFor(() => expect(onImport).toHaveBeenCalledWith(expect.anything(), "two.md", expect.any(Function)));
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(expect.anything(), "two.md", expect.any(Function), expect.any(AbortSignal)));
     expect(dialog.isConnected).toBe(false);
     start(folderPicker, [file("talks/one.md", marp()), file("talks/two.md", marp())]);
     fireEvent.keyDown(await screen.findByRole("dialog", { name: "Which presentation?" }), { key: "Escape" });
@@ -296,10 +296,10 @@ describe("ImportButton", () => {
     const placeInFolder = vi.fn(async (f: SuiteFile) => ({ file: f, path: "/docs/x" }));
     const { onImport, onError, folderPicker } = setup({ placeInFolder });
     await choose(folderPicker, [file("work/report.docx")]);
-    expect(placeInFolder).toHaveBeenCalledWith(expect.any(Object), "work", expect.any(Function));
-    expect(onImport).toHaveBeenCalledWith(expect.objectContaining({ path: "/docs/x" }), "report.docx", expect.any(Function));
+    expect(placeInFolder).toHaveBeenCalledWith(expect.any(Object), "work", expect.any(Function), expect.any(AbortSignal));
+    expect(onImport).toHaveBeenCalledWith(expect.objectContaining({ path: "/docs/x" }), "report.docx", expect.any(Function), expect.any(AbortSignal));
     await choose(folderPicker, [file("work/a.docx"), file("work/sub/b.xlsx")]);
-    expect(placeInFolder).toHaveBeenLastCalledWith(expect.any(Object), "work/sub", expect.any(Function));
+    expect(placeInFolder).toHaveBeenLastCalledWith(expect.any(Object), "work/sub", expect.any(Function), expect.any(AbortSignal));
     expect(onImport).toHaveBeenCalledTimes(1);
     hoisted.convert = async () => null;
     await choose(folderPicker, [file("work/c.docx")]);
@@ -329,10 +329,10 @@ describe("ImportButton", () => {
     const { onImport, folderPicker } = setup();
     start(folderPicker, [file("work/rows.xlsx")]);
     fireEvent.click(await screen.findByRole("button", { name: "Import these rows" }));
-    await waitFor(() => expect(onImport).toHaveBeenCalledWith(expect.anything(), "rows.xlsx", expect.any(Function)));
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(expect.anything(), "rows.xlsx", expect.any(Function), expect.any(AbortSignal)));
     start(folderPicker, [file("talk/talk.md", marp())]);
     fireEvent.click(await screen.findByRole("button", { name: "Import these rows" }));
-    await waitFor(() => expect(onImport).toHaveBeenCalledWith(expect.anything(), "talk.md", expect.any(Function)));
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(expect.anything(), "talk.md", expect.any(Function), expect.any(AbortSignal)));
   });
 
   it("stops between the Office files of a folder", async () => {
@@ -432,13 +432,13 @@ describe("ImportButton", () => {
       const onBatchDone = vi.fn();
       const { onImport } = setup({ keepImported, onBatchDone });
       await drop(zone(), [fileEntry(file("One.docx"))]);
-      expect(onImport).toHaveBeenCalledWith(expect.anything(), "One.docx", expect.any(Function));
+      expect(onImport).toHaveBeenCalledWith(expect.anything(), "One.docx", expect.any(Function), expect.any(AbortSignal));
       expect(onBatchDone).not.toHaveBeenCalled();
       await drop(zone(), [fileEntry(file("A.docx")), fileEntry(file("B.docx")), null]);
       expect(keepImported).toHaveBeenCalledTimes(2);
       expect(onBatchDone).toHaveBeenCalledTimes(1);
       await drop(zone(), [], [file("Loose.docx")]);
-      expect(onImport).toHaveBeenLastCalledWith(expect.anything(), "Loose.docx", expect.any(Function));
+      expect(onImport).toHaveBeenLastCalledWith(expect.anything(), "Loose.docx", expect.any(Function), expect.any(AbortSignal));
       await drop(zone(), [{ name: "odd", isFile: false, isDirectory: false }]);
       expect(onBatchDone).toHaveBeenCalledTimes(2);
     });
@@ -449,7 +449,7 @@ describe("ImportButton", () => {
       await act(async () => {
         await dropImporter.current!({ items: [], files: [file("Drive.docx")] } as unknown as DataTransfer);
       });
-      expect(onImport).toHaveBeenCalledExactlyOnceWith(expect.anything(), "Drive.docx", expect.any(Function));
+      expect(onImport).toHaveBeenCalledExactlyOnceWith(expect.anything(), "Drive.docx", expect.any(Function), expect.any(AbortSignal));
     });
 
     it("keeps one PPTX dropped on Drive in the current folder", async () => {
@@ -460,7 +460,7 @@ describe("ImportButton", () => {
       await act(async () => {
         await dropImporter.current!({ items: [], files: [file("Lesson.pptx")] } as unknown as DataTransfer);
       });
-      expect(keepImported).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.any(Function));
+      expect(keepImported).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.any(Function), expect.any(AbortSignal));
       expect(onImport).not.toHaveBeenCalled();
       expect(onBatchDone).toHaveBeenCalledOnce();
     });
@@ -472,7 +472,7 @@ describe("ImportButton", () => {
       await drop(zone(), [
         dirEntry("talk", [fileEntry(file("talk.md", marp())), dirEntry("img", [fileEntry(file("a.png"))])]),
       ]);
-      expect(onImport).toHaveBeenCalledWith(expect.anything(), "talk.md", expect.any(Function));
+      expect(onImport).toHaveBeenCalledWith(expect.anything(), "talk.md", expect.any(Function), expect.any(AbortSignal));
       expect(onBatchDone).not.toHaveBeenCalled();
       await drop(zone(), [
         dirEntry("work", [fileEntry(file("a.docx")), dirEntry("sub", [fileEntry(file("b.docx"))])]),

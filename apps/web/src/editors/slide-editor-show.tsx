@@ -5,7 +5,7 @@ import { showAudienceHooks } from "./slide-show-audience";
 import { useSlideCast } from "./use-slide-cast";
 import type { MarpPages } from "./slide-marp-render";
 import { exportBinary } from "../storage";
-import { downloadDeckVideos, type VideoGateState } from "./slide-video-gate";
+import { downloadDeckVideos, videoSlmediaHashes, type VideoGateState } from "./slide-video-gate";
 import {
   formatElapsed,
   nextSlideTitle,
@@ -91,6 +91,10 @@ export function useShowControls(
   }, []);
 
   const beginShow = useCallback((fromIndex: number, withNotes?: boolean, fullscreen = true) => {
+    if (videoSlmediaHashes(deckRef.current).length === 0) {
+      startShow(fromIndex, withNotes, fullscreen);
+      return;
+    }
     videoAbort.current?.abort();
     const controller = new AbortController();
     videoAbort.current = controller;

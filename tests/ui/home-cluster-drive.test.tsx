@@ -277,7 +277,7 @@ describe("ClusterHome", () => {
     const file = createFile("doc", "Lesson");
     const report = vi.fn();
     await props.onImport({ file }, "Lesson.sldoc", report);
-    expect(hoisted.createInDrive).toHaveBeenCalledWith(file, null, expect.any(Function), report);
+    expect(hoisted.createInDrive).toHaveBeenCalledWith(file, null, expect.any(Function), report, true, undefined);
     act(() => hoisted.browser!.onFolderChange("f-root", "Root"));
     hoisted.folders = [
       { id: "f-work", name: "Work", parentId: "f-root" },
@@ -288,9 +288,9 @@ describe("ClusterHome", () => {
       [{ name: "New", parentId: "f-work", kind: "folder" }],
       [{ name: "Deep", parentId: "id-New", kind: "folder" }],
     ]);
-    expect(hoisted.keepCreated).toHaveBeenLastCalledWith(file, "id-Deep", true, report);
+    expect(hoisted.keepCreated).toHaveBeenLastCalledWith(file, "id-Deep", true, report, true, undefined);
     await hoisted.importer!.keepImported(file, report);
-    expect(hoisted.keepCreated).toHaveBeenLastCalledWith(file, "f-root", true, report);
+    expect(hoisted.keepCreated).toHaveBeenLastCalledWith(file, "f-root", true, report, true, undefined);
     act(() => hoisted.importer!.onBatchDone());
     expect(hoisted.browser!.refreshKey).toBe("1");
     act(() => hoisted.importer!.onError("Import failed."));
