@@ -20,7 +20,7 @@ pub(crate) fn pg_db() -> Arc<Db> {
     )
 }
 
-fn person(id: &str) -> AuthUser {
+pub(crate) fn person(id: &str) -> AuthUser {
     AuthUser {
         id: id.into(),
         email: None,
@@ -30,13 +30,13 @@ fn person(id: &str) -> AuthUser {
 }
 
 /// One "Fluid instance": its own database pools and in-memory rooms.
-fn instance(blobs: &std::path::Path) -> Rooms {
+pub(crate) fn instance(blobs: &std::path::Path) -> Rooms {
     let db = pg_db();
     let drive = Drive::open(db.clone(), blobs).unwrap();
     Rooms::new(db, drive)
 }
 
-fn insert(doc: &Doc, at: u32, text: &str) -> Vec<u8> {
+pub(crate) fn insert(doc: &Doc, at: u32, text: &str) -> Vec<u8> {
     let root = doc.get_or_insert_text("body");
     let before = doc.transact().state_vector();
     root.insert(&mut doc.transact_mut(), at, text);
@@ -58,14 +58,14 @@ fn push(rooms: &Rooms, item: &str, user: &str, bytes: &[u8]) -> bool {
         .unwrap()
 }
 
-fn body(rooms: &Rooms, item: &str) -> String {
+pub(crate) fn body(rooms: &Rooms, item: &str) -> String {
     let live = rooms.live.lock().unwrap();
     let room = live.get(item).unwrap();
     let text = room.doc.get_or_insert_text("body");
     text.get_string(&room.doc.transact())
 }
 
-fn share(rooms: &[&Rooms], item: &str) {
+pub(crate) fn share(rooms: &[&Rooms], item: &str) {
     for (n, rooms) in rooms.iter().enumerate() {
         rooms
             .join(item, &person(&format!("p{n}")), Role::Editor, 1)
