@@ -104,8 +104,14 @@ export async function syncSectionedDelta(
   let allBlobs: Map<string, Uint8Array>;
 
   if (file.kind === "slide") {
-    const externalBlobs = await mediaBlobStore.collectFor(file.content);
-    const parts = splitPresentation(file, { externalBlobs });
+    // Only blobs already on this device are uploaded. Videos that were never
+    // played stay as manifest entries copied from the last synced package.
+    const externalBlobs = mediaBlobStore.snapshotMemory();
+    const prevMedia = previous?.kind === "slide" ? previous.media : undefined;
+    const parts = splitPresentation(file, {
+      externalBlobs,
+      ...(prevMedia ? { retainedMedia: prevMedia } : {}),
+    });
     const prev = previous?.kind === "slide" ? previous : null;
     const delta = diffSlidePackage(prev, parts);
     manifest = parts.manifest;

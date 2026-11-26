@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   createFile,
-  splitPresentation,
   type DriveLink,
-  type Slide,
   type SlideFile,
 } from "@suiteleaf/core";
 import {
   clearSyncedManifest,
   syncSlideDelta,
 } from "../apps/web/src/workspace/slide-delta-sync";
-import { SlideStreamLoader } from "../apps/web/src/editors/slide-stream-loader";
 import { SlideMediaRegistry } from "../apps/web/src/editors/slide-media-registry";
 
 function makePresentation(): SlideFile {
@@ -116,66 +113,6 @@ describe("web slide delta sync & background streaming", () => {
     // Only updated global.json is uploaded (externalized videos/media are untouched)
     expect(second.uploadedBlobs).toBe(1);
     expect(uploadedHashes).toHaveLength(1);
-  });
-
-  it("bootstraps slide 1 immediately and streams remaining slides via NDJSON", async () => {
-    const deck = makePresentation();
-    const parts = splitPresentation(deck);
-    const firstId = deck.content.slideOrder[0];
-
-    const mockApi = async (path: string): Promise<Response> => {
-      if (path.includes("/sections/bootstrap")) {
-        return new Response(
-          JSON.stringify({
-            sectioned: true,
-            versionId: "v2",
-            manifest: parts.manifest,
-            global: parts.global,
-            slides: { [firstId]: parts.slides[firstId] },
-          }),
-          { status: 200 },
-        );
-      }
-      if (path.includes("/sections/stream")) {
-        const lines = deck.content.slideOrder
-          .slice(1)
-          .map((id) =>
-            JSON.stringify({
-              id,
-              hash: parts.manifest.slides[id].hash ?? parts.manifest.global.hash,
-              data: parts.slides[id],
-            }),
-          )
-          .join("\n") + "\n";
-        const stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode(lines));
-            controller.close();
-          },
-        });
-        return new Response(stream, {
-          status: 200,
-          headers: { "content-type": "application/x-ndjson" },
-        });
-      }
-      throw new Error(`Unexpected path: ${path}`);
-    };
-
-    const loader = new SlideStreamLoader(mockApi);
-    const boot = await loader.bootstrap("item-1", firstId);
-    expect(boot.sectioned).toBe(true);
-    if (!boot.sectioned) return;
-    expect(Object.keys(boot.slides)).toEqual([firstId]);
-    expect(boot.manifest.slideOrder).toHaveLength(4);
-
-    const streamed: Record<string, Slide> = {};
-    await loader.startBackgroundStream(
-      "item-1",
-      (batch) => Object.assign(streamed, batch),
-      { batchSize: 2 },
-    );
-    await loader.ensureAllLoaded();
-    expect(Object.keys(streamed).sort()).toEqual(["slide-2", "slide-3", "slide-4"]);
   });
 
   it("deduplicates concurrent media blob fetches in SlideMediaRegistry", async () => {

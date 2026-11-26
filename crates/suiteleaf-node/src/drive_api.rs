@@ -164,10 +164,6 @@ pub fn router(state: AppState) -> Router {
             get(sections::bootstrap),
         )
         .route(
-            "/api/drive/items/{id}/sections/stream",
-            get(sections::stream_slides),
-        )
-        .route(
             "/api/drive/items/{id}/sections/missing",
             post(sections::missing_blobs),
         )

@@ -201,4 +201,31 @@ describe("slslides v2 sectioned package", () => {
     expect(unpacked.manifestHash).toBe(blake3Hex(unpacked.manifestBytes));
     expect(unpacked.manifest.global.hash).toBe(parts.manifest.global.hash);
   });
+
+  it("keeps an unloaded video in the manifest when its bytes are not on this device", () => {
+    const deck = createFile("slide", "Talk") as SlideFile;
+    const hash = "ab".repeat(32);
+    const id = deck.content.slideOrder[0];
+    deck.content.slides[id].elements.push({
+      id: "vid",
+      type: "video",
+      x: 0,
+      y: 0,
+      width: 320,
+      height: 180,
+      src: `slmedia://${hash}`,
+    });
+    const parts = splitPresentation(deck, {
+      retainedMedia: {
+        [hash]: { mime: "video/mp4", size: 50_000_000, ext: "mp4" },
+      },
+    });
+    expect(parts.manifest.media[hash]).toMatchObject({
+      mime: "video/mp4",
+      size: 50_000_000,
+    });
+    expect(parts.blobs.has(hash)).toBe(false);
+    const again = splitPresentation(deck);
+    expect(again.manifest.media[hash]).toBeUndefined();
+  });
 });

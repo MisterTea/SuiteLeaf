@@ -4,7 +4,6 @@ import {
   readZipEntry,
   slideGlobalSchema,
   slidePackageManifestSchema,
-  slideSchema,
   type Slide,
   type SlideGlobal,
   type SlidePackageManifest,
@@ -47,7 +46,7 @@ export class DesktopSlidePackageReader {
   }
 
   /** Bootstrap: reads manifest.json + global.json + active slide in O(1) I/O. */
-  async bootstrap(activeSlideId?: string): Promise<{
+  async bootstrap(_activeSlideId?: string): Promise<{
     manifest: SlidePackageManifest;
     global: SlideGlobal;
     slides: Record<string, Slide>;
@@ -74,23 +73,10 @@ export class DesktopSlidePackageReader {
       this.manifestCache = manifest;
       this.globalSlidesCache = global.slides ?? null;
 
-      const targetId =
-        activeSlideId && manifest.slides[activeSlideId]
-          ? activeSlideId
-          : manifest.slideOrder[0];
       const slides: Record<string, Slide> = {};
-      if (global.slides) {
-        for (const id of manifest.slideOrder) {
-          if (global.slides[id]) slides[id] = global.slides[id];
-        }
-      } else if (targetId) {
-        const slideEntry = this.entries.get(`slides/${targetId}.json`);
-        if (slideEntry) {
-          const slideBytes = await readZipEntry(slideEntry, readRange);
-          slides[targetId] = slideSchema.parse(
-            JSON.parse(decoder.decode(slideBytes)),
-          );
-        }
+      for (const id of manifest.slideOrder) {
+        const slide = global.slides?.[id];
+        if (slide) slides[id] = slide;
       }
       return { manifest, global, slides };
     });
@@ -104,11 +90,6 @@ export class DesktopSlidePackageReader {
     return this.withRange(async (size, readRange) => {
       if (!this.entries) {
         this.entries = await readZipCentralDirectory(size, readRange);
-      }
-      const entry = this.entries.get(`slides/${slideId}.json`);
-      if (entry) {
-        const bytes = await readZipEntry(entry, readRange);
-        return slideSchema.parse(JSON.parse(decoder.decode(bytes)));
       }
       const globalEntry = this.entries.get("global.json");
       if (!globalEntry) return null;

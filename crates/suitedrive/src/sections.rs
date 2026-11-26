@@ -698,7 +698,7 @@ mod tests {
             .create(&bob, None, "Other.slslides", "file", None)
             .unwrap();
 
-        let global_bytes = br#"{"id":"d1","width":960,"height":540}"#;
+        let global_bytes = br#"{"id":"d1","width":960,"height":540,"slides":{"s1":{"id":"s1","elements":[{"id":"e1","type":"text","content":"Quarterly revenue"}]},"s2":{"id":"s2","elements":[{"id":"e2","type":"text","content":"Next milestones"}]}}}"#;
         let s1_bytes = br#"{"id":"s1","title":"Intro","elements":[{"id":"e1","type":"text","content":"Quarterly revenue"}],"notes":"Opening remarks"}"#;
         let s2_bytes = br#"{"id":"s2","title":"Roadmap","elements":[{"id":"e2","type":"text","content":"Next milestones"}]}"#;
         let thumb_bytes = br#"<svg xmlns="http://www.w3.org/2000/svg"/>"#;

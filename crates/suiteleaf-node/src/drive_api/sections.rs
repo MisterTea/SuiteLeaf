@@ -1,7 +1,5 @@
-//! HTTP endpoints for v2 sectioned `.slslides` partial loading, background
-//! streaming, immutable blob fetches, and incremental delta commits.
-
-use std::collections::BTreeSet;
+//! HTTP endpoints for sectioned files: bootstrap from `global.json`, immutable
+//! blob fetches, and incremental delta commits.
 
 use axum::{
     Json,
@@ -24,12 +22,6 @@ use super::{ApiResult, blocking, principal};
 pub(super) struct BootstrapQuery {
     slide: Option<String>,
     section: Option<String>,
-    version: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub(super) struct StreamQuery {
-    exclude: Option<String>,
     version: Option<String>,
 }
 
@@ -75,9 +67,15 @@ pub(super) async fn bootstrap(
         let global: Value =
             serde_json::from_slice(&global_bytes).map_err(|e| DriveError::Other(e.into()))?;
 
-        let active_id = requested_section
-            .filter(|sid| manifest.section_hash(sid).is_some())
-            .or_else(|| manifest.section_order().first().cloned());
+        // Slide bodies live in global.json. Sheet and document sections are
+        // still separate blobs.
+        let active_id = if manifest.kind == "slide" {
+            None
+        } else {
+            requested_section
+                .filter(|sid| manifest.section_hash(sid).is_some())
+                .or_else(|| manifest.section_order().first().cloned())
+        };
 
         let mut sections = serde_json::Map::new();
         if let Some(sid) = active_id
@@ -114,84 +112,6 @@ pub(super) async fn bootstrap(
     {
         response.headers_mut().insert(header::ETAG, tag);
     }
-    Ok(response)
-}
-
-/// `GET /api/drive/items/{id}/sections/stream?exclude=s1,s2&version=<v>`
-///
-/// Streams remaining slide sections as `application/x-ndjson` so the client can
-/// hydrate thumbnails and slides in the background while the user is already editing.
-pub(super) async fn stream_slides(
-    State(s): State<AppState>,
-    RequireUser(user): RequireUser,
-    Path(id): Path<String>,
-    Query(q): Query<StreamQuery>,
-) -> ApiResult<Response> {
-    let who = principal(&user);
-    let version = q.version.clone();
-    let excluded: BTreeSet<String> = q
-        .exclude
-        .unwrap_or_default()
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .collect();
-
-    let queue = blocking(&s.drive, move |d| {
-        let Some((_, manifest, _)) = d.read_section_manifest(&who, &id, version.as_deref())? else {
-            return Err(DriveError::NotFound);
-        };
-        let mut items: Vec<(String, Hash)> = Vec::new();
-        for sid in manifest.section_order() {
-            if excluded.contains(sid) {
-                continue;
-            }
-            if let Some(hash_str) = manifest.section_hash(sid)
-                && let Ok(hash) = hash_str.parse::<Hash>()
-            {
-                items.push((sid.clone(), hash));
-            }
-        }
-        Ok(items)
-    })
-    .await?;
-
-    let state = (s.drive.clone(), std::collections::VecDeque::from(queue));
-    let body = Body::from_stream(futures::stream::try_unfold(
-        state,
-        |(drive, mut pending)| async move {
-            let Some((slide_id, hash)) = pending.pop_front() else {
-                return Ok::<_, std::io::Error>(None);
-            };
-            let store = drive.clone();
-            let bytes = tokio::task::spawn_blocking(move || store.blobs().get(&hash))
-                .await
-                .map_err(|_| std::io::Error::other("blob worker failed"))?
-                .map_err(|_| std::io::Error::other("blob store error"))?
-                .ok_or_else(|| std::io::Error::other("slide blob unavailable"))?;
-            let data: Value = serde_json::from_slice(&bytes)
-                .map_err(|_| std::io::Error::other("corrupt slide json"))?;
-            let mut line = serde_json::to_vec(&json!({
-                "id": slide_id,
-                "hash": hash.to_string(),
-                "data": data,
-            }))
-            .map_err(|_| std::io::Error::other("encode slide ndjson"))?;
-            line.push(b'\n');
-            Ok(Some((Bytes::from(line), (drive, pending))))
-        },
-    ));
-
-    let mut response = Response::new(body);
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/x-ndjson"),
-    );
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("private, no-cache"),
-    );
     Ok(response)
 }
 

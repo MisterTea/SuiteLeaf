@@ -5,7 +5,7 @@ import { showAudienceHooks } from "./slide-show-audience";
 import { useSlideCast } from "./use-slide-cast";
 import type { MarpPages } from "./slide-marp-render";
 import { exportBinary } from "../storage";
-import { mediaBlobStore } from "../media-blob-store";
+import { downloadDeckVideos, type VideoGateState } from "./slide-video-gate";
 import {
   formatElapsed,
   nextSlideTitle,
@@ -30,7 +30,17 @@ import type { SlidesEditorState } from "./slide-editor-state";
 /** Starting, stepping, and ending the slideshow. */
 export function useShowControls(
   state: SlidesEditorState,
-  { file, marpDraft, marpPages }: { file: SlideFile; marpDraft: RefObject<MarpDraft | null>; marpPages?: MarpPages | null },
+  {
+    file,
+    marpDraft,
+    marpPages,
+    driveItemId,
+  }: {
+    file: SlideFile;
+    marpDraft: RefObject<MarpDraft | null>;
+    marpPages?: MarpPages | null;
+    driveItemId?: string;
+  },
 ) {
   const {
     deckRef, showCursorRef, setShowCursor, setShowSpeakerNotes, setBlankScreen, setShowStartedAt,
@@ -39,12 +49,14 @@ export function useShowControls(
   } = state;
 
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [videoGate, setVideoGate] = useState<VideoGateState | null>(null);
+  const videoAbort = useRef<AbortController | null>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controlsHoveredRef = useRef(false);
   const showFullscreenRef = useRef(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  const beginShow = useCallback((fromIndex: number, withNotes?: boolean, fullscreen = true) => {
+  const startShow = useCallback((fromIndex: number, withNotes?: boolean, fullscreen = true) => {
     marpDraft.current?.flush();
     window.getSelection()?.removeAllRanges();
     const order = deckRef.current.slideOrder;
@@ -77,6 +89,87 @@ export function useShowControls(
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable
   }, []);
+
+  const beginShow = useCallback((fromIndex: number, withNotes?: boolean, fullscreen = true) => {
+    videoAbort.current?.abort();
+    const controller = new AbortController();
+    videoAbort.current = controller;
+    // Fullscreen has to start in this click. The download modal may outlive the gesture.
+    if (fullscreen && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+      showFullscreenRef.current = true;
+      void document.documentElement.requestFullscreen().catch(() => {
+        showFullscreenRef.current = false;
+      });
+    }
+    const leaveFullscreen = () => {
+      if (!showFullscreenRef.current) return;
+      showFullscreenRef.current = false;
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    };
+    const run = async () => {
+      let failed: string[] = [];
+      try {
+        const result = await downloadDeckVideos(deckRef.current, {
+          itemId: driveItemId,
+          signal: controller.signal,
+          onProgress: (completed, total, loadedBytes) => {
+            if (total === 0 || controller.signal.aborted) return;
+            setVideoGate({
+              completed,
+              total,
+              loadedBytes,
+              error: null,
+              onCancel: () => {
+                controller.abort();
+                setVideoGate(null);
+                leaveFullscreen();
+              },
+              onRetry: () => beginShow(fromIndex, withNotes, fullscreen),
+              onPresentAnyway: () => {
+                controller.abort();
+                setVideoGate(null);
+                startShow(fromIndex, withNotes, fullscreen);
+              },
+            });
+          },
+        });
+        if (controller.signal.aborted) return;
+        failed = result.failed;
+        if (result.needed === 0) {
+          setVideoGate(null);
+          startShow(fromIndex, withNotes, fullscreen);
+          return;
+        }
+        if (failed.length === 0) {
+          setVideoGate(null);
+          startShow(fromIndex, withNotes, fullscreen);
+          return;
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        failed = ["download"];
+        void err;
+      }
+      if (controller.signal.aborted) return;
+      setVideoGate({
+        completed: 0,
+        total: Math.max(failed.length, 1),
+        loadedBytes: 0,
+        error: "Some videos could not be downloaded.",
+        onCancel: () => {
+          controller.abort();
+          setVideoGate(null);
+          leaveFullscreen();
+        },
+        onRetry: () => beginShow(fromIndex, withNotes, fullscreen),
+        onPresentAnyway: () => {
+          setVideoGate(null);
+          startShow(fromIndex, withNotes, fullscreen);
+        },
+      });
+    };
+    void run();
+  }, [driveItemId, startShow]);
 
   const casting = useSlideCast(state, marpPages, beginShow);
 
@@ -132,6 +225,7 @@ export function useShowControls(
     overlayRef,
     beginShow,
     endShow,
+    videoGate,
   };
 }
 
@@ -149,7 +243,6 @@ export function useShowPlayback(
     showFullscreenRef,
     overlayRef,
     marpPages,
-    driveItemId,
   }: Pick<
     ShowControls,
     | "endShow"
@@ -158,7 +251,7 @@ export function useShowPlayback(
     | "setControlsVisible"
     | "showFullscreenRef"
     | "overlayRef"
-  > & { activeSlide: Slide; marpPages?: MarpPages | null; driveItemId?: string },
+  > & { activeSlide: Slide; marpPages?: MarpPages | null },
 ) {
   const {
     deck, deckRef, presenting, presentSlideIndex, showCursor, blankScreen,
@@ -166,21 +259,6 @@ export function useShowPlayback(
     showStartedAt, frozenElapsedMs, showMotion, setShowMotion, reducedMotion, recording,
     recorderRef, audiencePopup, moveShowRef,
   } = state;
-
-  // Queue all slides' media blobs to download to local storage when entering
-  // presentation mode so videos play reliably even if Wi-Fi drops mid-talk.
-  useEffect(() => {
-    if (!presenting) return;
-    const controller = new AbortController();
-    void mediaBlobStore.prefetchDeck(
-      { content: deckRef.current },
-      { itemId: driveItemId, signal: controller.signal },
-    );
-    return () => {
-      controller.abort();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- deckRef is stable
-  }, [presenting, driveItemId]);
 
   useEffect(() => {
     const slide = deckRef.current.slides[deckRef.current.slideOrder[presentSlideIndex]];

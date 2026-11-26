@@ -42,6 +42,7 @@ import { SlideFormatTools, SlideTextToolbar } from "./slide-editor-format-tools"
 import { SlideEditorPanels } from "./slide-editor-panels";
 import { SlideShowOverlay } from "./slide-editor-presenter";
 import { SlideDriveItemContext } from "./slide-media";
+import { VideoDownloadDialog } from "./slide-video-gate";
 
 export default function Slides({
   file,
@@ -246,8 +247,8 @@ export default function Slides({
   });
   const deckExports = useSlideExports(state, { file, marpDraft });
   const { printing, printSlides } = deckExports;
-  const showControls = useShowControls(state, { file, marpDraft, marpPages });
-  const { beginShow, endShow } = showControls;
+  const showControls = useShowControls(state, { file, marpDraft, marpPages, driveItemId });
+  const { beginShow, endShow, videoGate } = showControls;
   useSlidesAgentHost(state, { file, commit, applySelection, beginShow, endShow, ...deckExports });
 
   const currentSlideIndex = Math.max(0, deck.slideOrder.indexOf(activeSlideId));
@@ -271,7 +272,7 @@ export default function Slides({
     onError,
   });
   useSlideEditorKeys(state, { api, beginShow, holdPaste });
-  const playback = useShowPlayback(state, { ...showControls, activeSlide, marpPages, driveItemId });
+  const playback = useShowPlayback(state, { ...showControls, activeSlide, marpPages });
 
   const equationElement = activeSlide?.elements.find((element) => element.id === equationTarget);
   const equationChoices = equationElement ? slideEquations(equationElement) : [];
@@ -300,6 +301,7 @@ export default function Slides({
 
   return (
     <SlideDriveItemContext.Provider value={driveItemId}>
+    {videoGate ? <VideoDownloadDialog gate={videoGate} /> : null}
     <div
       ref={animationRoot}
       className="slides-editor"

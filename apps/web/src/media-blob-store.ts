@@ -233,6 +233,64 @@ export class MediaBlobStore {
     return { total, cached, downloaded, failed };
   }
 
+  /** True when the blob is already in memory or IndexedDB. */
+  async hasLocal(uriOrHash: string): Promise<boolean> {
+    const hash = toHash(uriOrHash);
+    if (!hash) return false;
+    if (this.memory.has(hash)) return true;
+    const stored = await library.getMediaBlobRecord(hash).catch(() => null);
+    if (!stored) return false;
+    this.memory.set(hash, { mime: stored.mime, bytes: stored.data });
+    return true;
+  }
+
+  /**
+   * Download blobs that are not already stored locally and keep each one in
+   * IndexedDB. Used when the user starts a slideshow, not when a file opens.
+   */
+  async downloadMissing(
+    hashes: string[],
+    options: {
+      itemId?: string;
+      apiFetch?: MediaApiFetch;
+      signal?: AbortSignal;
+      concurrency?: number;
+      onProgress?: (completed: number, total: number, loadedBytes: number) => void;
+    } = {},
+  ): Promise<{ total: number; downloaded: number; failed: string[] }> {
+    const missing: string[] = [];
+    for (const hash of [...new Set(hashes)]) {
+      if (!(await this.hasLocal(hash))) missing.push(hash);
+    }
+    const total = missing.length;
+    options.onProgress?.(0, total, 0);
+    if (total === 0) return { total: 0, downloaded: 0, failed: [] };
+    const remote: RemoteBlobSource | undefined = options.itemId
+      ? { itemId: options.itemId, apiFetch: options.apiFetch, signal: options.signal }
+      : undefined;
+    let cursor = 0;
+    let completed = 0;
+    let loadedBytes = 0;
+    const failed: string[] = [];
+    const concurrency = Math.max(1, options.concurrency ?? 2);
+    const worker = async () => {
+      while (cursor < missing.length) {
+        if (options.signal?.aborted) return;
+        const hash = missing[cursor++];
+        const blob = await this.get(hash, remote, "video/mp4");
+        if (options.signal?.aborted) return;
+        if (blob) loadedBytes += blob.bytes.byteLength;
+        else failed.push(hash);
+        completed++;
+        options.onProgress?.(completed, total, loadedBytes);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, missing.length) }, () => worker()),
+    );
+    return { total, downloaded: total - failed.length, failed };
+  }
+
   /** Clear in-memory caches and revoke Object URLs (mainly for tests). */
   clear() {
     if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {

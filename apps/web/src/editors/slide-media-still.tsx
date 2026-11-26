@@ -24,7 +24,6 @@ export function SlideMediaStill({
   boxProps?: HTMLAttributes<HTMLDivElement>;
 }) {
   const crop = croppedPictureStyle(el);
-  const resolvedSrc = usePlayableUrl(el.src);
   const resolvedPoster = usePlayableUrl(el.poster);
   const turnedFrame = el.rotation ? rotatedPictureFrame(el) : undefined;
   const bare: CSSProperties = {
@@ -93,7 +92,7 @@ export function SlideMediaStill({
             style={{ objectFit: "fill", ...crop }}
           />
         ) : (
-          <video src={resolvedSrc} preload="auto" playsInline style={{ objectFit: "fill", ...crop }} />
+          <span className="slide-media-name">{alt}</span>
         ))}
     </div>
   );

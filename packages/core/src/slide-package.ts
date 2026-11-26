@@ -127,6 +127,7 @@ function externalizeMedia<T>(
   media: Record<string, SlideMediaEntry>,
   blobs: Map<string, Uint8Array>,
   externalBlobs?: ReadonlyMap<string, { mime: string; bytes: Uint8Array }>,
+  retainedMedia?: Record<string, SlideMediaEntry>,
 ): T {
   const visit = (item: unknown): unknown => {
     if (typeof item === "string") {
@@ -142,6 +143,8 @@ function externalizeMedia<T>(
               ext: extForMime(ext.mime),
             };
           }
+        } else if (hash && retainedMedia?.[hash] && !media[hash]) {
+          media[hash] = retainedMedia[hash];
         }
         return item;
       }
@@ -254,6 +257,11 @@ export interface SplitPresentationOptions {
   generateThumbnails?: boolean;
   /** Binary media blobs already externalized as `slmedia://<hash>` in the in-memory SlideFile. */
   externalBlobs?: ReadonlyMap<string, { mime: string; bytes: Uint8Array }>;
+  /**
+   * Media already stored for `slmedia://` refs whose bytes were not loaded on
+   * this device. A save keeps those entries instead of dropping the videos.
+   */
+  retainedMedia?: Record<string, SlideMediaEntry>;
 }
 
 /**
@@ -267,6 +275,7 @@ export function splitPresentation(
   const threshold = options.mediaThresholdBytes ?? DEFAULT_MEDIA_THRESHOLD_BYTES;
   const generateThumbnails = options.generateThumbnails ?? true;
   const externalBlobs = options.externalBlobs;
+  const retainedMedia = options.retainedMedia;
   const blobs = new Map<string, Uint8Array>();
   const media: Record<string, SlideMediaEntry> = {};
   const fonts: Record<string, SlideFontEntry> = {};
@@ -290,7 +299,14 @@ export function splitPresentation(
   // 2. Externalize media across global deck settings and all slides, then merge
   //    slides into a single global.json blob (keeping large media/videos separate).
   const { slides: rawSlides, slideOrder, fonts: _fonts, ...rawGlobal } = file.content;
-  const extGlobal = externalizeMedia(rawGlobal, threshold, media, blobs, externalBlobs) as SlideGlobal;
+  const extGlobal = externalizeMedia(
+    rawGlobal,
+    threshold,
+    media,
+    blobs,
+    externalBlobs,
+    retainedMedia,
+  ) as SlideGlobal;
 
   const slides: Record<string, Slide> = {};
   const slideBytes: Record<string, Uint8Array> = {};
@@ -299,7 +315,14 @@ export function splitPresentation(
   for (const slideId of slideOrder) {
     const rawSlide = rawSlides[slideId];
     if (!rawSlide) continue;
-    const extSlide = externalizeMedia(rawSlide, threshold, media, blobs, externalBlobs) as Slide;
+    const extSlide = externalizeMedia(
+      rawSlide,
+      threshold,
+      media,
+      blobs,
+      externalBlobs,
+      retainedMedia,
+    ) as Slide;
     slides[slideId] = extSlide;
 
     const thumbSvg = generateThumbnails

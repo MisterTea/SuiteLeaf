@@ -100,7 +100,14 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
   const [duration, setDuration] = useState(0);
   const [muted, setMuted] = useState(false);
 
-  const src = usePlayableUrl(element.src);
+  const driveItemId = useContext(SlideDriveItemContext);
+  const lazyVideo = video && Boolean(element.src && isSlmediaUri(element.src));
+  const immediateSrc = usePlayableUrl(lazyVideo ? undefined : element.src);
+  const [loadedSrc, setLoadedSrc] = useState<string | undefined>();
+  const [loadingVideo, setLoadingVideo] = useState(false);
+  const [videoError, setVideoError] = useState("");
+  const playWhenReady = useRef(false);
+  const src = lazyVideo ? loadedSrc : immediateSrc;
   const poster = usePlayableUrl(element.poster);
   const name = element.alt?.trim() || (video ? "Video" : "Audio");
   const caption = element.caption?.trim() ?? "";
@@ -122,6 +129,14 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
 
   useEffect(() => clearHideTimer, [clearHideTimer]);
 
+  useEffect(() => {
+    if (!playWhenReady.current || !src) return;
+    playWhenReady.current = false;
+    const media = videoRef.current;
+    if (!media) return;
+    void media.play().catch(() => setVideoError("This video could not be played."));
+  }, [src]);
+
   if (!video) {
     return (
       <>
@@ -142,19 +157,44 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
   }
 
   const showControls = !playing || controlsVisible;
-  const videoAction = playing ? "Pause video" : "Play video";
+  const videoAction = loadingVideo
+    ? "Loading video"
+    : videoError
+      ? "Retry video"
+      : playing
+        ? "Pause video"
+        : "Play video";
   const progress = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
 
   const togglePlay = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     const media = videoRef.current;
-    if (!media || !media.isConnected) return;
+    if (!media || !media.isConnected || loadingVideo) return;
     if (!media.paused && !media.ended) {
       media.pause();
-    } else {
-      void media.play().catch(() => {});
+      return;
     }
+    if (lazyVideo && !src && element.src) {
+      setLoadingVideo(true);
+      setVideoError("");
+      playWhenReady.current = true;
+      void mediaBlobStore
+        .resolveObjectUrl(element.src, {
+          remote: driveItemId ? { itemId: driveItemId } : undefined,
+        })
+        .then((url) => {
+          if (!url) {
+            playWhenReady.current = false;
+            setVideoError("This video could not be loaded.");
+            return;
+          }
+          setLoadedSrc(url);
+        })
+        .finally(() => setLoadingVideo(false));
+      return;
+    }
+    void media.play().catch(() => setVideoError("This video could not be played."));
   };
 
   const toggleTap = (event: MouseEvent<HTMLDivElement>) => {
@@ -195,7 +235,7 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
         src={src}
         poster={poster}
         aria-label={name}
-        preload="auto"
+        preload={src ? "auto" : "none"}
         playsInline
         onPlay={() => {
           setPlaying(true);
@@ -241,8 +281,8 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
         <button
           type="button"
           className="slide-media-play slide-video-center-play"
-          aria-label={videoAction}
-          title={videoAction}
+          aria-label={videoError || videoAction}
+          title={videoError || videoAction}
           tabIndex={showControls ? 0 : -1}
           onMouseDown={(event) => event.stopPropagation()}
           onClick={togglePlay}

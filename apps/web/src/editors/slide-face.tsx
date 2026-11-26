@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState, type CSSProperties, type HTMLAttributes, type ReactNode, type SVGProps, type TdHTMLAttributes } from "react";
-import { collectSlmediaHashes, dashMultipliers, fontKerning, isSlmediaUri, kernFeature, lineFrame, lineMarkerEnds, officeGradient, paintFontFamily, slidePointScale, straightGradientBackground, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
+import { collectSlmediaHashes, dashMultipliers, fontKerning, isSlmediaUri, kernFeature, lineFrame, lineMarkerEnds, officeGradient, paintFontFamily, slidePointScale, slmediaHashFromUri, straightGradientBackground, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
 import { mediaBlobStore } from "../media-blob-store";
 import { AutofitBox, autofitSignature } from "./slide-autofit";
 import { marpMediaSrc } from "./slide-marp-import";
@@ -127,7 +127,16 @@ export function SlideFace({
   const [, setMediaTick] = useState(0);
   useEffect(() => {
     if (!slide) return;
-    const hashes = collectSlmediaHashes(slide).filter((h) => !mediaBlobStore.peekObjectUrl(h));
+    const videoHashes = new Set(
+      slide.elements.flatMap((el) => {
+        if (el.type !== "video" || !el.src) return [];
+        const hash = slmediaHashFromUri(el.src);
+        return hash ? [hash] : [];
+      }),
+    );
+    const hashes = collectSlmediaHashes(slide).filter(
+      (h) => !videoHashes.has(h) && !mediaBlobStore.peekObjectUrl(h),
+    );
     if (!hashes.length) return;
     let cancelled = false;
     void Promise.all(
