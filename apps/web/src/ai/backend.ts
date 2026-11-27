@@ -349,7 +349,53 @@ function unavailable(message: string): LocalModel {
   };
 }
 
+const MIN_BROWSER_MEMORY_GB = 8;
+
+/**
+ * Why the in-browser 4B model cannot safely load on this device, or undefined
+ * when the device can attempt it. Loading a ~2 GiB GGUF/ONNX model in a phone
+ * or low-memory browser tab triggers an OS/renderer OOM kill ("Aw, Snap!").
+ */
+export function browserModelUnsupportedReason(
+  nav: {
+    userAgent?: string;
+    maxTouchPoints?: number;
+    deviceMemory?: number;
+    userAgentData?: { mobile?: boolean };
+  } = navigator as Navigator & {
+    deviceMemory?: number;
+    userAgentData?: { mobile?: boolean };
+  },
+): string | undefined {
+  try {
+    if (localStorage.getItem("suiteleaf.ai.ignoreMemoryGuard") === "1") {
+      return undefined;
+    }
+  } catch {
+    // Ignore storage access errors.
+  }
+  const ua = nav.userAgent ?? "";
+  const isIPadDesktopMode =
+    /Macintosh/i.test(ua) && (nav.maxTouchPoints ?? 0) > 1;
+  const isMobile =
+    nav.userAgentData?.mobile === true ||
+    /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua) ||
+    isIPadDesktopMode;
+  if (isMobile) {
+    return "The in-browser assistant needs a desktop browser with WebGPU and at least 8 GB of memory. Running a 4B model on a phone or tablet would crash the browser tab. Connect to a SuiteLeaf server or use the desktop app instead.";
+  }
+  if (
+    typeof nav.deviceMemory === "number" &&
+    nav.deviceMemory < MIN_BROWSER_MEMORY_GB
+  ) {
+    return `This device reports ${nav.deviceMemory} GB of memory, which is not enough to run the in-browser assistant without crashing the tab (at least ${MIN_BROWSER_MEMORY_GB} GB is required). Connect to a SuiteLeaf server or use the desktop app instead.`;
+  }
+  return undefined;
+}
+
 function browserModel() {
+  const unsupported = browserModelUnsupportedReason();
+  if (unsupported) return unavailable(unsupported);
   // FrogNano's ONNX WebGPU kernels hung the GPU. The browser runs its GGUF
   // through llama.cpp instead. Gemma stays on the ONNX worker. Muse Glimmer is
   // not loaded in the page; a saved choice of it still runs FrogNano here.

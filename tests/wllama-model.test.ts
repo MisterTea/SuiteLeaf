@@ -118,4 +118,37 @@ describe("wllama crash recovery", () => {
     expect(crashText(new WllamaRuntimeError("(ABORT) ", ""), "")).toBe("The in-browser model stopped unexpectedly.");
     expect(crashText(new Error("download failed"), "")).toBe("download failed");
   });
+
+  it("refuses to download when WebGPU has no hardware adapter", async () => {
+    localStorage.removeItem("suiteleaf.ai.device");
+    const create = vi.fn(() => engine({ complete: async () => {} }));
+    const setGpu = (value: unknown) =>
+      value === undefined ? Reflect.deleteProperty(navigator, "gpu") : Object.defineProperty(navigator, "gpu", { configurable: true, value });
+
+    try {
+      setGpu(undefined);
+      const noApi = await wllamaModel(create).load();
+      expect(noApi.state).toBe("error");
+      expect(noApi.message).toMatch(/WebGPU is not available/i);
+
+      setGpu({ requestAdapter: async () => null });
+      const noAdapter = await wllamaModel(create).load();
+      expect(noAdapter.state).toBe("error");
+      expect(noAdapter.message).toMatch(/No WebGPU adapter/i);
+
+      setGpu({ requestAdapter: async () => ({ info: { isFallbackAdapter: true } }) });
+      const fallback = await wllamaModel(create).load();
+      expect(fallback.state).toBe("error");
+      expect(fallback.message).toMatch(/software \(CPU\) adapter/i);
+
+      expect(create).not.toHaveBeenCalled();
+
+      setGpu({ requestAdapter: async () => ({ info: { isFallbackAdapter: false } }) });
+      const ok = await wllamaModel(create).load();
+      expect(ok.state).toBe("ready");
+      expect(create).toHaveBeenCalledOnce();
+    } finally {
+      setGpu(undefined);
+    }
+  });
 });

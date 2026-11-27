@@ -94,10 +94,41 @@ export function wllamaModel(createEngine: (onNativeError: (line: string) => void
   const load = async (): Promise<AiStatus> => {
     const started = performance.now();
     const gpu = forcedDevice() !== "wasm";
-    if (gpu && !("gpu" in navigator)) {
-      const status: AiStatus = { state: "error", backend: "webgpu", modelId: info.id, model: info.name, message: "WebGPU is not available in this browser" };
-      hub.set(status);
-      return status;
+    if (gpu) {
+      const gpuApi = (
+        navigator as unknown as {
+          gpu?: {
+            requestAdapter(): Promise<{
+              info?: { isFallbackAdapter?: boolean };
+            } | null>;
+          };
+        }
+      ).gpu;
+      if (!gpuApi) {
+        const status: AiStatus = {
+          state: "error",
+          backend: "webgpu",
+          modelId: info.id,
+          model: info.name,
+          message: "WebGPU is not available in this browser",
+        };
+        hub.set(status);
+        return status;
+      }
+      const adapter = await gpuApi.requestAdapter();
+      if (!adapter || adapter.info?.isFallbackAdapter) {
+        const status: AiStatus = {
+          state: "error",
+          backend: "webgpu",
+          modelId: info.id,
+          model: info.name,
+          message: adapter
+            ? "WebGPU only has a software (CPU) adapter in this browser"
+            : "No WebGPU adapter is available in this browser",
+        };
+        hub.set(status);
+        return status;
+      }
     }
     hub.set({ state: "loading", progress: 0, backend: "webgpu", modelId: info.id, model: info.name, message: `Downloading ${info.name}` });
     try {

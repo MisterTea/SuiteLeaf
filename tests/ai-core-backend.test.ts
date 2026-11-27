@@ -159,6 +159,30 @@ describe("choosing the model", () => {
     writeAiPreferences({});
     expect(backend.localModel().status().backend).toBe("wasm");
   });
+
+  it("blocks the in-browser 4B model on phones, tablets, and low-memory devices to avoid tab OOM crashes", () => {
+    expect(backend.browserModelUnsupportedReason({ userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Mobile" })).toMatch(/phone or tablet/i);
+    expect(backend.browserModelUnsupportedReason({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", maxTouchPoints: 5 })).toMatch(/phone or tablet/i);
+    expect(backend.browserModelUnsupportedReason({ userAgent: "Mozilla/5.0 (X11; Linux x86_64)", userAgentData: { mobile: true } })).toMatch(/phone or tablet/i);
+    expect(backend.browserModelUnsupportedReason({ userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", deviceMemory: 4 })).toMatch(/4 GB of memory/i);
+    expect(backend.browserModelUnsupportedReason({ userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", deviceMemory: 8 })).toBeUndefined();
+    expect(backend.browserModelUnsupportedReason({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", maxTouchPoints: 0 })).toBeUndefined();
+
+    mode.demo = true;
+    setNavigator("userAgentData", { mobile: true });
+    try {
+      writeAiPreferences({});
+      const status = backend.localModel().status();
+      expect(status.state).toBe("error");
+      expect(status.message).toMatch(/phone or tablet/i);
+
+      localStorage.setItem("suiteleaf.ai.ignoreMemoryGuard", "1");
+      writeAiPreferences({});
+      expect(backend.localModel().status().backend).toBe("wasm");
+    } finally {
+      setNavigator("userAgentData", undefined);
+    }
+  });
 });
 
 describe("Gemma in a browser worker", () => {
