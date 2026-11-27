@@ -39,7 +39,7 @@ function quarterlyReport() {
 
 async function openReport(page: Page) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Quarterly Report.sldoc",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(quarterlyReport())),
@@ -283,7 +283,7 @@ test("29-comment-on-a-document", async ({ page }) => {
   writeFileSync(replyPath, replied);
   await page.getByRole("button", { name: "Back to files" }).click();
   await caption(page, "Jordan opens Alex's file.");
-  await page.locator("input[type=file]").setInputFiles(replyPath);
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles(replyPath);
   await expect(page.locator(".import-notes")).toContainText("2 comment threads imported");
   await expect(page.locator(".document-content")).toContainText("grew 11.5%");
   const thread = page.locator(".doc-comment-card", { hasText: "Is 12% right" });

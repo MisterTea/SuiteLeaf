@@ -77,7 +77,7 @@ function shownFormula(cell: SavedCell | undefined) {
 test("59-print-the-budget-ai", async ({ page }) => {
   await openApp(page);
   await caption(page, "Rosa needs a paper copy of the rent budget. Row 1 is Month, Rent, and Paid, and it is not frozen.");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Rent budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(budgetFile())),

@@ -103,7 +103,7 @@ const MARGIN_KEYS = [
 
 test("84-header-from-the-edge-ai", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Thesis notes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(thesis())),

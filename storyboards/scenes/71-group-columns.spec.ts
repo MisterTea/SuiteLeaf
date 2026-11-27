@@ -55,7 +55,7 @@ test("71-group-columns", async ({ page }) => {
   for (let column = 1; column <= 12; column++) columnData[column] = { w: 104 };
   (sheet as { columnData: typeof columnData }).columnData = columnData;
 
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Rent budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

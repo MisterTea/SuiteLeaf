@@ -468,7 +468,7 @@ test("17-review-a-budget-with-notes-and-comments", async ({ page, browser, baseU
   await jordanContext.addInitScript(() => localStorage.setItem("suiteleaf:display-name", "Jordan"));
   const jordan = await jordanContext.newPage();
   await jordan.goto("/");
-  await jordan.locator("input[type=file]").setInputFiles({
+  await jordan.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Quarterly studio budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(file)),
@@ -486,7 +486,7 @@ test("17-review-a-budget-with-notes-and-comments", async ({ page, browser, baseU
   await jordanContext.close();
 
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Quarterly studio budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(reply)),

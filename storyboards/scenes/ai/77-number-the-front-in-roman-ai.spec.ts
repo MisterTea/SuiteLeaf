@@ -98,7 +98,7 @@ function textsOf(node: SavedNode | undefined): string[] {
 
 test("77-number-the-front-in-roman-ai", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Field report.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(report())),

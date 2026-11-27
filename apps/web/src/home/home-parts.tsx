@@ -15,11 +15,117 @@ import {
   Unplug,
   X,
 } from "lucide-react";
+import type { AndroidUpdateInfo, GoogleDriveStatus } from "@suiteleaf/core";
 import { SettingsButton } from "../document-settings";
 import { DrawingIcon, NewDrawingCard, type NewKind } from "../drawing-home";
 import { formsEnabled } from "../flags";
 import { forgetLeftServer, leftServer } from "../mode";
 import type { LibraryFilter } from "../library-trash";
+
+export function AndroidUpdateBanner() {
+  const updater = window.suiteleaf?.updater;
+  const [update, setUpdate] = useState<AndroidUpdateInfo | null>(
+    () => updater?.getAvailable() ?? null,
+  );
+  const [dismissed, setDismissed] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!updater) return;
+    setUpdate(updater.getAvailable());
+    return updater.onAvailable((next) => setUpdate(next));
+  }, [updater]);
+
+  if (!updater || dismissed || !update) return null;
+
+  return (
+    <div className="notice" role="status">
+      <span>
+        SuiteLeaf <strong>v{update.version}</strong> is available.
+        {error ? ` (${error})` : ""}
+      </span>
+      <button
+        type="button"
+        disabled={installing}
+        onClick={() => {
+          setInstalling(true);
+          setError("");
+          void updater
+            .install()
+            .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+            .finally(() => setInstalling(false));
+        }}
+      >
+        {installing ? "Updating…" : "Update now"}
+      </button>
+      <button
+        type="button"
+        aria-label="Dismiss update notice"
+        onClick={() => setDismissed(true)}
+      >
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+
+export function GoogleDriveBanner() {
+  const googleDrive = window.suiteleaf?.googleDrive;
+  const [status, setStatus] = useState<GoogleDriveStatus | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!googleDrive) return;
+    let cancelled = false;
+    void googleDrive.status().then((s) => {
+      if (!cancelled) setStatus(s);
+    });
+    const unsub = googleDrive.onStatus((s) => {
+      if (!cancelled) setStatus(s);
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [googleDrive]);
+
+  if (!googleDrive || dismissed || !status || status.connected) return null;
+
+  return (
+    <div className="notice" role="status">
+      <span>
+        Connect Google Drive to sync with <strong>{status.folderName}</strong> for
+        desktop editing.
+        {error ? ` (${error})` : ""}
+      </span>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setError("");
+          void googleDrive
+            .signIn()
+            .then((next) => setStatus(next))
+            .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+            .finally(() => setBusy(false));
+        }}
+      >
+        {busy ? "Connecting…" : "Connect Google Drive"}
+      </button>
+      <button
+        type="button"
+        aria-label="Dismiss Google Drive notice"
+        onClick={() => setDismissed(true)}
+      >
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
 
 export function Logo() {
   return (
@@ -271,15 +377,19 @@ export function LocalSidebar({
           <span className="local-dot" />
           {demo
             ? "Demo: files are saved in this browser."
-            : window.suiteleaf
-              ? "Your files, on this computer."
-              : "Your workspace, in this browser."}
+            : window.suiteleaf?.platform === "android"
+              ? "Your files, synced with Google Drive."
+              : window.suiteleaf
+                ? "Your files, on this computer."
+                : "Your workspace, in this browser."}
           <small>
             {demo
               ? "Download a copy to keep your work."
-              : window.suiteleaf
-                ? "Offline ready. No account needed."
-                : "Offline ready. Download a file to back it up or move it."}
+              : window.suiteleaf?.platform === "android"
+                ? "My Drive/SuiteLeaf · downloads on demand."
+                : window.suiteleaf
+                  ? "Offline ready. No account needed."
+                  : "Offline ready. Download a file to back it up or move it."}
           </small>
         </div>
         <SettingsButton />

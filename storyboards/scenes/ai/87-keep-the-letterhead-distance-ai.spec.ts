@@ -84,7 +84,7 @@ const MARGIN_KEYS = [
 
 test("87-keep-the-letterhead-distance-ai", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Council letter.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(letter())),

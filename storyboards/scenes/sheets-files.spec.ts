@@ -11,7 +11,7 @@ test("16-import-and-export-csv", async ({ page }) => {
   await caption(page, "She opens it with Open / import.", 900);
   await page.getByRole("button", { name: "Open / import" }).hover();
   await beat(page, 600);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "garden-members.csv",
     mimeType: "text/csv",
     buffer: Buffer.from(
@@ -71,7 +71,7 @@ test("19-open-an-excel-workbook", async ({ page }) => {
   await caption(page, "She doesn't have Excel. She opens it in SuiteLeaf with Open / import.", 1000);
   await page.getByRole("button", { name: "Open / import" }).hover();
   await beat(page, 600);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Q3 bakery sales.xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: Buffer.from(await bakeryWorkbook()),
@@ -121,7 +121,7 @@ test("19-open-an-excel-workbook", async ({ page }) => {
 
   await caption(page, "Before sending it, Kemi opens the exported file once more to check.", 1000);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Q3 bakery sales (to accountant).xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: exported,

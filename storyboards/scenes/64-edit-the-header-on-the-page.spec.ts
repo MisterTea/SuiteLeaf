@@ -59,7 +59,7 @@ test("64-edit-the-header-on-the-page", async ({ page }) => {
 
   await page.goto("/");
   await caption(page, "Ben opens the club minutes. The running header still says “Garden club minutes”.", 700);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "minutes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

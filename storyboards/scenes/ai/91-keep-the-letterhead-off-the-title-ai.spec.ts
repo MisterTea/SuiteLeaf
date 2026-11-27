@@ -108,7 +108,7 @@ function near(actual: number, expected: number) {
 
 test("91-keep-the-letterhead-off-the-title-ai", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Minutes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(minutes())),

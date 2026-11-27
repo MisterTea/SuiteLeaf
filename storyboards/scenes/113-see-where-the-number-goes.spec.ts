@@ -195,7 +195,7 @@ async function clearOfHeader(page: Page, index: number, text: string) {
 test("113-see-where-the-number-goes", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Minutes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(minutes())),

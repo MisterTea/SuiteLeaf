@@ -13,6 +13,7 @@ export default tseslint.config(
       "test-results/**",
       "playwright-report/**",
       "packages/supermail/**",
+      "apps/android/android/**",
     ],
   },
   ...tseslint.configs.recommended,

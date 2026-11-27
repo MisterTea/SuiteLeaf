@@ -14,10 +14,11 @@ import {
   trimStops,
   type ParsedCall,
 } from "./gemma";
+import { aicoreFormat } from "./aicore-format";
 import { museFormat } from "./muse";
 import { frognanoFormat } from "./qwen";
 
-export { frognanoFormat, museFormat };
+export { aicoreFormat, frognanoFormat, museFormat };
 
 export interface ChatFormat {
   info: AiModelInfo;
@@ -64,6 +65,12 @@ export const gemmaFormat: ChatFormat = {
   trimStops,
 };
 
-/** Gemma and Muse Glimmer use their own markers. FrogNano is the default, including a model name this app does not ship. */
+/** Gemma, Muse Glimmer, and Android AICore use their own markers. FrogNano is the default. */
 export const formatFor = (id: string | undefined): ChatFormat =>
-  id === "gemma-4-e4b" ? gemmaFormat : id && /muse[-_]?glimmer/i.test(id) ? museFormat : frognanoFormat;
+  id === "aicore-full"
+    ? aicoreFormat
+    : id === "gemma-4-e4b"
+      ? gemmaFormat
+      : id && /muse[-_]?glimmer/i.test(id)
+        ? museFormat
+        : frognanoFormat;

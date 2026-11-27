@@ -6,6 +6,8 @@ import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { openAndroidAppPage } from "./android-app";
+import { openAndroidEmulatorPage } from "./android-emulator";
 
 const root = resolve(import.meta.dirname, "../..");
 export const videos = join(root, "storyboards/videos");
@@ -104,11 +106,30 @@ export const test = base.extend<{ page: Page }>({
   page: async ({ browser, baseURL }, provide, info) => {
     const ai = info.title.endsWith("-ai");
     const mobile = info.project.name === "mobile";
+    const androidEmulator = info.project.name === "android-emulator";
+    const androidApp = info.project.name === "android-app";
     const frame = mobile ? phone : size;
     const dir = mkdtempSync(join(tmpdir(), "storyboard-video-"));
     let page: Page;
-    let close: () => Promise<void>;
-    if (electronMode) {
+    let close: () => Promise<string | null | void>;
+    if (androidApp) {
+      const session = await openAndroidAppPage({
+        dir,
+        cursorScript: cursorScript(true),
+        recordVideo: process.env.STORYBOARD_NO_VIDEO !== "1",
+      });
+      page = session.page;
+      close = session.close;
+    } else if (androidEmulator) {
+      const session = await openAndroidEmulatorPage({
+        baseURL,
+        dir,
+        cursorScript: cursorScript(true),
+        recordVideo: process.env.STORYBOARD_NO_VIDEO !== "1",
+      });
+      page = session.page;
+      close = session.close;
+    } else if (electronMode) {
       const data = mkdtempSync(join(tmpdir(), "storyboard-electron-"));
       const app = await electron.launch({
         // Its own profile, so the single-instance lock never meets another SuiteLeaf.
@@ -174,20 +195,31 @@ export const test = base.extend<{ page: Page }>({
         JSON.stringify({ ...saved, status: info.status, error: failedCheck(info.error?.message) }, null, 2),
       );
     }
-    const video = page.video();
-    await close();
+    const video = androidEmulator || androidApp ? null : page.video();
+    const androidRawVideo = (await close()) ?? null;
     const passed = info.status === info.expectedStatus;
     const marp = info.project.name === "marp";
-    const sub = mobile ? "mobile" : marp ? "marp" : electronMode ? "electron" : "";
-    if (video && runTag)
-      encode(await video.path(), join(root, "test-results/ai-videos/runs", runTag, `${info.title}.r${info.repeatEachIndex}.mp4`));
-    else if (video && (passed || ai)) {
+    const sub = androidApp
+      ? "android-app"
+      : androidEmulator
+        ? "android-emulator"
+        : mobile
+          ? "mobile"
+          : marp
+            ? "marp"
+            : electronMode
+              ? "electron"
+              : "";
+    const rawVideoPath = androidRawVideo ?? (video ? await video.path() : null);
+    if (rawVideoPath && runTag)
+      encode(rawVideoPath, join(root, "test-results/ai-videos/runs", runTag, `${info.title}.r${info.repeatEachIndex}.mp4`));
+    else if (rawVideoPath && (passed || ai || androidApp)) {
       const name = `${info.title}.mp4`;
       encode(
-        await video.path(),
+        rawVideoPath,
         passed
           ? join(videos, sub, name)
-          : join(root, "test-results/ai-videos", sub, name),
+          : join(root, "test-results/android-app-videos", sub, name),
       );
     }
     rmSync(dir, { recursive: true, force: true });

@@ -135,7 +135,7 @@ function chipColor(rule: Rule, label: string, labels: string[]): string {
 test("48-dropdowns-from-a-range-ai", async ({ page }) => {
   await openApp(page);
   await caption(page, "Lena's Status column is already a dropdown. The official names live on Statuses.");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Volunteer roster.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(rosterFile())),

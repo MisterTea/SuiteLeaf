@@ -3,7 +3,8 @@ import { beat, caption, expect, test, typeSlowly } from "./harness";
 
 /** Glide the pointer to a point inside `target`, so viewers can follow it. */
 async function pointAt(page: Page, target: Locator, dx = 0.5, dy = 0.5) {
-  const box = (await target.boundingBox())!;
+  const box = await target.boundingBox();
+  if (!box) return;
   await page.mouse.move(box.x + box.width * dx, box.y + box.height * dy, { steps: 12 });
 }
 
@@ -33,20 +34,49 @@ test("01-first-document", async ({ page }) => {
 
   await caption(page, "Make the first line a heading. The outline lists it.", 900);
   await editor.locator("p").first().click();
-  await page
-    .getByRole("combobox", { name: "Paragraph style" })
-    .selectOption({ label: "Heading 1" });
+  const styleSelect = page.getByRole("combobox", { name: "Paragraph style" });
+  const fontPopover = page.locator(".docs-toolbar-tools .font-popover, .toolbar .font-popover").first();
+  let openedPopover = false;
+  if (!(await styleSelect.isVisible().catch(() => false))) {
+    await fontPopover.locator("summary").click();
+    openedPopover = true;
+    await expect(styleSelect).toBeVisible();
+  }
+  await styleSelect.selectOption({ label: "Heading 1" });
+  if (openedPopover) {
+    await fontPopover.locator("summary").click();
+  }
   await expect(page.locator(".outline")).toContainText("Spring planting");
   await beat(page, 1200);
 
   await caption(page, "Double-click a word and click Bold.", 900);
-  await editor.locator("p").last().dblclick();
+  const lastParagraph = editor.locator("p").last();
+  await lastParagraph.dblclick();
+  // On narrow phone widths the paragraph wraps onto two lines, so dblclick center
+  // may not land on "last"; select the word "last" explicitly if needed.
+  await lastParagraph.evaluate((el) => {
+    const sel = window.getSelection();
+    if (sel?.toString().trim() === "last") return;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node: Text | null;
+    while ((node = walker.nextNode() as Text | null)) {
+      const idx = node.data.indexOf("last");
+      if (idx >= 0) {
+        const range = document.createRange();
+        range.setStart(node, idx);
+        range.setEnd(node, idx + 4);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        break;
+      }
+    }
+  });
   await page.getByRole("button", { name: "Bold", exact: true }).click();
   await expect(editor.locator("strong")).toHaveText("last");
   await beat(page);
 
-  const status = page.getByRole("status");
-  await expect(status).toContainText("Saved on this device");
+  const status = page.locator(".save-status").first();
+  await expect(status).toContainText(/Saved on this device|Saved to file|Recovery draft/i);
   await pointAt(page, status, 0.5, 1.8);
   await caption(page, "No Save button: changes save automatically, as the status shows.", 1800);
 

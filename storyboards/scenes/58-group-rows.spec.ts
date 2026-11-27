@@ -52,7 +52,7 @@ test("58-group-rows", async ({ page }) => {
     0: { w: 150 },
     1: { w: 120 },
   };
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Donations.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

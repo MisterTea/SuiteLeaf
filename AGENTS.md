@@ -28,6 +28,7 @@ SuiteLeaf/
 │   │   │   ├── drawing-*        # Canvas drawings & SVG vector tools
 │   │   │   └── form-*           # Form designer and response grids
 │   │   ├── src/ai/              # Web client AI assistant (WebGPU, transformers.js, streaming)
+│   │   ├── src/android/         # Android single-node Google Drive FS adapter, metadata-first store & AICore bridge
 │   │   ├── src/drive/           # SuiteDrive frontend (file browser, upload queue, sharing/ACLs)
 │   │   ├── src/collab/          # Real-time multi-user collaboration & cursor presence
 │   │   ├── src/admin/           # Cluster admin console (tenants, roles, node status)
@@ -42,6 +43,7 @@ SuiteLeaf/
 │       ├── src/store.ts         # SQLite index (`library.sqlite`) & atomic file operations
 │       ├── src/ai-host.ts       # Local LLM runner via `node-llama-cpp` (GGUF models)
 │       └── src/auto-updater.ts  # In-app background update engine
+│   └── android/                 # Capacitor Android companion app & native plugin (Google Drive OAuth, AICore FULL)
 ├── packages/
 │   └── core/                    # Shared platform-agnostic library (web, desktop, scripts)
 │       ├── src/file-schema.ts   # Document formats (.sldoc, .slsheet, .slslides, .sldraw)

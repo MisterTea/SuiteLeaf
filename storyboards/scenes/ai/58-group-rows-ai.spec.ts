@@ -57,7 +57,7 @@ function donationsFile() {
 test("58-group-rows-ai", async ({ page }) => {
   await openApp(page);
   await caption(page, "Omar’s donations sheet has a total and twelve months under it.");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Donations.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(donationsFile())),

@@ -116,11 +116,21 @@
     background: #f1f3f7;
     transition: background-color 0.25s ease;
   }
+  /* Focus the remaining viewport on the text being edited when the mobile
+     keyboard drawer opens or inline text editing is active. */
+  .workspace[data-editor-kind="slide"]:has(.is-editing-text) > .file-menu,
+  .workspace[data-editor-kind="slide"][data-keyboard-open="true"] > .file-menu,
+  .workspace[data-editor-kind="slide"]:has(.is-editing-text) .slides-sidebar,
+  .workspace[data-editor-kind="slide"][data-keyboard-open="true"] .slides-sidebar,
+  .workspace[data-editor-kind="slide"]:has(.is-editing-text):has(.slide-text-toolbar) .slides-toolbar:not(.slide-text-toolbar),
+  .workspace[data-editor-kind="slide"][data-keyboard-open="true"]:has(.slide-text-toolbar) .slides-toolbar:not(.slide-text-toolbar) {
+    display: none;
+  }
   .slide-mobile-tap-hint {
     display: inline-flex;
     align-items: center;
     position: fixed;
-    top: 130px;
+    top: 52px;
     bottom: auto;
     left: 50%;
     transform: translateX(-50%);

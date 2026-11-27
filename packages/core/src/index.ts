@@ -368,7 +368,43 @@ export interface DesktopTabs {
   close(id: string): Promise<void>;
   onChange(callback: (tabs: DesktopTabState[]) => void): () => void;
 }
+/** Status of the Google Drive companion sync on Android single-node mode. */
+export interface GoogleDriveStatus {
+  connected: boolean;
+  accountEmail?: string;
+  folderName: string;
+  folderId?: string;
+  syncing: boolean;
+  lastSyncedAt?: string;
+  pendingUploads: number;
+  error?: string;
+}
+/** Controls for Google Drive sync on Android single-node mode. */
+export interface GoogleDriveBridge {
+  status(): Promise<GoogleDriveStatus>;
+  signIn(): Promise<GoogleDriveStatus>;
+  signOut(): Promise<void>;
+  onStatus(callback: (status: GoogleDriveStatus) => void): () => void;
+}
+/** Metadata for an available Android APK update from GitHub Releases. */
+export interface AndroidUpdateInfo {
+  version: string;
+  body: string | null;
+}
+/** In-app Android APK updater (startup + manual check in Settings). */
+export interface AndroidUpdaterBridge {
+  check(options?: { manual?: boolean; startup?: boolean }): Promise<AndroidUpdateInfo | null>;
+  install(): Promise<void>;
+  getAvailable(): AndroidUpdateInfo | null;
+  onAvailable(callback: (update: AndroidUpdateInfo | null) => void): () => void;
+}
 export interface DesktopBridge {
+  /** Which host runtime provides this bridge. Missing means Electron desktop. */
+  platform?: "desktop" | "android";
+  /** Google Drive companion sync controls (Android single-node mode). */
+  googleDrive?: GoogleDriveBridge;
+  /** In-app Android APK updater. */
+  updater?: AndroidUpdaterBridge;
   /** Move a folder and its contents to the operating system Trash. */
   trashFolder?(folder: string): Promise<void>;
   exportFolderSelection?(folders: string[], fileIds: string[]): Promise<string | null>;

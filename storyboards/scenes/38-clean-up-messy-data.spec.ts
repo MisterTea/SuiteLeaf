@@ -43,7 +43,7 @@ test("38-clean-up-messy-data", async ({ page }) => {
     name: "Last year",
     cellData: cellData(lastYearRows()),
   };
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Donations Q3.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

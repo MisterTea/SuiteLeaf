@@ -273,7 +273,7 @@ async function addPage(page: Page, text: string) {
 test("124-preview-the-roman-ends", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Preface.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(preface())),

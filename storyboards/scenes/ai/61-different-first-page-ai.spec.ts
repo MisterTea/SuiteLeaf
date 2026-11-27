@@ -80,7 +80,7 @@ async function savedSettings(page: Page) {
 
 test("61-different-first-page-ai", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Minutes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(minutes())),

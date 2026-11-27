@@ -246,10 +246,18 @@
 @media (max-width: 720px) {
   .dropdown-panel,
   .dropdown-review {
-    top: auto;
-    height: min(70vh, 520px);
+    position: fixed;
+    top: calc(var(--workspace-visible-top, 0px) + 152px);
+    left: 0;
+    right: 0;
+    bottom: auto;
+    height: calc(var(--workspace-visible-height, 100dvh) - 152px);
+    max-height: none;
     width: 100%;
+    z-index: 1050;
     border-left: 0;
     border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 28px rgba(32, 33, 36, 0.22);
   }
 }

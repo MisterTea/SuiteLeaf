@@ -17,7 +17,7 @@ async function openMenu(page: Page, name: string) {
 
 test("60-comment-on-a-slide", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Q3 update.slslides",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(q3Update())),

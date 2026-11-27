@@ -64,7 +64,7 @@ function rentBudget() {
 test("71-group-columns-ai", async ({ page }) => {
   await openApp(page);
   await caption(page, "Rosa’s rent budget runs twelve months past the edge of the window.");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Rent budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(rentBudget())),

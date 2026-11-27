@@ -84,7 +84,7 @@ async function savedSettings(page: Page): Promise<PageSettings> {
 
 test("132-numbers-on-the-outside-ai", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Preface.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(preface())),

@@ -52,7 +52,7 @@ test("62-odd-and-even-pages", async ({ page }) => {
     page,
     "Ben is printing the minutes double-sided. Page 1 should stay the letterhead.",
   );
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Minutes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(minutesDocument())),

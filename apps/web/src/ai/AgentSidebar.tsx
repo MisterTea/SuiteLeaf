@@ -15,9 +15,16 @@ import { clearTodos, todoStore } from "./todo";
 import { PARSE_ERROR } from "./model-stream";
 import { useAiAccess } from "./access";
 
-/** What the panel calls the assistant: FrogNano, Gemma, or the model name the user typed. */
+/** What the panel calls the assistant: Gemini Nano (Android AICore), FrogNano, Gemma, or the model name the user typed. */
 const assistantName = () => {
   const model = agentSession.model;
+  if (
+    readAiPreferences().place !== "remote" &&
+    window.suiteleaf?.platform === "android" &&
+    window.suiteleaf.ai
+  ) {
+    return assistantLabel("aicore-full");
+  }
   return readAiPreferences().place === "server" && model.state === "ready" && model.backend === "remote"
     ? assistantLabel(model.modelId ?? model.model)
     : assistantLabel();

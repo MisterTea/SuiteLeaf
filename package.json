@@ -19,6 +19,8 @@
     "build:web": "npm run build -w @suiteleaf/web",
     "build:website": "node scripts/build-website.mjs",
     "build:desktop": "npm run build -w @suiteleaf/desktop",
+    "sync:android": "npm run sync -w @suiteleaf/android",
+    "build:android": "npm run sync -w @suiteleaf/android && npm run build:debug -w @suiteleaf/android",
     "package:desktop": "npm run package -w @suiteleaf/desktop",
     "publish:desktop": "npm run publish -w @suiteleaf/desktop",
     "typecheck": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/desktop && tsc --noEmit -p packages/core && tsc --noEmit -p services/auth && tsc --noEmit -p services/ai",
@@ -47,6 +49,8 @@
     "storyboards:desktop": "node scripts/run-storyboards.mjs desktop",
     "storyboards:marp": "node scripts/run-storyboards.mjs marp",
     "storyboards:mobile": "node scripts/run-storyboards.mjs mobile",
+    "storyboards:android-emulator": "node scripts/run-storyboards.mjs android-emulator",
+    "storyboards:android-app": "node scripts/run-storyboards.mjs android-app",
     "setup:test-fonts": "node scripts/setup-test-fonts.mjs"
   },
   "devDependencies": {

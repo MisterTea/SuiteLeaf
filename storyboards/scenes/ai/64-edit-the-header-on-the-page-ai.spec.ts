@@ -85,7 +85,7 @@ function bodyTexts(node: unknown): string[] {
 
 test("64-edit-the-header-on-the-page-ai", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Minutes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(minutes())),

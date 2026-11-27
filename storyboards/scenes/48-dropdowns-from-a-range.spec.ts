@@ -116,7 +116,7 @@ test("48-dropdowns-from-a-range", async ({ page }) => {
       }),
     },
   ];
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Volunteer roster.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
@@ -332,7 +332,7 @@ test("48-dropdowns-from-a-range", async ({ page }) => {
 
   await caption(page, "Opening that workbook restores From a range.", 1100);
   await backHome(page);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Volunteer roster.xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: xlsx,
@@ -349,7 +349,7 @@ test("48-dropdowns-from-a-range", async ({ page }) => {
 
   await caption(page, "The SuiteLeaf file still allows more than one role, and Perhaps is still amber.", 1200);
   await backHome(page);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Volunteer roster.slsheet",
     mimeType: "application/json",
     buffer: nativeBytes,

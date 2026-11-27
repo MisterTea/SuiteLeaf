@@ -20,7 +20,11 @@ export function assistantWhere(demo: boolean, cluster: boolean): string {
     }
   }
   if (cluster) return "on the server";
-  if (window.suiteleaf?.ai) return "on this computer";
+  if (window.suiteleaf?.ai) {
+    return window.suiteleaf.platform === "android"
+      ? "on this device (AICore)"
+      : "on this computer";
+  }
   return "on the server";
 }
 
@@ -89,12 +93,20 @@ export function AssistantSettings() {
   const prefs = useAiPreferences();
   if (demo) return null;
   const cluster = mode.kind === "cluster";
+  const isAndroid = window.suiteleaf?.platform === "android";
   const onComputer = !cluster && !!window.suiteleaf?.ai;
-  const placeLabel = cluster || !onComputer ? "On the server" : "On this computer";
+  const placeLabel =
+    cluster || !onComputer
+      ? "On the server"
+      : isAndroid
+        ? "On this device (Android AICore)"
+        : "On this computer";
   const hint = prefs.place === "remote"
     ? "SuiteLeaf sends each prompt to this endpoint's /v1/completions API. FrogNano is the model name unless you change it."
     : onComputer
-      ? "The first time you ask the assistant, SuiteLeaf downloads the selected model to this computer if it is not already here, then runs it."
+      ? isAndroid
+        ? "SuiteLeaf runs Gemini Nano (Full capability) on-device through Android AICore."
+        : "The first time you ask the assistant, SuiteLeaf downloads the selected model to this computer if it is not already here, then runs it."
       : "The connected server runs the assistant using a model on the server or a hosted provider configured by its administrator.";
   return (
     <details className="agent-setup">
@@ -140,24 +152,26 @@ export function AssistantSettings() {
           </label>
         ) : null}
       </fieldset>
-      <label>
-        Model
-        <input
-          aria-label="Model"
-          list="suiteleaf-ai-models"
-          value={prefs.model}
-          spellCheck={false}
-          onChange={(event) => writeAiPreferences({ model: event.target.value })}
-          onBlur={() => {
-            if (!readModelName()) writeAiPreferences({ model: "frognano-4b" });
-          }}
-        />
-        <datalist id="suiteleaf-ai-models">
-          <option value="frognano-4b" />
-          <option value="gemma-4-e4b" />
-          <option value="muse-glimmer-30b" />
-        </datalist>
-      </label>
+      {isAndroid && prefs.place !== "remote" ? null : (
+        <label>
+          Model
+          <input
+            aria-label="Model"
+            list="suiteleaf-ai-models"
+            value={prefs.model}
+            spellCheck={false}
+            onChange={(event) => writeAiPreferences({ model: event.target.value })}
+            onBlur={() => {
+              if (!readModelName()) writeAiPreferences({ model: "frognano-4b" });
+            }}
+          />
+          <datalist id="suiteleaf-ai-models">
+            <option value="frognano-4b" />
+            <option value="gemma-4-e4b" />
+            <option value="muse-glimmer-30b" />
+          </datalist>
+        </label>
+      )}
       {prefs.place === "remote" ? (
         <>
           <label>

@@ -43,11 +43,14 @@ export function selectedModel(): AiModelId {
   return knownModel();
 }
 
-/** Which chat format to render. A remote model keeps the name the user typed. Serverless mode runs FrogNano or Gemma in the page. */
+/** Which chat format to render. A remote model keeps the name the user typed. Android uses AICore Full; Serverless mode runs FrogNano or Gemma in the page. */
 export function formatModelId(): string {
   if (isDemo)
     return selectedModel() === "gemma-4-e4b" ? "gemma-4-e4b" : "frognano-4b";
   if (readAiPreferences().place === "remote") return readModelName();
+  if (!serverUrl && window.suiteleaf?.platform === "android" && window.suiteleaf.ai) {
+    return "aicore-full";
+  }
   const status = localModel().status();
   if (status.chatFormat === "gemma") return "gemma-4-e4b";
   return status.modelId ?? status.model ?? selectedModel();
@@ -76,15 +79,30 @@ function statusHub(initial: AiStatus) {
   };
 }
 
-/** The model running in the Electron main process (llama.cpp). */
-function electronModel(bridge: AiBridge): LocalModel {
-  const hub = statusHub({ state: "idle", backend: "llama.cpp" });
+/** The model running in the native host process (Electron llama.cpp or Android AICore). */
+function hostModel(bridge: AiBridge): LocalModel {
+  const isAiCore = window.suiteleaf?.platform === "android";
+  const hub = statusHub(
+    isAiCore
+      ? {
+          state: "idle",
+          backend: "aicore",
+          modelId: "aicore-full",
+          model: AI_MODELS["aicore-full"].name,
+        }
+      : { state: "idle", backend: "llama.cpp" },
+  );
   void bridge.status().then(hub.set);
   bridge.onStatus(hub.set);
   return {
     status: hub.get,
     onStatus: hub.on,
     load: async () => {
+      if (isAiCore) {
+        const status = await bridge.load("aicore-full");
+        hub.set(status);
+        return status;
+      }
       const name = readModelName();
       if (!(name in AI_MODELS)) {
         const error: AiStatus = {
@@ -325,7 +343,11 @@ function modelStamp() {
     prefs.apiKey,
     prefs.model,
     serverUrl ?? "",
-    window.suiteleaf?.ai ? "desktop" : "",
+    window.suiteleaf?.ai
+      ? window.suiteleaf.platform === "android"
+        ? "android-aicore"
+        : "desktop"
+      : "",
   ].join("\n");
 }
 
@@ -437,7 +459,7 @@ function createModel(): LocalModel {
       localOnly: prefs.localOnly,
       maxTokens,
     });
-  if (window.suiteleaf?.ai) return electronModel(window.suiteleaf.ai);
+  if (window.suiteleaf?.ai) return hostModel(window.suiteleaf.ai);
   return unavailable(
     "Connect to a SuiteLeaf server, or choose an OpenAI-compatible endpoint.",
   );

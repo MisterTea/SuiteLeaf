@@ -48,6 +48,22 @@ export default defineConfig({
       },
     },
     {
+      name: "android-emulator",
+      testIgnore: [/\/ai\//, /marp/i],
+      use: {
+        ...shared,
+        launchOptions: { slowMo: Number(process.env.STORYBOARD_SLOWMO ?? 60) },
+      },
+    },
+    {
+      name: "android-app",
+      testIgnore: [/\/ai\//, /marp/i],
+      use: {
+        ...shared,
+        launchOptions: { slowMo: Number(process.env.STORYBOARD_SLOWMO ?? 60) },
+      },
+    },
+    {
       name: "ai",
       testMatch: /\/ai\/.*\.spec\.ts$/,
       timeout: 30 * 60_000,

@@ -31,7 +31,7 @@ test("39-insert-a-function-with-help", async ({ page }) => {
     ]),
   );
   await caption(page, "Ben opens Year 9 fitness. Metres, sit-ups, and an empty Pass column.");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Year 9 fitness.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { type Page } from "@playwright/test";
 import * as XLSX from "xlsx";
-import { createFile, serializeFile } from "../../packages/core/src";
+import { createFile, parseFileBytes, serializeFile } from "../../packages/core/src";
 import { beat, caption, expect, selectCells, test, typeSlowly } from "./harness";
 
 const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -41,7 +41,7 @@ const nameBox = (page: Page) =>
 test("55-name-a-range", async ({ page }) => {
   await page.goto("/");
   await caption(page, "Rosa's rent budget adds the same twelve cells in three places. She wants that range to have a name.", 2400);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Rent budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(budgetFile())),
@@ -124,7 +124,7 @@ test("55-name-a-range", async ({ page }) => {
 
   await page.goto("/");
   await caption(page, "An Excel workbook already defines Rent. She opens it in SuiteLeaf.", 2000);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Rent from Excel.xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: excelRent(),
@@ -145,7 +145,8 @@ test("55-name-a-range", async ({ page }) => {
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  const saved = await parseFileBytes(new Uint8Array(await readFile((await (await download).path())!)));
+  if (saved.kind !== "sheet") throw new Error("Expected a spreadsheet");
   const book = saved.content.workbook;
   const raw = book.resources.find((item: { name: string }) => item.name === "SHEET_DEFINED_NAME_PLUGIN").data as string;
   expect(raw).toContain("Rent");

@@ -40,11 +40,13 @@ Usage:
   node scripts/run-storyboards.mjs [target] [options]
 
 Targets:
-  all             Run desktop, desktop+MARP, and mobile (default)
-  desktop         Run standard desktop storyboards
-  marp            Run desktop MARP presentation storyboards
-  desktop+marp    Alias for marp
-  mobile          Run mobile phone storyboards (skipping MARP)
+  all                Run desktop, desktop+MARP, and mobile (default)
+  desktop            Run standard desktop storyboards
+  marp               Run desktop MARP presentation storyboards
+  desktop+marp       Alias for marp
+  mobile             Run mobile phone storyboards (skipping MARP)
+  android-emulator   Run mobile storyboards on a real Android Emulator via adb + Playwright _android
+  android-app        Run storyboards inside the real Capacitor Android APK (app.suiteleaf.android)
 
 Options:
   --grep <pattern>    Filter tests matching pattern
@@ -52,7 +54,7 @@ Options:
   --port <port>       Port for local static server (default: 4180)
 `);
     process.exit(0);
-  } else if (["all", "desktop", "marp", "desktop+marp", "mobile"].includes(arg.toLowerCase())) {
+  } else if (["all", "desktop", "marp", "desktop+marp", "mobile", "android-emulator", "android-app"].includes(arg.toLowerCase())) {
     target = arg.toLowerCase() === "desktop+marp" ? "marp" : arg.toLowerCase();
   } else {
     passthrough.push(arg);
@@ -88,6 +90,12 @@ if (target === "all" || target === "marp") {
 }
 if (target === "all" || target === "mobile") {
   runs.push({ name: "Mobile", project: "mobile" });
+}
+if (target === "android-emulator") {
+  runs.push({ name: "Android Emulator", project: "android-emulator" });
+}
+if (target === "android-app") {
+  runs.push({ name: "Android App", project: "android-app" });
 }
 
 console.log(`🎬 Running SuiteLeaf Storyboards [target: ${target}]`);

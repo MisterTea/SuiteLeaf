@@ -38,7 +38,7 @@ async function openWorkbook(
   (sheet as { columnData: Record<number, { w: number }> }).columnData = Object.fromEntries(
     widths.map((w, i) => [i, { w }]),
   );
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: `${title}.slsheet`,
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
@@ -251,7 +251,7 @@ test("37-dropdown-lists-in-a-sheet", async ({ page }) => {
 
   await caption(page, "Opening that workbook again restores the dropdown.", 1000);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Volunteer roster.xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: xlsx,

@@ -49,7 +49,7 @@ import { message } from "../error-message";
 import { useLibrarySelection } from "./use-library-selection";
 import { driveFileDrop } from "./drive-file-drop";
 import { ImportButton } from "./ImportButton";
-import { ErrorBanner, LeftServerNotice, LocalSidebar, NewMenu } from "./home-parts";
+import { AndroidUpdateBanner, ErrorBanner, GoogleDriveBanner, LeftServerNotice, LocalSidebar, NewMenu } from "./home-parts";
 import { openDocumentInNewTab, useDesktopTabTitle } from "../desktop-tab-bar";
 
 /** The documents folder the home screen showed last, so returning from a file reopens it. */
@@ -590,6 +590,8 @@ export function LocalHome() {
           </div>
         </header>
         <LeftServerNotice />
+        <AndroidUpdateBanner />
+        <GoogleDriveBanner />
         <div className="home-new">
           <NewMenu onCreate={make} />
           <button
@@ -660,7 +662,13 @@ export function LocalHome() {
           {sameFile ? (
             <SameFileDialog
               {...sameFile}
-              where={window.suiteleaf ? "on this computer" : "in this browser"}
+              where={
+                window.suiteleaf?.platform === "android"
+                  ? "on this device"
+                  : window.suiteleaf
+                    ? "on this computer"
+                    : "in this browser"
+              }
               onClose={() => setSameFile(null)}
               onReplace={() => {
                 setSameFile(null);

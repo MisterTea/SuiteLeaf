@@ -1,6 +1,6 @@
 /** A local model backend: raw prompt text in, streamed text out. */
 export type AiBackendKind =
-  "llama.cpp" | "webnn" | "webgpu" | "wasm" | "remote";
+  "llama.cpp" | "aicore" | "webnn" | "webgpu" | "wasm" | "remote";
 
 export interface AiStatus {
   /** Native completion grammar advertised by a hosted model adapter. */
@@ -64,8 +64,8 @@ export interface AiBridge {
 export const GEMMA_STOP = ["<turn|>", "<|tool_response>", "<eos>"];
 export const GEMMA_SAMPLING = { temperature: 1, topK: 64, topP: 0.95 };
 
-/** Models the assistant knows by name. Desktop and cluster download the GGUF on first use. The browser runs Gemma and FrogNano itself. */
-export type AiModelId = "gemma-4-e4b" | "frognano-4b" | "muse-glimmer-30b";
+/** Models the assistant knows by name. Desktop and cluster download the GGUF on first use. Android runs Gemini Nano via AICore. */
+export type AiModelId = "gemma-4-e4b" | "frognano-4b" | "muse-glimmer-30b" | "aicore-full";
 
 export interface AiModelInfo {
   id: AiModelId;
@@ -141,6 +141,19 @@ export const AI_MODELS: Record<AiModelId, AiModelInfo> = {
     },
     probe:
       "<|begin_of_text|><|start|>user<|message|>Hi<|eot|><|start|>assistant",
+  },
+  // Android on-device Gemini Nano via AICore (ML Kit GenAI Prompt API, ModelPreference.FULL).
+  "aicore-full": {
+    id: "aicore-full",
+    name: "Gemini Nano (AICore Full)",
+    short: "Gemini Nano",
+    stop: [],
+    sampling: { temperature: 0.7, topK: 40, topP: 0.95 },
+    maxTokens: 2048,
+    contextSize: 8192,
+    repo: "",
+    gguf: { file: "", url: "" },
+    probe: "Hi",
   },
 };
 

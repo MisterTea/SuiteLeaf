@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import * as XLSX from "xlsx";
-import { createFile, serializeFile } from "../../packages/core/src";
+import { createFile, parseFileBytes, serializeFile } from "../../packages/core/src";
 import { cellHyperlink } from "../../packages/core/src/sheet-links";
 import { beat, caption, expect, selectCells, test, typeSlowly } from "./harness";
 
@@ -25,7 +25,7 @@ async function openNative(page: Page, title: string, rows: string[][]) {
   (sheet as { columnData: Record<number, { w: number }> }).columnData = {
     0: { w: widths[0] },
   };
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: `${title}.slsheet`,
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
@@ -145,7 +145,8 @@ test("53-link-a-cell", async ({ page }) => {
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   const savedPath = (await (await download).path())!;
-  const saved = JSON.parse(await readFile(savedPath, "utf8"));
+  const saved = await parseFileBytes(new Uint8Array(await readFile(savedPath)));
+  if (saved.kind !== "sheet") throw new Error("Expected a spreadsheet");
   const savedCell = saved.content.workbook.sheets[saved.content.workbook.sheetOrder[0]].cellData[1][0];
   expect(savedCell.v).toBe("Northwind");
   expect(cellHyperlink(savedCell)).toBe("https://example.org/northwind/orders");
@@ -154,7 +155,7 @@ test("53-link-a-cell", async ({ page }) => {
 
   await caption(page, "She opens that copy. The name is still a link.", 1200);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Suppliers.slsheet",
     mimeType: "application/json",
     buffer: await readFile(savedPath),
@@ -184,7 +185,7 @@ test("53-link-a-cell", async ({ page }) => {
 
   await caption(page, "An Excel workbook already has these links. The addresses come in with the names.", 1600);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Suppliers.xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: excelSuppliers(),
@@ -218,7 +219,7 @@ test("53-link-a-cell", async ({ page }) => {
 
   await caption(page, "She opens the exported workbook. The links are still there.", 1400);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Suppliers.xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: xlsx,

@@ -85,7 +85,7 @@ function picturesIn(node: SavedNode | undefined, found: SavedNode[] = []): Saved
 test("79-insert-a-picture-on-a-blank-line-ai", async ({ page }) => {
   const photo = stallPhoto();
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: `${TITLE}.suiteleaf`,
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(marketNote())),

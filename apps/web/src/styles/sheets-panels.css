@@ -232,6 +232,23 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 [data-u-comp="sheets-filter-panel"] label[data-u-comp="checkbox"] ~ * {
   cursor: pointer;
 }
+@media (max-width: 720px) {
+  [data-u-comp="sheets-filter-panel"] {
+    position: fixed !important;
+    top: auto !important;
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    width: auto !important;
+    max-height: min(75dvh, 520px) !important;
+    z-index: 1060 !important;
+    overflow: auto !important;
+  }
+  [data-u-comp="sheets-filter-panel-content"] {
+    min-height: 0 !important;
+    overflow: auto !important;
+  }
+}
 
 .sheet-host {
   flex: 1;

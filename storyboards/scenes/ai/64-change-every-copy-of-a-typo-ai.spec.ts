@@ -74,7 +74,7 @@ function cellText(cells: Record<string, Record<string, SavedCell>> | undefined, 
 test("64-change-every-copy-of-a-typo-ai", async ({ page }) => {
   await openApp(page);
   await caption(page, "Sam's decisions sheet says recieve in four cells, and seperate in one he wants to keep.");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Decisions.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(decisionsSheet())),

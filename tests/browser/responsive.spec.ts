@@ -544,16 +544,15 @@ test("Mobile slide editing keeps the toolbar above the keyboard without blank sc
     window.visualViewport!.dispatchEvent(new Event("resize"));
     window.visualViewport!.dispatchEvent(new Event("scroll"));
   });
-  const toolbar = page.getByRole("toolbar", { name: "Slides toolbar" });
-  await expect.poll(async () => (await page.locator(".workspace").boundingBox())!.y).toBe(140);
-  const menu = (await page.getByRole("menubar", { name: "Main menu" }).boundingBox())!;
-  expect(menu.y).toBeGreaterThanOrEqual(140);
-  expect((await toolbar.boundingBox())!.y).toBeLessThanOrEqual(menu.y + menu.height + 8);
-  await expect(toolbar.getByRole("button", { name: "Menus", exact: true })).toBeInViewport();
+  const workspace = page.locator(".workspace");
+  await expect.poll(async () => (await workspace.boundingBox())!.y).toBe(140);
+  await expect(page.getByRole("menubar", { name: "Main menu" })).toBeHidden();
+  await expect(page.getByRole("toolbar", { name: "Slides toolbar" })).toBeHidden();
+  await expect(page.locator(".slides-sidebar")).toBeHidden();
   const bold = page.getByRole("toolbar", { name: "Slide text formatting", exact: true }).getByRole("button", { name: "Bold", exact: true });
   await bold.scrollIntoViewIfNeeded();
   await expect(bold).toBeInViewport();
-  const workspace = page.locator(".workspace");
+  await expect(text).toBeInViewport();
   expect((await workspace.boundingBox())!.height).toBe(390);
   expect(await workspace.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeLessThanOrEqual(1);
   await page.evaluate(() => {

@@ -29,7 +29,7 @@ test("53-link-a-cell-ai", async ({ page }) => {
     suppliers.map((row, r) => [r, Object.fromEntries(row.map((value, c) => [c, { v: value, t: 1 }]))]),
   );
   (sheet as { columnData: Record<number, { w: number }> }).columnData = { 0: { w: 180 } };
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Suppliers.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

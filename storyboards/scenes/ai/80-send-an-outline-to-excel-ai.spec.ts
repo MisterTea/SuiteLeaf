@@ -138,7 +138,7 @@ function savedCell(sheet: { cellData?: Record<number, Record<number, { v?: unkno
 test("80-send-an-outline-to-excel-ai", async ({ page }) => {
   await openApp(page);
   await caption(page, "Rosa’s rent budget already groups the months and collapses the expense rows.");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Rent budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(rentBudget())),
@@ -219,7 +219,7 @@ test("80-send-an-outline-to-excel-ai", async ({ page }) => {
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("button", { name: "Open / import", exact: true }).waitFor();
   await caption(page, "She opens that Excel file again.", 1200);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Rent budget.xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: workbook!.data,

@@ -32,7 +32,7 @@ function budgetFile() {
 test("55-name-a-range-ai", async ({ page }) => {
   await openApp(page);
   await caption(page, "Rosa's rent budget adds the same twelve cells. She wants that range to have a name.");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Rent budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(budgetFile())),

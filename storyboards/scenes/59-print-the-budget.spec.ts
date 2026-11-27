@@ -77,7 +77,7 @@ test("59-print-the-budget", async ({ page }) => {
 
   await page.goto("/");
   await caption(page, "Rosa needs a paper copy of the rent budget for the meeting.", 1800);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Rent budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

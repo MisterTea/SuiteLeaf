@@ -82,7 +82,7 @@ const EDGE_KEYS = [
 
 test("82-use-a-two-inch-margin-ai", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "Thesis notes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(thesis())),

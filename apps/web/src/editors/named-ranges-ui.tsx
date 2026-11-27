@@ -185,6 +185,9 @@ export default function NamedRanges({
       showNameInBox();
       refresh();
       persist();
+      if (window.innerWidth <= 700 && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "";
       setStatus("");
