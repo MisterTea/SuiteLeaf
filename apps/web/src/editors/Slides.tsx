@@ -1,6 +1,5 @@
 import { SlideAnimationRibbon } from "./slide-animation-ribbon";
 import { useAnimationPreview } from "./slide-animation-preview";
-import { SlideTextMenu, type SlideTextMenuTarget } from "./slide-text-menu";
 import { SlideEquationDialog, equationRun, hasSlideEquation, slideEquations } from "./slide-equation-dialog";
 import { SlidePrintDeck } from "./slide-print";
 import { SlideAccessPanel } from "./slide-access-notes";
@@ -282,7 +281,6 @@ export default function Slides({
     return true;
   };
 
-  const [textMenu, setTextMenu] = useState<SlideTextMenuTarget | null>(null);
   const canvasHooks = editorCanvasHooks(state, {
     file,
     readOnly,
@@ -296,7 +294,6 @@ export default function Slides({
     selectElement,
     revealMarkdown,
     editEquation,
-    setTextMenu,
   });
 
   return (
@@ -307,11 +304,6 @@ export default function Slides({
       className="slides-editor"
       data-deck-snapshot={deckSnapshot}
     >
-      {textMenu && !readOnly && (
-        <SlideTextMenu target={textMenu} close={() => setTextMenu(null)} onError={onError}
-          comment={openSlideComment} bold={textFormat.toggleBold}
-          italic={textFormat.toggleItalic} underline={textFormat.toggleUnderline} />
-      )}
       {equationTarget !== null && !readOnly && (
         <SlideEquationDialog key={equationTarget} equations={equationChoices}
           onClose={() => setEquationTarget(null)}

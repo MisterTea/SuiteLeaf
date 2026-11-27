@@ -219,7 +219,7 @@ test("typing at a bulleted line start survives undo and accepts Tab", async ({
   await expect(plain).toContainText("Saturday at the hall\t!");
 });
 
-test("multiline undo keeps the editor usable and right-click offers text actions", async ({
+test("multiline undo keeps the editor usable and text contextmenu stays native", async ({
   page,
 }) => {
   await page.goto("/");
@@ -246,35 +246,17 @@ test("multiline undo keeps the editor usable and right-click offers text actions
   await page.keyboard.type("!");
   await expect(editor).toContainText("Last!");
 
-  await editor.click({ button: "right" });
-  const menu = page.getByRole("menu", { name: "Slide text actions" });
-  await expect(
-    menu.getByRole("menuitem", { name: "Paste without formatting" }),
-  ).toBeVisible();
-  await expect(editor).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
-  await expect(editor).toBeFocused();
-
   await page.keyboard.press("ControlOrMeta+a");
-  const textPoint = await editor.evaluate((root) => {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-    while (node && !node.textContent?.includes("Last"))
-      node = walker.nextNode();
-    if (!node) throw new Error("Missing last line");
-    const range = document.createRange();
-    range.selectNodeContents(node);
-    const rect = Array.from(range.getClientRects()).find(
-      (box) => box.width > 0,
-    )!;
-    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  const defaultPrevented = await editor.evaluate((root) => {
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    root.dispatchEvent(event);
+    return event.defaultPrevented;
   });
-  await page.mouse.click(textPoint.x, textPoint.y, { button: "right" });
-  await menu.getByRole("menuitem", { name: "Delete", exact: true }).click();
-  await expect(editor).toHaveText("");
-  await page.keyboard.press("ControlOrMeta+z");
-  await expect(editor).toContainText("Last!");
+  expect(defaultPrevented).toBe(false);
+  await expect(page.getByRole("menu", { name: "Slide text actions" })).toHaveCount(0);
   await expect(editor).toBeFocused();
 });
 

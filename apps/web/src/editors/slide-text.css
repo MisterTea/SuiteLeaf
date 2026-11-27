@@ -82,7 +82,3 @@
   height: 3px;
   border-radius: 1px;
 }
-
-.slide-text-context-menu .menu-item[data-highlighted="true"] {
-  background: var(--menu-hover, rgba(127, 127, 127, 0.16));
-}

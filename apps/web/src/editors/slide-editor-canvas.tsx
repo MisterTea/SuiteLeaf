@@ -1,4 +1,3 @@
-import type { SlideTextMenuTarget } from "./slide-text-menu";
 import { useContext, type ReactNode, type RefObject } from "react";
 import { EditorStatusTarget } from "../editor-status-target";
 import { useSlideMobileTextZoom } from "./slide-mobile-text-zoom";
@@ -41,7 +40,6 @@ export function editorCanvasHooks(
     selectElement,
     revealMarkdown,
     editEquation,
-    setTextMenu,
   }: Pick<SlideUpdates, "updateElement"> &
     Pick<SlideTextFormat, "rememberCaret"> &
     Pick<SlideElementActions, "selectElement"> & {
@@ -52,7 +50,6 @@ export function editorCanvasHooks(
       onElementMouseDown: (e: React.MouseEvent, elementId: string, handle?: ResizeHandle) => void;
       onElementPointerDown: (e: React.PointerEvent, elementId: string, handle?: ResizeHandle) => void;
       onElementPointerUp: (e: React.PointerEvent) => void;
-      setTextMenu: (target: SlideTextMenuTarget) => void;
       editEquation?: (element: SlideElement) => boolean;
       revealMarkdown: (lines?: [number, number]) => void;
     },
@@ -272,13 +269,6 @@ export function editorCanvasHooks(
         onPointerUp: onElementPointerUp,
       };
       if (el.type === "text") {
-        props.onContextMenu = (e) => {
-          const editor = (e.target as HTMLElement).closest<HTMLElement>(".element-textarea");
-          if (readOnlyRef.current || !editor || editor.ownerDocument.activeElement !== editor) return;
-          e.preventDefault();
-          e.stopPropagation();
-          setTextMenu({ editor, x: e.clientX, y: e.clientY });
-        };
         props.onMouseDown = (e) => {
           if ((e.target as HTMLElement).closest?.("a[href]")) return;
           const inEditor = (e.target as HTMLElement).closest?.(".element-editor");
