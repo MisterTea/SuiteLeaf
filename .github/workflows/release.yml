@@ -1,10 +1,15 @@
-name: Release Desktop App
+name: Release Desktop & Android Apps
 
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      android_only:
+        description: Build only Android for signing and updater validation
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -16,6 +21,7 @@ concurrency:
 jobs:
   release:
     name: Build and publish desktop app (${{ matrix.os }})
+    if: github.event_name != 'workflow_dispatch' || inputs.android_only != true
     strategy:
       fail-fast: false
       matrix:
@@ -44,3 +50,106 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run publish:desktop
+
+  android:
+    name: Build and publish Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform and build-tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          if [ -f packages/supermail/package.json ]; then
+            npm ci --prefix packages/supermail --no-audit --no-fund
+          fi
+
+      - name: Build web bundle and sync Capacitor Android
+        run: |
+          npm run build:web
+          cd apps/android
+          npx cap sync android
+
+      - name: Run Android unit tests and build APK
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RELEASE_TAG" ]; then
+            VERSION="${RELEASE_TAG#v}"
+          else
+            VERSION="$(node -p 'require("./package.json").version')"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+          chmod +x apps/android/android/gradlew
+          mkdir -p dist-android
+
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/suiteleaf-release.jks"
+            trap 'rm -f "$ANDROID_KEYSTORE_PATH"' EXIT
+            umask 077
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+            (cd apps/android/android && ./gradlew testDebugUnitTest assembleRelease -PsuiteleafVersion="$VERSION")
+            APK_SRC="apps/android/android/app/build/outputs/apk/release/app-release.apk"
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK_SRC"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; building debug-signed APK."
+            (cd apps/android/android && ./gradlew testDebugUnitTest assembleDebug -PsuiteleafVersion="$VERSION")
+            APK_SRC="apps/android/android/app/build/outputs/apk/debug/app-debug.apk"
+          fi
+
+          cp "$APK_SRC" "dist-android/SuiteLeaf-${VERSION}-android.apk"
+          ls -lh "dist-android/SuiteLeaf-${VERSION}-android.apk"
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuiteLeaf-android
+          if-no-files-found: error
+          path: dist-android/*-android.apk
+
+      - name: Publish Android APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          APK="dist-android/SuiteLeaf-${VERSION}-android.apk"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$APK" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$APK" --verify-tag --title "SuiteLeaf ${VERSION}" --notes "SuiteLeaf ${VERSION} for Desktop and Android."
+          fi
